@@ -55,7 +55,7 @@ public class AgentRegistry {
      * @param agentFile Agent 配置文件路径（可以是相对路径或绝对路径）
      * @return 已解析的 Agent 规范
      */
-    public Mono<ResolvedAgentSpec> loadAgentSpec(Path agentFile) {
+    public Mono<AgentSpec> loadAgentSpec(Path agentFile) {
 
         return specLoader.loadAgentSpec(agentFile);
     }
@@ -164,10 +164,10 @@ public class AgentRegistry {
      * @return 可用的 Agent 名称列表
      */
     public List<String> listAvailableAgents() {
-        Map<Path, ResolvedAgentSpec> specCache = specLoader.getSpecCache();
+        Map<Path, AgentSpec> specCache = specLoader.getSpecCache();
 
         return specCache.values().stream()
-                .map(ResolvedAgentSpec::getName)
+                .map(AgentSpec::getName)
                 .sorted()
                 .collect(Collectors.toList());
     }

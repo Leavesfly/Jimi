@@ -3,10 +3,7 @@ package io.leavesfly.jimi.agent;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import io.leavesfly.jimi.exception.AgentSpecException;
-import io.leavesfly.jimi.soul.runtime.BuiltinSystemPromptArgs;
-import io.leavesfly.jimi.soul.runtime.Runtime;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.text.StringSubstitutor;
 import reactor.core.publisher.Mono;
 import org.springframework.stereotype.Service;
 import jakarta.annotation.PostConstruct;
@@ -19,14 +16,12 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Agent规范加载器
  * 负责从YAML文件加载Agent配置，处理继承关系
  * <p>
- * 注意：此类为 package-private，只能在 agent 包内部使用。
  * 外部模块应通过 {@link AgentRegistry} 来访问 Agent 加载功能。
  */
 @Slf4j
@@ -52,7 +47,7 @@ class AgentSpecLoader {
     /**
      * 预加载规范缓存（绝对路径 -> 规范）
      */
-    private final Map<Path, ResolvedAgentSpec> specCache = new ConcurrentHashMap<>();
+    private final Map<Path, AgentSpec> specCache = new ConcurrentHashMap<>();
 
     /**
      * 获取agents目录
@@ -104,10 +99,10 @@ class AgentSpecLoader {
      * @param agentFile Agent配置文件路径
      * @return 已解析的Agent规范
      */
-    public Mono<ResolvedAgentSpec> loadAgentSpec(Path agentFile) {
+    public Mono<AgentSpec> loadAgentSpec(Path agentFile) {
         return Mono.fromCallable(() -> {
             Path absolute = agentFile.toAbsolutePath().normalize();
-            ResolvedAgentSpec cached = specCache.get(absolute);
+            AgentSpec cached = specCache.get(absolute);
             if (cached != null) {
                 log.debug("Agent spec cache hit: {}", absolute);
                 return cached;
@@ -133,7 +128,7 @@ class AgentSpecLoader {
             }
 
             // 转换为ResolvedAgentSpec并缓存
-            ResolvedAgentSpec resolved = ResolvedAgentSpec.builder()
+            AgentSpec resolved = AgentSpec.builder()
                     .name(agentSpec.getName())
                     .systemPromptPath(agentSpec.getSystemPromptPath())
                     .systemPromptArgs(agentSpec.getSystemPromptArgs())
@@ -326,7 +321,7 @@ class AgentSpecLoader {
     }
 
 
-    public Map<Path, ResolvedAgentSpec> getSpecCache() {
+    public Map<Path, AgentSpec> getSpecCache() {
         return specCache;
     }
 

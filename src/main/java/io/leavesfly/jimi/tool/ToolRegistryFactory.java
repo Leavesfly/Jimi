@@ -1,7 +1,7 @@
 package io.leavesfly.jimi.tool;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.leavesfly.jimi.agent.ResolvedAgentSpec;
+import io.leavesfly.jimi.agent.AgentSpec;
 import io.leavesfly.jimi.soul.approval.Approval;
 import io.leavesfly.jimi.soul.runtime.BuiltinSystemPromptArgs;
 import io.leavesfly.jimi.soul.runtime.Runtime;
@@ -147,13 +147,13 @@ public class ToolRegistryFactory {
     
     /**
      * 创建 Task 工具实例
-     * Task 工具需要 ResolvedAgentSpec 和 Runtime 参数
+     * Task 工具需要 AgentSpec 和 Runtime 参数
      * 
      * @param agentSpec Agent 规范
      * @param runtime   运行时对象
      * @return 配置好的 Task 工具实例
      */
-    public Task createTask(ResolvedAgentSpec agentSpec, Runtime runtime) {
+    public Task createTask(AgentSpec agentSpec, Runtime runtime) {
         Task tool = applicationContext.getBean(Task.class);
         tool.setRuntimeParams(agentSpec, runtime);
         return tool;

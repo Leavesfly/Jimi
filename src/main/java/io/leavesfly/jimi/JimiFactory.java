@@ -2,11 +2,8 @@ package io.leavesfly.jimi;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.leavesfly.jimi.agent.AgentRegistry;
-import io.leavesfly.jimi.agent.ResolvedAgentSpec;
+import io.leavesfly.jimi.agent.AgentSpec;
 import io.leavesfly.jimi.config.JimiConfig;
-import io.leavesfly.jimi.config.LLMModelConfig;
-import io.leavesfly.jimi.config.LLMProviderConfig;
-import io.leavesfly.jimi.exception.ConfigException;
 import io.leavesfly.jimi.llm.LLM;
 import io.leavesfly.jimi.llm.LLMFactory;
 import io.leavesfly.jimi.session.Session;
@@ -30,13 +27,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
-import java.util.Optional;
 
 /**
  * Jimi 应用工厂（Spring Service）
@@ -102,7 +96,7 @@ public class JimiFactory {
                         .build();
 
                 // 3. 加载 Agent 规范和 Agent 实例
-                ResolvedAgentSpec resolvedAgentSpec = agentRegistry.loadAgentSpec(agentSpecPath).block();
+                AgentSpec agentSpec = agentRegistry.loadAgentSpec(agentSpecPath).block();
 
                 // 使用 AgentRegistry 单例加载 Agent（包含系统提示词处理）
                 Agent agent = agentSpecPath != null
@@ -116,7 +110,7 @@ public class JimiFactory {
                 Context context = new Context(session.getHistoryFile(), objectMapper);
 
                 // 5. 创建 ToolRegistry（包含 Task 工具和 MCP 工具）
-                ToolRegistry toolRegistry = createToolRegistry(builtinArgs, approval, resolvedAgentSpec, runtime, mcpConfigFiles);
+                ToolRegistry toolRegistry = createToolRegistry(builtinArgs, approval, agentSpec, runtime, mcpConfigFiles);
 
                 // 6. 创建 JimiSoul（注入 Compaction）
                 JimiSoul soul = new JimiSoul(agent, runtime, context, toolRegistry, objectMapper, new WireImpl(), compaction);
@@ -140,7 +134,7 @@ public class JimiFactory {
     private ToolRegistry createToolRegistry(
             BuiltinSystemPromptArgs builtinArgs,
             Approval approval,
-            ResolvedAgentSpec resolvedAgentSpec,
+            AgentSpec agentSpec,
             Runtime runtime,
             List<Path> mcpConfigFiles
     ) {
@@ -151,10 +145,10 @@ public class JimiFactory {
         );
 
         // 如果 Agent 有子 Agent 规范，注册 Task 工具（使用 Spring 工厂）
-        if (resolvedAgentSpec.getSubagents() != null && !resolvedAgentSpec.getSubagents().isEmpty()) {
-            Task taskTool = toolRegistryFactory.createTask(resolvedAgentSpec, runtime);
+        if (agentSpec.getSubagents() != null && !agentSpec.getSubagents().isEmpty()) {
+            Task taskTool = toolRegistryFactory.createTask(agentSpec, runtime);
             registry.register(taskTool);
-            log.info("Registered Task tool with {} subagents", resolvedAgentSpec.getSubagents().size());
+            log.info("Registered Task tool with {} subagents", agentSpec.getSubagents().size());
         }
 
         // 加载 MCP 工具（使用 Spring 单例服务）
