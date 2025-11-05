@@ -18,36 +18,36 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * LLM 工厂服务
  * 负责创建和缓存 LLM 实例
- * 
+ * <p>
  * 设计原则：
  * 1. 初始化阶段验证配置（Fail-fast）
  * 2. 按模型名称缓存 LLM 实例（避免重复创建）
  * 3. 支持环境变量覆盖配置
- * 
+ *
  * @author Jimi Team
  */
 @Slf4j
 @Service
 public class LLMFactory {
-    
+
     private final JimiConfig config;
     private final ObjectMapper objectMapper;
-    
+
     /**
      * LLM 实例缓存（线程安全）
      * Key: 模型名称
      */
     private final Map<String, LLM> llmCache = new ConcurrentHashMap<>();
-    
+
     @Autowired
     public LLMFactory(JimiConfig config, ObjectMapper objectMapper) {
         this.config = config;
         this.objectMapper = objectMapper;
-        
+
         // 初始化阶段验证配置
         validateConfiguration();
     }
-    
+
     /**
      * 验证配置（Fail-fast）
      * 在应用启动时发现配置错误，而非运行时
@@ -57,59 +57,59 @@ public class LLMFactory {
             log.warn("No default model configured");
             return;
         }
-        
+
         String defaultModel = config.getDefaultModel();
         LLMModelConfig modelConfig = config.getModels().get(defaultModel);
-        
+
         if (modelConfig == null) {
             log.warn("Default model '{}' not found in configuration", defaultModel);
             return;
         }
-        
+
         LLMProviderConfig providerConfig = config.getProviders().get(modelConfig.getProvider());
         if (providerConfig == null) {
-            log.warn("Provider '{}' for default model not found in configuration", 
+            log.warn("Provider '{}' for default model not found in configuration",
                     modelConfig.getProvider());
             return;
         }
-        
-        log.info("LLM configuration validated: defaultModel={}, provider={}", 
+
+        log.info("LLM configuration validated: defaultModel={}, provider={}",
                 defaultModel, modelConfig.getProvider());
     }
-    
+
     /**
      * 获取或创建 LLM 实例
      * 如果已缓存则返回缓存实例，否则创建新实例并缓存
-     * 
+     *
      * @param modelName 模型名称（null 表示使用默认模型）
      * @return LLM 实例，如果配置不完整则返回 null
      */
     public LLM getOrCreateLLM(String modelName) {
         // 确定使用的模型
         String effectiveModelName = modelName != null ? modelName : config.getDefaultModel();
-        
+
         if (effectiveModelName == null || effectiveModelName.isEmpty()) {
             log.warn("No model specified and no default model configured");
             return null;
         }
-        
+
         // 检查缓存
         LLM cached = llmCache.get(effectiveModelName);
         if (cached != null) {
             log.debug("LLM cache hit: {}", effectiveModelName);
             return cached;
         }
-        
+
         // 创建新实例
         LLM llm = createLLM(effectiveModelName);
         if (llm != null) {
             llmCache.put(effectiveModelName, llm);
             log.info("LLM created and cached: {}", effectiveModelName);
         }
-        
+
         return llm;
     }
-    
+
     /**
      * 创建 LLM 实例
      */
@@ -118,25 +118,21 @@ public class LLMFactory {
         if (modelConfig == null) {
             throw new ConfigException("Model not found in config: " + modelName);
         }
-        
+
         LLMProviderConfig providerConfig = config.getProviders().get(modelConfig.getProvider());
         if (providerConfig == null) {
             throw new ConfigException("Provider not found in config: " + modelConfig.getProvider());
         }
-        
-        // 检查环境变量覆盖
-        String apiKey = Optional.ofNullable(System.getenv("KIMI_API_KEY"))
-                .orElse(providerConfig.getApiKey());
-        String baseUrl = Optional.ofNullable(System.getenv("KIMI_BASE_URL"))
-                .orElse(providerConfig.getBaseUrl());
-        String model = Optional.ofNullable(System.getenv("KIMI_MODEL_NAME"))
-                .orElse(modelConfig.getModel());
-        
+
+        String apiKey = providerConfig.getApiKey();
+        String baseUrl = providerConfig.getBaseUrl();
+        String model = modelConfig.getModel();
+
         if (apiKey == null || apiKey.isEmpty()) {
             log.warn("No API key configured for model: {}", modelName);
             return null;
         }
-        
+
         // 创建带环境变量覆盖的 provider config
         LLMProviderConfig effectiveProviderConfig = LLMProviderConfig.builder()
                 .type(providerConfig.getType())
@@ -144,22 +140,22 @@ public class LLMFactory {
                 .apiKey(apiKey)
                 .customHeaders(providerConfig.getCustomHeaders())
                 .build();
-        
+
         // 创建 ChatProvider
         ChatProvider chatProvider = createChatProvider(
-                providerConfig.getType(), 
-                model, 
+                providerConfig.getType(),
+                model,
                 effectiveProviderConfig
         );
-        
+
         log.info("Created LLM: provider={}, model={}", providerConfig.getType(), model);
-        
+
         return LLM.builder()
                 .chatProvider(chatProvider)
                 .maxContextSize(modelConfig.getMaxContextSize())
                 .build();
     }
-    
+
     /**
      * 创建 ChatProvider 实例
      */
@@ -171,28 +167,28 @@ public class LLMFactory {
         switch (type) {
             case KIMI:
                 return new KimiChatProvider(model, config, objectMapper);
-                
+
             case DEEPSEEK:
                 return new OpenAICompatibleChatProvider(
                         model, config, objectMapper, "DeepSeek");
-                
+
             case QWEN:
                 return new OpenAICompatibleChatProvider(
                         model, config, objectMapper, "Qwen");
-                
+
             case OLLAMA:
                 return new OpenAICompatibleChatProvider(
                         model, config, objectMapper, "Ollama");
-                
+
             case OPENAI:
                 return new OpenAICompatibleChatProvider(
                         model, config, objectMapper, "OpenAI");
-                
+
             default:
                 throw new ConfigException("Unsupported provider type: " + type);
         }
     }
-    
+
     /**
      * 清除 LLM 缓存
      * 用于配置热更新等场景
@@ -202,7 +198,7 @@ public class LLMFactory {
         llmCache.clear();
         log.info("LLM cache cleared: {} instances removed", count);
     }
-    
+
     /**
      * 获取缓存统计信息
      */
