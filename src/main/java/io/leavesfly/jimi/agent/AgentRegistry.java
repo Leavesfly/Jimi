@@ -1,18 +1,25 @@
 package io.leavesfly.jimi.agent;
 
 import io.leavesfly.jimi.exception.AgentSpecException;
+import io.leavesfly.jimi.soul.runtime.BuiltinSystemPromptArgs;
 import io.leavesfly.jimi.soul.runtime.Runtime;
 import lombok.extern.slf4j.Slf4j;
+
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.apache.commons.text.StringSubstitutor;
 import reactor.core.publisher.Mono;
+import jakarta.annotation.PostConstruct;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 /**
  * Agent 注册表（Spring Service）
@@ -52,72 +59,31 @@ public class AgentRegistry {
     private static final Path DEFAULT_AGENT_RELATIVE_PATH =
             Paths.get("default", "agent.yaml");
 
-    /**
-     * 已加载的 Agent 规范缓存（线程安全）
-     * <p>
-     * Key: Agent 配置文件路径（绝对路径）
-     * Value: 已解析的 Agent 规范
-     * <p>
-     * 缓存理由：Agent 规范是纯配置数据，可安全共享
-     */
-    private final Map<Path, ResolvedAgentSpec> specCache = new ConcurrentHashMap<>();
 
-    /**
-     * 已加载的 Agent 实例缓存（线程安全）
-     * <p>
-     * Key: Agent 配置文件路径（绝对路径）
-     * Value: 完整的 Agent 实例（包含渲染后的系统提示词）
-     * <p>
-     * 缓存理由：
-     * - Agent 是不可变的数据对象（name、systemPrompt、tools）
-     * - 不包含任何运行时状态或会话信息
-     * - systemPrompt 虽然是运行时渲染的，但对于同一配置文件，渲染结果通常相同
-     * - 可安全地在多个 Session/Runtime 之间共享
-     * <p>
-     * 注意事项：
-     * - 如果 Agent 配置文件变更，需调用 reload() 清除缓存
-     * - systemPrompt 中如果包含动态内容（如时间戳），可能需要考虑缓存失效策略
-     */
-    private final Map<Path, Agent> agentCache = new ConcurrentHashMap<>();
 
     /**
      * agents 根目录
      */
     private final Path agentsRootDir;
+    
+    /**
+     * AgentSpecLoader Bean
+     */
+    private  AgentSpecLoader specLoader;
 
     /**
      * 构造函数（由 Spring 管理）
      */
-    public AgentRegistry() {
+    @Autowired
+    public AgentRegistry(AgentSpecLoader specLoader) {
+        this.specLoader = specLoader;
         this.agentsRootDir = resolveAgentsDirectory();
         log.info("Agent Registry initialized, agents root: {}", agentsRootDir);
     }
 
 
-    /**
-     * 重新加载所有 Agent 配置
-     * 清除所有缓存并重新扫描 agents 目录
-     * <p>
-     * 使用场景：
-     * - Agent 配置文件已修改，需要重新加载
-     * - 系统提示词模板已更新
-     * - 开发环境下的热更新
-     * <p>
-     * 注意：此操作会清除所有缓存，下次加载时将从文件重新读取
-     */
-    public void reload() {
-        log.info("Reloading all agent configurations...");
 
-        int specCount = specCache.size();
-        int agentCount = agentCache.size();
 
-        // 清除所有缓存
-        specCache.clear();
-        agentCache.clear();
-
-        log.info("Agent cache cleared: {} specs, {} agents", specCount, agentCount);
-        log.info("Available agents after reload: {}", listAvailableAgents());
-    }
 
     /**
      * 解析 agents 目录位置
@@ -173,26 +139,8 @@ public class AgentRegistry {
      * @return 已解析的 Agent 规范
      */
     public Mono<ResolvedAgentSpec> loadAgentSpec(Path agentFile) {
-        return Mono.defer(() -> {
-            // 规范化路径（转为绝对路径）
-            Path absolutePath = agentFile.toAbsolutePath().normalize();
-
-            // 检查缓存
-            ResolvedAgentSpec cached = specCache.get(absolutePath);
-            if (cached != null) {
-                log.debug("Agent spec cache hit: {}", absolutePath);
-                return Mono.just(cached);
-            }
-
-            // 使用 AgentSpecLoader 加载
-            log.debug("Loading agent spec from: {}", absolutePath);
-            return AgentSpecLoader.loadAgentSpec(absolutePath)
-                    .doOnSuccess(spec -> {
-                        // 缓存加载的规范
-                        specCache.put(absolutePath, spec);
-                        log.debug("Agent spec cached: {}", absolutePath);
-                    });
-        });
+    
+            specLoader.loadAgentSpec(agentFile);
     }
 
     /**
@@ -225,23 +173,78 @@ public class AgentRegistry {
                     ? agentFile.toAbsolutePath().normalize()
                     : getDefaultAgentPath();
 
-            // 检查缓存
-            // Agent 是不可变配置对象，缓存安全，可在不同 Runtime 间共享
-            Agent cached = agentCache.get(absolutePath);
-            if (cached != null) {
-                log.debug("Agent cache hit: {}", absolutePath);
-                return Mono.just(cached);
-            }
-
-            // 使用 AgentSpecLoader 加载
-            log.debug("Loading agent instance from: {}", absolutePath);
-            return AgentSpecLoader.loadAgent(absolutePath, runtime)
-                    .doOnSuccess(agent -> {
-                        // 缓存加载的实例
-                        agentCache.put(absolutePath, agent);
-                        log.debug("Agent cached: {}", absolutePath);
+        
+            // 加载 Agent 规范
+            return loadAgentSpec(absolutePath)
+                    .flatMap(spec -> {
+                        log.info("加载Agent: {} (from {})", spec.getName(), absolutePath);
+                        
+                        // 渲染系统提示词
+                        String systemPrompt = renderSystemPrompt(
+                                spec.getSystemPromptPath(),
+                                spec.getSystemPromptArgs(),
+                                runtime.getBuiltinArgs()
+                        );
+                        
+                        // 处理工具列表
+                        List<String> tools = spec.getTools();
+                        if (spec.getExcludeTools() != null && !spec.getExcludeTools().isEmpty()) {
+                            log.debug("排除工具: {}", spec.getExcludeTools());
+                            tools = tools.stream()
+                                    .filter(tool -> !spec.getExcludeTools().contains(tool))
+                                    .collect(Collectors.toList());
+                        }
+                        
+                        // 构建Agent实例
+                        Agent agent = Agent.builder()
+                                .name(spec.getName())
+                                .systemPrompt(systemPrompt)
+                                .tools(tools)
+                                .build();
+                        
+                        
+                        return Mono.just(agent);
                     });
         });
+    }
+    
+    /**
+     * 渲染系统提示词（基于预加载的模板）
+     * 
+     * @param promptPath 提示词文件路径
+     * @param args 自定义参数
+     * @param builtinArgs 内置参数
+     * @return 替换后的系统提示词
+     */
+    private String renderSystemPrompt(
+            Path promptPath,
+            Map<String, String> args,
+            BuiltinSystemPromptArgs builtinArgs
+    ) {
+        Path absolutePath = promptPath.toAbsolutePath().normalize();
+        
+        // 从缓存取模板，不存在则加载
+        String template  = Files.readString(absolutePath).strip();
+        
+        // 准备替换参数
+        Map<String, String> substitutionMap = new HashMap<>();
+        
+        // 添加内置参数
+        substitutionMap.put("KIMI_NOW", builtinArgs.getKimiNow());
+        substitutionMap.put("KIMI_WORK_DIR", builtinArgs.getKimiWorkDir().toString());
+        substitutionMap.put("KIMI_WORK_DIR_LS", builtinArgs.getKimiWorkDirLs());
+        substitutionMap.put("KIMI_AGENTS_MD", builtinArgs.getKimiAgentsMd());
+        
+        // 添加自定义参数（覆盖内置参数）
+        if (args != null) {
+            substitutionMap.putAll(args);
+        }
+        
+        log.debug("渲染系统提示词: {}", absolutePath);
+        
+        // 执行字符串替换
+        StringSubstitutor substitutor = new StringSubstitutor(substitutionMap);
+        return substitutor.replace(template);
     }
 
     /**
@@ -375,58 +378,7 @@ public class AgentRegistry {
         ).thenReturn(result);
     }
 
-    /**
-     * 清除所有缓存（公共方法）
-     * 用于强制重新加载 Agent 配置，例如配置文件变更后
-     * <p>
-     * 线程安全：ConcurrentHashMap 的 clear() 操作是原子的
-     */
-    public void clearCache() {
-        int specCount = specCache.size();
-        int agentCount = agentCache.size();
-
-        specCache.clear();
-        agentCache.clear();
-
-        log.info("Agent cache cleared: {} specs, {} agents", specCount, agentCount);
-    }
-
-    /**
-     * 清除指定 Agent 的缓存（公共方法）
-     * 用于单个 Agent 配置更新后的增量刷新
-     *
-     * @param agentFile Agent 配置文件路径
-     */
-    public void clearCache(Path agentFile) {
-        Path absolutePath = agentFile.toAbsolutePath().normalize();
-
-        boolean specRemoved = specCache.remove(absolutePath) != null;
-        boolean agentRemoved = agentCache.remove(absolutePath) != null;
-
-        if (specRemoved || agentRemoved) {
-            log.debug("Cache cleared for agent: {}", absolutePath);
-        }
-    }
-
-    /**
-     * 获取缓存统计信息
-     *
-     * @return 包含缓存大小的描述字符串
-     */
-    public String getCacheStats() {
-        return String.format("AgentRegistry Cache - Specs: %d, Agents: %d",
-                specCache.size(), agentCache.size());
-    }
-
-    /**
-     * 获取 agents 根目录（内部使用）
-     *
-     * @return agents 根目录路径
-     */
-    private Path getAgentsRootDir() {
-        return agentsRootDir;
-    }
-
+   
     /**
      * 列出所有可用的 Agent 名称
      * 扫描 agents 目录下的所有子目录
