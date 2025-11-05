@@ -46,29 +46,23 @@ import java.util.Optional;
 @Service
 public class JimiFactory {
 
-    private final JimiConfig config;
-    private final ObjectMapper objectMapper;
-    private final AgentRegistry agentRegistry;
-    private final ToolRegistryFactory toolRegistryFactory;
-    private final LLMFactory llmFactory;
-    private final MCPToolLoader mcpToolLoader;
-    private final SessionManager sessionManager;
-    private final Compaction compaction;
-
     @Autowired
-    public JimiFactory(JimiConfig config, ObjectMapper objectMapper, 
-                      AgentRegistry agentRegistry, ToolRegistryFactory toolRegistryFactory,
-                      LLMFactory llmFactory, MCPToolLoader mcpToolLoader,
-                      SessionManager sessionManager, Compaction compaction) {
-        this.config = config;
-        this.objectMapper = objectMapper;
-        this.agentRegistry = agentRegistry;
-        this.toolRegistryFactory = toolRegistryFactory;
-        this.llmFactory = llmFactory;
-        this.mcpToolLoader = mcpToolLoader;
-        this.sessionManager = sessionManager;
-        this.compaction = compaction;
-    }
+    private JimiConfig config;
+    @Autowired
+    private ObjectMapper objectMapper;
+    @Autowired
+    private AgentRegistry agentRegistry;
+    @Autowired
+    private ToolRegistryFactory toolRegistryFactory;
+    @Autowired
+    private LLMFactory llmFactory;
+    @Autowired
+    private MCPToolLoader mcpToolLoader;
+    @Autowired
+    private SessionManager sessionManager;
+    @Autowired
+    private Compaction compaction;
+
 
     /**
      * 创建完整的 Jimi Soul 实例
@@ -108,10 +102,10 @@ public class JimiFactory {
                         .build();
 
                 // 3. 加载 Agent 规范和 Agent 实例
-                ResolvedAgentSpec resolvedAgentSpec = loadAgentSpec(agentSpecPath);
+                ResolvedAgentSpec resolvedAgentSpec = agentRegistry.loadAgentSpec(agentSpecPath).block();
 
                 // 使用 AgentRegistry 单例加载 Agent（包含系统提示词处理）
-                Agent agent = agentSpecPath != null 
+                Agent agent = agentSpecPath != null
                         ? agentRegistry.loadAgent(agentSpecPath, runtime).block()
                         : agentRegistry.loadDefaultAgent(runtime).block();
                 if (agent == null) {
@@ -139,33 +133,6 @@ public class JimiFactory {
         });
     }
 
-
-
-    /**
-     * 加载 Agent 规范
-     * 
-     * @param agentSpecPath Agent 规范文件路径（null 表示使用默认 Agent）
-     * @return 已解析的 Agent 规范
-     */
-    private ResolvedAgentSpec loadAgentSpec(Path agentSpecPath) {
-        try {
-            // 使用 AgentRegistry 加载
-            ResolvedAgentSpec resolved = agentSpecPath != null
-                    ? agentRegistry.loadAgentSpec(agentSpecPath).block()
-                    : agentRegistry.loadDefaultAgentSpec().block();
-
-            if (resolved == null) {
-                throw new RuntimeException("Failed to load agent spec");
-            }
-
-            log.debug("Agent spec loaded: {}", resolved.getName());
-            return resolved;
-
-        } catch (Exception e) {
-            log.error("Failed to load agent spec", e);
-            throw new RuntimeException("Failed to load agent spec", e);
-        }
-    }
 
     /**
      * 创建工具注册表（包含 Task 工具和 MCP 工具）

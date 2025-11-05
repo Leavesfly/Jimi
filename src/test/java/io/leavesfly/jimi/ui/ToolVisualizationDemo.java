@@ -1,4 +1,4 @@
-package io.leavesfly.jimi.ui.visualization;
+package io.leavesfly.jimi.ui;
 
 import io.leavesfly.jimi.llm.message.FunctionCall;
 import io.leavesfly.jimi.llm.message.ToolCall;

@@ -11,7 +11,7 @@ import io.leavesfly.jimi.ui.shell.input.InputProcessor;
 import io.leavesfly.jimi.ui.shell.input.MetaCommandProcessor;
 import io.leavesfly.jimi.ui.shell.input.ShellShortcutProcessor;
 import io.leavesfly.jimi.ui.shell.output.OutputFormatter;
-import io.leavesfly.jimi.ui.visualization.ToolVisualization;
+import io.leavesfly.jimi.ui.ToolVisualization;
 import io.leavesfly.jimi.wire.Wire;
 import io.leavesfly.jimi.wire.message.WireMessage;
 import io.leavesfly.jimi.wire.message.*;
