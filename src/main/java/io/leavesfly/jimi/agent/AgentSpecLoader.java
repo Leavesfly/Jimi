@@ -22,9 +22,12 @@ import java.util.stream.Collectors;
 /**
  * Agent规范加载器
  * 负责从YAML文件加载Agent配置，处理继承关系
+ * 
+ * 注意：此类为 package-private，只能在 agent 包内部使用。
+ * 外部模块应通过 {@link AgentRegistry} 来访问 Agent 加载功能。
  */
 @Slf4j
-public class AgentSpecLoader {
+class AgentSpecLoader {
     
     private static final ObjectMapper YAML_MAPPER = new ObjectMapper(new YAMLFactory());
     
@@ -60,7 +63,7 @@ public class AgentSpecLoader {
      * @param agentFile Agent配置文件路径
      * @return 已解析的Agent规范
      */
-    public static Mono<ResolvedAgentSpec> loadAgentSpec(Path agentFile) {
+    static Mono<ResolvedAgentSpec> loadAgentSpec(Path agentFile) {
         return Mono.fromCallable(() -> {
             log.info("正在加载Agent规范: {}", agentFile);
             
@@ -248,7 +251,7 @@ public class AgentSpecLoader {
      * @param runtime 运行时上下文
      * @return 加载完成的Agent实例
      */
-    public static Mono<Agent> loadAgent(Path agentFile, Runtime runtime) {
+    static Mono<Agent> loadAgent(Path agentFile, Runtime runtime) {
         return loadAgentSpec(agentFile)
                 .flatMap(spec -> {
                     log.info("加载Agent: {} (from {})", spec.getName(), agentFile);

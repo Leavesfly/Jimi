@@ -1,0 +1,13 @@
+version: 1
+agent:
+  name: "Test Registry Agent"
+  system_prompt_path: ./system_prompt.md
+  system_prompt_args:
+    CUSTOM_ARG: "test value"
+  tools:
+    - ReadFile
+    - WriteFile
+    - Bash
+    - Think
+  exclude_tools: []
+  subagents: {}

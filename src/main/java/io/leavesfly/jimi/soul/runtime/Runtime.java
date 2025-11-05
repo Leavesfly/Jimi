@@ -28,7 +28,6 @@ import java.time.format.DateTimeFormatter;
  * 1. 配置管理（JimiConfig）
  * 2. 会话信息（Session）
  * 3. 内置参数（BuiltinSystemPromptArgs）
- * 4. D-Mail机制（DenwaRenji）
  * 5. 审批服务（Approval）
  * 6. 工作目录信息加载
  */

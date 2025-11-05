@@ -2,7 +2,7 @@ package io.leavesfly.jimi.tool.task;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.leavesfly.jimi.agent.AgentSpecLoader;
+import io.leavesfly.jimi.agent.AgentRegistry;
 import io.leavesfly.jimi.agent.ResolvedAgentSpec;
 import io.leavesfly.jimi.agent.SubagentSpec;
 import io.leavesfly.jimi.session.Session;
@@ -149,54 +149,27 @@ public class Task extends AbstractTool<Task.Params> {
      * 预加载所有子 Agent
      */
     private void loadSubagents() {
+        // 使用 AgentRegistry 单例
+        AgentRegistry agentRegistry = AgentRegistry.getInstance();
+        
         for (Map.Entry<String, SubagentSpec> entry : subagentSpecs.entrySet()) {
             String name = entry.getKey();
             SubagentSpec spec = entry.getValue();
             
             try {
                 log.debug("Loading subagent: {}", name);
-                ResolvedAgentSpec resolved = AgentSpecLoader.loadAgentSpec(spec.getPath()).block();
                 
-                if (resolved != null) {
-                    // 加载系统提示词
-                    String systemPrompt = loadSystemPrompt(resolved);
-                    
-                    Agent agent = Agent.builder()
-                            .name(resolved.getName())
-                            .systemPrompt(systemPrompt)
-                            .tools(resolved.getTools())
-                            .build();
-                    
+                // 使用 AgentRegistry 加载子 Agent
+                Agent agent = agentRegistry.loadSubagent(spec, runtime).block();
+                
+                if (agent != null) {
                     subagents.put(name, agent);
-                    log.info("Loaded subagent: {} -> {}", name, resolved.getName());
+                    log.info("Loaded subagent: {} -> {}", name, agent.getName());
                 }
             } catch (Exception e) {
                 log.error("Failed to load subagent: {}", name, e);
             }
         }
-    }
-    
-    /**
-     * 加载系统提示词
-     */
-    private String loadSystemPrompt(ResolvedAgentSpec spec) throws IOException {
-        String template = Files.readString(spec.getSystemPromptPath());
-        
-        // 替换内置参数
-        template = template.replace("{{KIMI_NOW}}", runtime.getBuiltinArgs().getKimiNow());
-        template = template.replace("{{KIMI_WORK_DIR}}", runtime.getBuiltinArgs().getKimiWorkDir().toAbsolutePath().toString());
-        template = template.replace("{{KIMI_WORK_DIR_LS}}", runtime.getBuiltinArgs().getKimiWorkDirLs());
-        template = template.replace("{{KIMI_AGENTS_MD}}", runtime.getBuiltinArgs().getKimiAgentsMd());
-        
-        // 替换自定义参数
-        if (spec.getSystemPromptArgs() != null) {
-            for (Map.Entry<String, String> entry : spec.getSystemPromptArgs().entrySet()) {
-                String placeholder = "{{" + entry.getKey() + "}}";
-                template = template.replace(placeholder, entry.getValue());
-            }
-        }
-        
-        return template;
     }
     
     @Override

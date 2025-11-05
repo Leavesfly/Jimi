@@ -1,7 +1,7 @@
 package io.leavesfly.jimi;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.leavesfly.jimi.agent.AgentSpecLoader;
+import io.leavesfly.jimi.agent.AgentRegistry;
 import io.leavesfly.jimi.agent.ResolvedAgentSpec;
 import io.leavesfly.jimi.config.JimiConfig;
 import io.leavesfly.jimi.config.LLMModelConfig;
@@ -43,12 +43,10 @@ public class JimiFactory {
 
     private final JimiConfig config;
     private final ObjectMapper objectMapper;
-    private final AgentSpecLoader agentSpecLoader;
 
     public JimiFactory(JimiConfig config, ObjectMapper objectMapper) {
         this.config = config;
         this.objectMapper = objectMapper;
-        this.agentSpecLoader = new AgentSpecLoader();
     }
 
     /**
@@ -91,10 +89,11 @@ public class JimiFactory {
                 // 3. 加载 Agent 规范和 Agent 实例
                 ResolvedAgentSpec resolvedAgentSpec = loadAgentSpec(agentSpecPath, runtime);
 
-                // 使用 AgentSpecLoader.loadAgent() 加载 Agent（包含系统提示词处理）
-                Agent agent = AgentSpecLoader.loadAgent(
-                                agentSpecPath != null ? agentSpecPath : getDefaultAgentPath(), runtime)
-                        .block();
+                // 使用 AgentRegistry 单例加载 Agent（包含系统提示词处理）
+                AgentRegistry agentRegistry = AgentRegistry.getInstance();
+                Agent agent = agentSpecPath != null 
+                        ? agentRegistry.loadAgent(agentSpecPath, runtime).block()
+                        : agentRegistry.loadDefaultAgent(runtime).block();
                 if (agent == null) {
                     throw new RuntimeException("Failed to load agent");
                 }
@@ -207,47 +206,23 @@ public class JimiFactory {
      */
     private ResolvedAgentSpec loadAgentSpec(Path agentSpecPath, Runtime runtime) {
         try {
-            // 如果未指定，使用默认 agent
-            if (agentSpecPath == null) {
-                agentSpecPath = getDefaultAgentPath();
-            }
-
-            log.debug("Loading agent spec from: {}", agentSpecPath);
-
-            // 使用 AgentSpecLoader 加载
-            ResolvedAgentSpec resolved = AgentSpecLoader.loadAgentSpec(agentSpecPath).block();
+            // 使用 AgentRegistry 单例加载
+            AgentRegistry agentRegistry = AgentRegistry.getInstance();
+            ResolvedAgentSpec resolved = agentSpecPath != null
+                    ? agentRegistry.loadAgentSpec(agentSpecPath).block()
+                    : agentRegistry.loadDefaultAgentSpec().block();
 
             if (resolved == null) {
                 throw new RuntimeException("Failed to load agent spec");
             }
 
+            log.debug("Agent spec loaded: {}", resolved.getName());
             return resolved;
 
         } catch (Exception e) {
             log.error("Failed to load agent spec", e);
             throw new RuntimeException("Failed to load agent spec", e);
         }
-    }
-
-    /**
-     * 获取默认 Agent 路径
-     */
-    private Path getDefaultAgentPath() {
-        // 尝试多个可能的位置
-        List<Path> candidates = List.of(
-                Paths.get("src/main/resources/agents/default/agent.yaml"),
-                Paths.get("agents/default/agent.yaml"),
-                Paths.get("../src/kimi_cli/agents/default/agent.yaml")
-        );
-
-        for (Path candidate : candidates) {
-            if (Files.exists(candidate)) {
-                log.debug("Found default agent at: {}", candidate);
-                return candidate;
-            }
-        }
-
-        throw new RuntimeException("Default agent spec not found");
     }
 
     /**
