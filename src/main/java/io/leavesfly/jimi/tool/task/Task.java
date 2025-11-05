@@ -109,7 +109,7 @@ public class Task extends AbstractTool<Task.Params> {
     public static class Params {
 
         /**
-         * 任务描述（3-5 个单词的简短描述）
+         * 任务描述
          */
         @JsonProperty("description")
         private String description;
