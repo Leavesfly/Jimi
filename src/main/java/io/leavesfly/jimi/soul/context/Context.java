@@ -1,4 +1,4 @@
-package io.leavesfly.jimi.soul;
+package io.leavesfly.jimi.soul.context;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.leavesfly.jimi.llm.message.Message;

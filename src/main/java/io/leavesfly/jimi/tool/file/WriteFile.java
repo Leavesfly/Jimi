@@ -75,7 +75,7 @@ public class WriteFile extends AbstractTool<WriteFile.Params> {
      * 设置运行时参数
      */
     public void setBuiltinArgs(BuiltinSystemPromptArgs builtinArgs) {
-        this.workDir = builtinArgs.getKimiWorkDir();
+        this.workDir = builtinArgs.getJimiWorkDir();
     }
     
     public void setApproval(Approval approval) {

@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "git": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-git",
+        "--repository",
+        "/path/to/git/repo"
+      ],
+      "env": {}
+    }
+  }
+}

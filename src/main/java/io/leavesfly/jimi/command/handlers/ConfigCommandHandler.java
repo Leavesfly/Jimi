@@ -38,7 +38,7 @@ public class ConfigCommandHandler implements CommandHandler {
         }
         
         // 工作目录
-        out.println("  工作目录: " + context.getSoul().getRuntime().getBuiltinArgs().getKimiWorkDir());
+        out.println("  工作目录: " + context.getSoul().getRuntime().getBuiltinArgs().getJimiWorkDir());
         
         // 会话信息
         out.println("  会话 ID: " + context.getSoul().getRuntime().getSession().getId());

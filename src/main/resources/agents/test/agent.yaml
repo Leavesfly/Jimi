@@ -1,6 +1,6 @@
 # Test Agent - 专门负责运行和分析测试
 name: Test Agent
-description: Specialized agent for running tests and analyzing test results
+description: 专门负责运行测试并分析测试结果的智能体
 
 # 系统提示词
 system_prompt: system_prompt.md

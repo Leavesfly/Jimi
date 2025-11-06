@@ -1,6 +1,6 @@
 # Default Agent 配置
 name: Default Agent
-description: A general-purpose software development assistant
+description: 通用软件开发助手
 
 # 系统提示词文件路径
 system_prompt: system_prompt.md
@@ -25,15 +25,30 @@ tools:
 
 # 子 Agent 配置
 subagents:
+  design:
+    path: design/agent.yaml
+    description: 需求分析、架构设计和技术方案规划
+  code:
+    path: code/agent.yaml
+    description: 代码实现、重构和优化
+  review:
+    path: review/agent.yaml
+    description: 代码质量审查和最佳实践检查
   build:
     path: build/agent.yaml
-    description: Build and compile the project, fix compilation errors
+    description: 构建和编译项目，修复编译错误
   test:
     path: test/agent.yaml
-    description: Run tests and analyze test failures
+    description: 运行测试并分析测试失败
   debug:
     path: debug/agent.yaml
-    description: Debug and fix runtime errors and bugs
+    description: 调试和修复运行时错误及缺陷
+  deploy:
+    path: deploy/agent.yaml
+    description: 应用部署、配置管理和运维支持
+  doc:
+    path: doc/agent.yaml
+    description: 技术文档编写和维护
   research:
     path: research/agent.yaml
-    description: Search and research technical information
+    description: 搜索和研究技术信息

@@ -5,6 +5,11 @@ import java.util.List;
 /**
  * 命令处理器接口
  * 所有元命令处理器都需要实现此接口
+ * 
+ * 增强功能（v2.0）：
+ * - 支持命令优先级
+ * - 支持命令分类
+ * - 支持动态启用/禁用
  */
 public interface CommandHandler {
     
@@ -38,6 +43,26 @@ public interface CommandHandler {
      */
     default String getUsage() {
         return "/" + getName();
+    }
+    
+    /**
+     * 获取命令优先级
+     * 数值越大优先级越高
+     * 
+     * @return 优先级（默认 0）
+     */
+    default int getPriority() {
+        return 0;
+    }
+    
+    /**
+     * 获取命令分类
+     * 用于命令的分组显示
+     * 
+     * @return 分类名称（默认 "general"）
+     */
+    default String getCategory() {
+        return "general";
     }
     
     /**

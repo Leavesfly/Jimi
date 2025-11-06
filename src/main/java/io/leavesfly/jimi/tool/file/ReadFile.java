@@ -54,7 +54,7 @@ public class ReadFile extends AbstractTool<ReadFile.Params> {
      * 设置工作目录（运行时注入）
      */
     public void setBuiltinArgs(BuiltinSystemPromptArgs builtinArgs) {
-        this.workDir = builtinArgs.getKimiWorkDir();
+        this.workDir = builtinArgs.getJimiWorkDir();
     }
     
     @Override

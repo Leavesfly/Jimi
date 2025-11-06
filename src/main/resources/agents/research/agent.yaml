@@ -1,6 +1,6 @@
 # Research Agent - 专门负责搜索和研究技术信息
 name: Research Agent
-description: Specialized agent for searching and researching technical information
+description: 专门负责搜索和研究技术信息的智能体
 
 # 系统提示词
 system_prompt: system_prompt.md

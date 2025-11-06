@@ -69,7 +69,7 @@ public class Glob extends AbstractTool<Glob.Params> {
     }
     
     public void setBuiltinArgs(BuiltinSystemPromptArgs builtinArgs) {
-        this.workDir = builtinArgs.getKimiWorkDir();
+        this.workDir = builtinArgs.getJimiWorkDir();
     }
     
     @Override

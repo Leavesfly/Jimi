@@ -109,7 +109,7 @@ public class PatchFile extends AbstractTool<PatchFile.Params> {
     }
     
     public void setBuiltinArgs(BuiltinSystemPromptArgs builtinArgs) {
-        this.workDir = builtinArgs.getKimiWorkDir();
+        this.workDir = builtinArgs.getJimiWorkDir();
     }
     
     public void setApproval(Approval approval) {

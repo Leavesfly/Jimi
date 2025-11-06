@@ -89,7 +89,7 @@ public class StrReplaceFile extends AbstractTool<StrReplaceFile.Params> {
     }
     
     public void setBuiltinArgs(BuiltinSystemPromptArgs builtinArgs) {
-        this.workDir = builtinArgs.getKimiWorkDir();
+        this.workDir = builtinArgs.getJimiWorkDir();
     }
     
     public void setApproval(Approval approval) {

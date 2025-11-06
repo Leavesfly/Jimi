@@ -1,5 +1,8 @@
 package io.leavesfly.jimi.tool.mcp;
 
+import io.leavesfly.jimi.mcp.JsonRpcClient;
+import io.leavesfly.jimi.mcp.MCPResultConverter;
+import io.leavesfly.jimi.mcp.MCPSchema;
 import io.leavesfly.jimi.tool.AbstractTool;
 import io.leavesfly.jimi.tool.ToolResult;
 import lombok.extern.slf4j.Slf4j;
@@ -17,7 +20,7 @@ import java.util.Map;
 @Slf4j
 public class MCPTool extends AbstractTool<Map<String, Object>> {
     /** MCP客户端，用于与外部服务通信 */
-    private final StdIoJsonRpcClient mcpClient;
+    private final JsonRpcClient mcpClient;
     /** 工具名称 */
     private final String mcpToolName;
     /** 执行超时时间（秒） */
@@ -29,7 +32,7 @@ public class MCPTool extends AbstractTool<Map<String, Object>> {
      * @param mcpTool MCP工具定义
      * @param mcpClient MCP客户端
      */
-    public MCPTool(MCPSchema.Tool mcpTool, StdIoJsonRpcClient mcpClient) {
+    public MCPTool(MCPSchema.Tool mcpTool, JsonRpcClient mcpClient) {
         this(mcpTool, mcpClient, 20);
     }
 
@@ -40,7 +43,7 @@ public class MCPTool extends AbstractTool<Map<String, Object>> {
      * @param mcpClient MCP客户端
      * @param timeoutSeconds 超时时间（秒）
      */
-    public MCPTool(MCPSchema.Tool mcpTool, StdIoJsonRpcClient mcpClient, int timeoutSeconds) {
+    public MCPTool(MCPSchema.Tool mcpTool, JsonRpcClient mcpClient, int timeoutSeconds) {
         super(
             mcpTool.getName(),
             mcpTool.getDescription() != null ? mcpTool.getDescription() : "",

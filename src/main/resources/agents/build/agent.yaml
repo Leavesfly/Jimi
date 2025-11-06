@@ -1,6 +1,6 @@
 # Build Agent - 专门负责构建和编译项目
 name: Build Agent
-description: Specialized agent for building and compiling projects
+description: 专门负责构建和编译项目的智能体
 
 # 系统提示词
 system_prompt: system_prompt.md

@@ -1,6 +1,5 @@
-package io.leavesfly.jimi.tool.mcp;
+package io.leavesfly.jimi.mcp;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 

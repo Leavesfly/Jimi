@@ -1,0 +1,18 @@
+# Deploy Agent - 专门负责部署和运维
+name: Deploy Agent
+description: 专门负责应用部署、配置管理和运维支持的智能体
+
+# 系统提示词
+system_prompt: system_prompt.md
+
+# 系统提示词参数
+system_prompt_args: {}
+
+# 可用工具（专注于部署和运维）
+tools:
+  - Bash          # 执行部署命令
+  - ReadFile      # 读取配置文件
+  - WriteFile     # 编写部署脚本
+  - Grep          # 搜索日志和配置
+  - SearchWeb     # 搜索运维文档
+  - Think         # 分析部署策略

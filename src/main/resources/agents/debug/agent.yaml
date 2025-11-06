@@ -1,6 +1,6 @@
 # Debug Agent - 专门负责调试和修复错误
 name: Debug Agent
-description: Specialized agent for debugging and fixing code errors
+description: 专门负责调试和修复代码错误的智能体
 
 # 系统提示词
 system_prompt: system_prompt.md

@@ -1,6 +1,7 @@
 package io.leavesfly.jimi.tool.mcp;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.leavesfly.jimi.mcp.*;
 import io.leavesfly.jimi.tool.ToolRegistry;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
@@ -33,7 +34,7 @@ public class MCPToolLoader {
     /** JSON序列化工具 */
     private final ObjectMapper objectMapper;
     /** 活跃的客户端列表，用于统一管理和关闭 */
-    private final List<StdIoJsonRpcClient> activeClients = new ArrayList<>();
+    private final List<JsonRpcClient> activeClients = new ArrayList<>();
 
     @Autowired
     public MCPToolLoader(ObjectMapper objectMapper) {
@@ -55,18 +56,6 @@ public class MCPToolLoader {
         return loadFromConfig(config, toolRegistry);
     }
 
-    /**
-     * 从JSON字符串加载MCP工具
-     * 
-     * @param json 配置JSON字符串
-     * @param toolRegistry 工具注册表
-     * @return 加载的工具列表
-     * @throws IOException JSON解析失败时抛出
-     */
-    public List<MCPTool> loadFromJson(String json, ToolRegistry toolRegistry) throws IOException {
-        MCPConfig config = objectMapper.readValue(json, MCPConfig.class);
-        return loadFromConfig(config, toolRegistry);
-    }
 
     /**
      * 从配置对象加载MCP工具
@@ -87,7 +76,7 @@ public class MCPToolLoader {
             MCPConfig.ServerConfig serverConfig = entry.getValue();
             try {
                 // 1. 创建客户端连接
-                StdIoJsonRpcClient client = createClient(serverName, serverConfig);
+                JsonRpcClient client = createClient(serverName, serverConfig);
                 activeClients.add(client);
                 // 2. 初始化连接
                 client.initialize();
@@ -117,7 +106,7 @@ public class MCPToolLoader {
      * @return 客户端实例
      * @throws IOException 创建失败时抛出
      */
-    private StdIoJsonRpcClient createClient(String serverName, MCPConfig.ServerConfig config) throws IOException {
+    private JsonRpcClient createClient(String serverName, MCPConfig.ServerConfig config) throws IOException {
         if (config.isStdio()) {
             return createStdioClient(serverName, config);
         } else if (config.isHttp()) {
@@ -146,14 +135,18 @@ public class MCPToolLoader {
 
     /**
      * 创建HTTP客户端
-     * TODO: HTTP传输尚未实现，未来可基于WebClient实现
+     * 通过HTTP协议连接远程MCP服务
      * 
-     * @param serverName 服务名称
+     * @param serverName 服务名称（用于日志）
      * @param config 服务配置
      * @return HTTP JSON-RPC客户端
      */
-    private StdIoJsonRpcClient createHttpClient(String serverName, MCPConfig.ServerConfig config) {
-        throw new UnsupportedOperationException("HTTP MCP transport is not yet implemented");
+    private JsonRpcClient createHttpClient(String serverName, MCPConfig.ServerConfig config) {
+        log.info("Creating HTTP MCP client for server: {} at URL: {}", serverName, config.getUrl());
+        return new HttpJsonRpcClient(
+            config.getUrl(),
+            config.getHeaders()
+        );
     }
 
     /**
@@ -163,7 +156,7 @@ public class MCPToolLoader {
     @PreDestroy
     public void closeAll() {
         log.info("Closing {} MCP client(s)...", activeClients.size());
-        for (StdIoJsonRpcClient client : activeClients) {
+        for (JsonRpcClient client : activeClients) {
             try { 
                 client.close(); 
             } catch (Exception e) {

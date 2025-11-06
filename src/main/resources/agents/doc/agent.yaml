@@ -1,0 +1,18 @@
+# Doc Agent - 专门负责文档编写
+name: Doc Agent
+description: 专门负责技术文档编写和维护的智能体
+
+# 系统提示词
+system_prompt: system_prompt.md
+
+# 系统提示词参数
+system_prompt_args: {}
+
+# 可用工具（专注于文档编写）
+tools:
+  - ReadFile      # 读取代码和现有文档
+  - WriteFile     # 编写文档
+  - Grep          # 搜索代码和文档
+  - Glob          # 查找相关文件
+  - SearchWeb     # 搜索文档规范
+  - Think         # 组织文档结构

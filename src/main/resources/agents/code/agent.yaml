@@ -1,0 +1,19 @@
+# Code Agent - 专门负责代码实现和重构
+name: Code Agent
+description: 专门负责代码实现、重构和优化的智能体
+
+# 系统提示词
+system_prompt: system_prompt.md
+
+# 系统提示词参数
+system_prompt_args: {}
+
+# 可用工具（专注于代码编写）
+tools:
+  - ReadFile       # 读取源代码
+  - WriteFile      # 创建新文件
+  - StrReplaceFile # 精确修改代码
+  - PatchFile      # 应用补丁
+  - Grep           # 搜索代码
+  - Glob           # 查找文件
+  - Think          # 代码设计思考

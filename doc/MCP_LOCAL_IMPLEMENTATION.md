@@ -145,7 +145,7 @@ public static class ImageContent implements Content { ... }
 | 文本内容 | ✅ | ✅ | ✅ |
 | 图片内容 | ✅ | ✅ | ✅ |
 | 嵌入资源 | ✅ | ✅ | ✅ |
-| HTTP传输 | ✅ | ⚠️ 未实现 | 🚧 |
+| HTTP传输 | ✅ | ✅ | ✅ |
 | SSE传输 | ✅ | ❌ 不支持 | - |
 
 ## 代码变化
@@ -240,11 +240,16 @@ List<MCPTool> tools = loader.loadFromFile(configPath, toolRegistry);
 ### 1. HTTP传输支持
 
 ```java
-private StdIoJsonRpcClient createHttpClient(String serverName, MCPConfig.ServerConfig config) {
-    // TODO: 基于WebClient实现HTTP JSON-RPC客户端
-    return new HttpJsonRpcClient(config.getUrl(), config.getHeaders());
+private JsonRpcClient createHttpClient(String serverName, MCPConfig.ServerConfig config) {
+    log.info("Creating HTTP MCP client for server: {} at URL: {}", serverName, config.getUrl());
+    return new HttpJsonRpcClient(
+        config.getUrl(),
+        config.getHeaders()
+    );
 }
 ```
+
+**已实现**：基于WebClient的HTTP JSON-RPC客户端，支持自定义请求头和超时配置。
 
 ### 2. 超时与重试
 

@@ -28,15 +28,6 @@
       "env": {
         "GITHUB_PERSONAL_ACCESS_TOKEN": "your-github-token"
       }
-    },
-    "postgres": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@modelcontextprotocol/server-postgres",
-        "postgresql://user:password@localhost/dbname"
-      ],
-      "env": {}
     }
   }
 }

@@ -97,7 +97,7 @@ public class Grep extends AbstractTool<Grep.Params> {
     }
     
     public void setBuiltinArgs(BuiltinSystemPromptArgs builtinArgs) {
-        this.workDir = builtinArgs.getKimiWorkDir();
+        this.workDir = builtinArgs.getJimiWorkDir();
     }
     
     @Override

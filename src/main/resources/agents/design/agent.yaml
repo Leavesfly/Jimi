@@ -1,0 +1,19 @@
+# Design Agent - 专门负责需求分析和架构设计
+name: Design Agent
+description: 专门负责需求分析、架构设计和技术方案规划的智能体
+
+# 系统提示词
+system_prompt: system_prompt.md
+
+# 系统提示词参数
+system_prompt_args: {}
+
+# 可用工具（专注于设计和规划）
+tools:
+  - ReadFile      # 读取需求文档和现有代码
+  - WriteFile     # 编写设计文档
+  - Grep          # 搜索相关代码结构
+  - Glob          # 查找项目文件
+  - SearchWeb     # 搜索设计模式和最佳实践
+  - FetchURL      # 获取参考资料
+  - Think         # 设计思考和方案对比

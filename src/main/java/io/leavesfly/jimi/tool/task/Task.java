@@ -9,7 +9,7 @@ import io.leavesfly.jimi.agent.SubagentSpec;
 import io.leavesfly.jimi.session.Session;
 import io.leavesfly.jimi.soul.JimiSoul;
 import io.leavesfly.jimi.agent.Agent;
-import io.leavesfly.jimi.soul.Context;
+import io.leavesfly.jimi.soul.context.Context;
 import io.leavesfly.jimi.llm.message.Message;
 import io.leavesfly.jimi.llm.message.MessageRole;
 import io.leavesfly.jimi.llm.message.TextPart;
@@ -18,6 +18,7 @@ import io.leavesfly.jimi.tool.AbstractTool;
 import io.leavesfly.jimi.tool.ToolResult;
 import io.leavesfly.jimi.tool.ToolRegistry;
 import io.leavesfly.jimi.tool.ToolRegistryFactory;
+import io.leavesfly.jimi.tool.WireAware;
 import io.leavesfly.jimi.wire.Wire;
 import io.leavesfly.jimi.soul.approval.ApprovalRequest;
 import lombok.AllArgsConstructor;
@@ -30,6 +31,7 @@ import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
+import reactor.core.Disposable;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -60,34 +62,30 @@ import java.util.stream.Collectors;
 @Slf4j
 @Component
 @Scope(ConfigurableBeanFactory.SCOPE_PROTOTYPE)
-public class Task extends AbstractTool<Task.Params> {
+public class Task extends AbstractTool<Task.Params> implements WireAware {
 
     /**
-     * 最大重试次数（用于响应过短时的继续提示）
+     * 响应过短时的继续提示词（可配置）
      */
-    private static final int MAX_CONTINUE_ATTEMPTS = 1;
-
-    /**
-     * 响应过短时的继续提示词
-     */
-    private static final String CONTINUE_PROMPT = """
-            Your previous response was too brief. Please provide a more comprehensive summary that includes:
+    private String continuePrompt = """
+            你之前的回答过于简短。请提供更全面的总结，包括：
                         
-            1. Specific technical details and implementations
-            2. Complete code examples if relevant
-            3. Detailed findings and analysis
-            4. All important information that should be aware of by the caller
+            1. 具体的技术细节和实现方式
+            2. 相关的完整代码示例
+            3. 详细的发现和分析结果
+            4. 所有调用者需要注意的重要信息
             """.strip();
 
     /**
-     * 最小响应长度（字符数）
+     * 最小响应长度（字符数，可配置）
      */
-    private static final int MIN_RESPONSE_LENGTH = 200;
+    private int minResponseLength = 200;
 
     private Runtime runtime;
     private Session session;
     private AgentSpec agentSpec;
     private String taskDescription;
+    private Wire parentWire;  // 主 Agent 的 Wire，用于转发子Agent的审批请求
     private final ObjectMapper objectMapper;
     private final AgentRegistry agentRegistry;
     private final ToolRegistryFactory toolRegistryFactory;
@@ -138,14 +136,56 @@ public class Task extends AbstractTool<Task.Params> {
     }
 
     /**
+     * 可选：覆盖最小响应长度
+     */
+    public void setMinResponseLength(int minResponseLength) {
+        if (minResponseLength > 0) {
+            this.minResponseLength = minResponseLength;
+        }
+    }
+
+    /**
+     * 可选：覆盖继续提示词
+     */
+    public void setContinuePrompt(String continuePrompt) {
+        if (continuePrompt != null && !continuePrompt.isBlank()) {
+            this.continuePrompt = continuePrompt.strip();
+        }
+    }
+
+    /**
      * 设置运行时参数并初始化工具
      * 使用懒加载模式，不在 Setter 中执行 I/O 操作
      */
     public void setRuntimeParams(AgentSpec agentSpec, Runtime runtime) {
+        setRuntimeParams(agentSpec, runtime, null);
+    }
+    
+    /**
+     * 设置 Wire（实现 WireAware 接口）
+     * 用于转发子Agent的审批请求到主 Agent
+     * 
+     * @param wire 主 Agent 的 Wire 消息总线
+     */
+    @Override
+    public void setWire(Wire wire) {
+        this.parentWire = wire;
+    }
+    
+    /**
+     * 设置运行时参数并初始化工具（包括主 Wire）
+     * 使用懒加载模式，不在 Setter 中执行 I/O 操作
+     * 
+     * @param agentSpec Agent 规范
+     * @param runtime 运行时上下文
+     * @param parentWire 主 Agent 的 Wire（可选）
+     */
+    public void setRuntimeParams(AgentSpec agentSpec, Runtime runtime, Wire parentWire) {
         this.agentSpec = agentSpec;
         this.runtime = runtime;
         this.session = runtime.getSession();
         this.subagentSpecs = agentSpec.getSubagents();
+        this.parentWire = parentWire;
 
         // 更新工具描述
         this.taskDescription = loadDescription(agentSpec);
@@ -223,7 +263,20 @@ public class Task extends AbstractTool<Task.Params> {
 
     @Override
     public Mono<ToolResult> execute(Params params) {
-        log.info("Task tool called: {} -> {}", params.getDescription(), params.getSubagentName());
+        log.info("Task tool called: {} -> {}", 
+                 params != null ? params.getDescription() : null, 
+                 params != null ? params.getSubagentName() : null);
+
+        // 参数校验
+        if (params == null) {
+            return Mono.just(ToolResult.error("Invalid parameters: params is null", "Invalid parameters"));
+        }
+        if (params.getSubagentName() == null || params.getSubagentName().isBlank()) {
+            return Mono.just(ToolResult.error("Subagent name cannot be empty", "Invalid parameters"));
+        }
+        if (params.getPrompt() == null || params.getPrompt().isBlank()) {
+            return Mono.just(ToolResult.error("Prompt cannot be empty", "Invalid parameters"));
+        }
 
         // 懒加载 subagents（首次调用时）
         ensureSubagentsLoaded();
@@ -254,43 +307,29 @@ public class Task extends AbstractTool<Task.Params> {
     private Mono<ToolResult> runSubagent(Agent agent, String prompt) {
         return Mono.defer(() -> {
             try {
-                // 1. 创建子 Agent 历史文件
+                // 1. 子历史文件
                 Path subHistoryFile = getSubagentHistoryFile();
 
-                // 2. 创建独立的上下文
-                Context subContext = new Context(subHistoryFile, objectMapper);
+                // 2. 子上下文
+                Context subContext = createSubContext(subHistoryFile);
 
-                // 3. 创建子 Agent 的工具注册表（使用 ToolRegistryFactory）
-                ToolRegistry subToolRegistry = toolRegistryFactory.createStandardRegistry(
-                        runtime.getBuiltinArgs(),
-                        runtime.getApproval()
-                );
+                // 3. 子工具注册表
+                ToolRegistry subToolRegistry = createSubToolRegistry();
 
-                // 4. 创建子 JimiSoul
-                JimiSoul subSoul = new JimiSoul(
-                        agent,
-                        runtime,
-                        subContext,
-                        subToolRegistry,
-                        objectMapper
-                );
+                // 4. 子 JimiSoul
+                JimiSoul subSoul = createSubSoul(agent, subContext, subToolRegistry);
 
-                // 5. 订阅子 Agent 的 Wire 消息，转发审批请求到主 Agent
-                Wire subWire = subSoul.getWire();
-                subWire.asFlux().subscribe(msg -> {
-                    // 只转发审批请求到主 Wire
-                    if (msg instanceof ApprovalRequest) {
-                        // TODO: 获取主 Wire 并转发
-                        log.debug("Approval request from subagent: {}", msg);
-                    }
-                });
+                // 5. 事件桥接（仅审批请求），返回订阅以便释放
+                Disposable subscription = bridgeWireEvents(subSoul.getWire());
 
-                // 6. 运行子 Agent
+                // 6. 运行并后处理
                 return subSoul.run(prompt)
-                        .then(Mono.defer(() -> {
-                            // 7. 提取子 Agent 的最终响应
-                            return extractFinalResponse(subContext, subSoul, prompt);
-                        }));
+                        .then(Mono.defer(() -> extractFinalResponse(subContext, subSoul, prompt)))
+                        .doFinally(signalType -> {
+                            if (subscription != null && !subscription.isDisposed()) {
+                                subscription.dispose();
+                            }
+                        });
 
             } catch (Exception e) {
                 log.error("Error running subagent", e);
@@ -300,6 +339,54 @@ public class Task extends AbstractTool<Task.Params> {
                 ));
             }
         });
+    }
+
+    /**
+     * 创建子上下文
+     */
+    private Context createSubContext(Path subHistoryFile) {
+        return new Context(subHistoryFile, objectMapper);
+    }
+
+    /**
+     * 创建子工具注册表
+     */
+    private ToolRegistry createSubToolRegistry() {
+        return toolRegistryFactory.createStandardRegistry(
+                runtime.getBuiltinArgs(),
+                runtime.getApproval()
+        );
+    }
+
+    /**
+     * 创建子 JimiSoul
+     */
+    private JimiSoul createSubSoul(Agent agent, Context subContext, ToolRegistry subToolRegistry) {
+        return new JimiSoul(
+                agent,
+                runtime,
+                subContext,
+                subToolRegistry,
+                objectMapper
+        );
+    }
+
+    /**
+     * 桥接子 Wire 到父 Wire，仅转发审批请求
+     * 返回订阅对象以便在运行结束时释放
+     */
+    private Disposable bridgeWireEvents(Wire subWire) {
+        if (parentWire != null) {
+            return subWire.asFlux().subscribe(msg -> {
+                if (msg instanceof ApprovalRequest) {
+                    log.debug("Forwarding approval request from subagent to parent wire");
+                    parentWire.send(msg);
+                }
+            });
+        } else {
+            log.debug("Parent wire not available, subagent approval requests will not be forwarded");
+            return null;
+        }
     }
 
     /**
@@ -331,10 +418,10 @@ public class Task extends AbstractTool<Task.Params> {
         String response = extractText(lastMessage);
 
         // 如果响应过短，尝试继续
-        if (response.length() < MIN_RESPONSE_LENGTH) {
+        if (response.length() < minResponseLength) {
             log.debug("Subagent response too brief ({}), requesting continuation", response.length());
 
-            return subSoul.run(CONTINUE_PROMPT)
+            return subSoul.run(continuePrompt)
                     .then(Mono.defer(() -> {
                         List<Message> updatedHistory = subContext.getHistory();
                         if (!updatedHistory.isEmpty()) {

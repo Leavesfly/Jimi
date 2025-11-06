@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "example-http": {
+      "url": "http://localhost:8080/mcp",
+      "headers": {
+        "Authorization": "Bearer your-api-token",
+        "Content-Type": "application/json"
+      }
+    }
+  }
+}

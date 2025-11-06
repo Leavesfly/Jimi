@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "example-stdio": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-example"
+      ],
+      "env": {}
+    }
+  }
+}

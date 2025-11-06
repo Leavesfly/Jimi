@@ -50,29 +50,29 @@ public class InitCommandHandler implements CommandHandler {
      * 构建 INIT 提示词
      */
     private String buildInitPrompt() {
-        return "You are a software engineering expert with many years of programming experience. \n" +
-            "Please explore the current project directory to understand the project's architecture and main details.\n" +
+        return "你是一位拥有多年编程经验的软件工程专家。\n" +
+            "请探索当前项目目录，了解项目的架构和主要细节。\n" +
             "\n" +
-            "Task requirements:\n" +
-            "1. Analyze the project structure and identify key configuration files (such as pom.xml, build.gradle, package.json, etc.).\n" +
-            "2. Understand the project's technology stack, build process and runtime architecture.\n" +
-            "3. Identify how the code is organized and main module divisions.\n" +
-            "4. Discover project-specific development conventions, testing strategies, and deployment processes.\n" +
+            "任务要求：\n" +
+            "1. 分析项目结构，识别关键配置文件（如 pom.xml、build.gradle、package.json 等）。\n" +
+            "2. 理解项目的技术栈、构建过程和运行时架构。\n" +
+            "3. 识别代码的组织方式和主要模块划分。\n" +
+            "4. 发现项目特有的开发规范、测试策略和部署流程。\n" +
             "\n" +
-            "After the exploration, you should do a thorough summary of your findings and overwrite it into `AGENTS.md` file in the project root. \n" +
-            "You need to refer to what is already in the file when you do so.\n" +
+            "探索完成后，你应该对你的发现做一个全面的总结，并将其覆盖写入项目根目录下的 `AGENTS.md` 文件。\n" +
+            "在编写时需要参考文件中已有的内容。\n" +
             "\n" +
-            "For your information, `AGENTS.md` is a file intended to be read by AI coding agents. \n" +
-            "Expect the reader of this file know nothing about the project.\n" +
+            "需要注意的是，`AGENTS.md` 文件是专门供 AI 编码代理阅读的。\n" +
+            "假设该文件的读者对项目一无所知。\n" +
             "\n" +
-            "You should compose this file according to the actual project content. \n" +
-            "Do not make any assumptions or generalizations. Ensure the information is accurate and useful.\n" +
+            "你应该根据实际的项目内容来编写此文件。\n" +
+            "不要做任何假设或泛化。确保信息准确且有用。\n" +
             "\n" +
-            "Popular sections that people usually write in `AGENTS.md` are:\n" +
-            "- Project overview\n" +
-            "- Build and test commands\n" +
-            "- Code style guidelines\n" +
-            "- Testing instructions\n" +
-            "- Security considerations";
+            "人们通常在 `AGENTS.md` 中编写的常见章节包括：\n" +
+            "- 项目概述\n" +
+            "- 构建和测试命令\n" +
+            "- 代码风格指南\n" +
+            "- 测试说明\n" +
+            "- 安全注意事项";
     }
 }

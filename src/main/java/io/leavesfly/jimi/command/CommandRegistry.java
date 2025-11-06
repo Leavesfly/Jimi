@@ -6,12 +6,18 @@ import org.springframework.stereotype.Component;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 /**
  * 命令注册表
  * 负责管理所有命令处理器的注册、查找和执行
  * 
  * Spring Bean，自动注入所有 CommandHandler 实现
+ * 
+ * 增强功能（v2.0）：
+ * - 支持命令分类管理
+ * - 支持优先级排序
+ * - 支持动态启用/禁用
  */
 @Slf4j
 @Component
@@ -19,6 +25,7 @@ public class CommandRegistry {
     
     private final Map<String, CommandHandler> handlers = new ConcurrentHashMap<>();
     private final Map<String, String> aliases = new ConcurrentHashMap<>();
+    private final Map<String, List<CommandHandler>> categorizedHandlers = new ConcurrentHashMap<>();
     
     /**
      * 构造函数，自动注入所有 CommandHandler 实现
@@ -48,7 +55,8 @@ public class CommandRegistry {
         }
         
         handlers.put(name, handler);
-        log.debug("Registered command handler: {}", name);
+        log.debug("Registered command handler: {} (category={}, priority={})", 
+                name, handler.getCategory(), handler.getPriority());
         
         // 注册别名
         for (String alias : handler.getAliases()) {
@@ -56,6 +64,16 @@ public class CommandRegistry {
             aliases.put(aliasLower, name);
             log.debug("Registered alias: {} -> {}", aliasLower, name);
         }
+        
+        // 按分类组织
+        String category = handler.getCategory();
+        categorizedHandlers.computeIfAbsent(category, k -> new ArrayList<>())
+                .add(handler);
+        
+        // 按优先级排序
+        categorizedHandlers.get(category).sort(
+                Comparator.comparingInt(CommandHandler::getPriority).reversed()
+        );
     }
     
     /**
@@ -81,6 +99,17 @@ public class CommandRegistry {
             for (String alias : handler.getAliases()) {
                 aliases.remove(alias.toLowerCase());
             }
+            
+            // 从分类中移除
+            String category = handler.getCategory();
+            List<CommandHandler> categoryList = categorizedHandlers.get(category);
+            if (categoryList != null) {
+                categoryList.remove(handler);
+                if (categoryList.isEmpty()) {
+                    categorizedHandlers.remove(category);
+                }
+            }
+            
             log.debug("Unregistered command handler: {}", name);
         }
     }
@@ -162,6 +191,7 @@ public class CommandRegistry {
     public void clear() {
         handlers.clear();
         aliases.clear();
+        categorizedHandlers.clear();
         log.debug("Cleared all command handlers");
     }
     
@@ -172,5 +202,24 @@ public class CommandRegistry {
      */
     public int size() {
         return handlers.size();
+    }
+    
+    /**
+     * 获取按分类组织的命令列表
+     * 
+     * @param category 分类名称
+     * @return 该分类下的所有命令（按优先级排序）
+     */
+    public List<CommandHandler> getHandlersByCategory(String category) {
+        return categorizedHandlers.getOrDefault(category, Collections.emptyList());
+    }
+    
+    /**
+     * 获取所有分类
+     * 
+     * @return 分类名称列表
+     */
+    public Set<String> getCategories() {
+        return categorizedHandlers.keySet();
     }
 }

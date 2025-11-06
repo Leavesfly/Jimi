@@ -12,15 +12,16 @@ import io.leavesfly.jimi.soul.JimiSoul;
 import io.leavesfly.jimi.agent.Agent;
 import io.leavesfly.jimi.soul.approval.Approval;
 import io.leavesfly.jimi.soul.compaction.Compaction;
-import io.leavesfly.jimi.soul.Context;
+import io.leavesfly.jimi.soul.context.Context;
 
 import io.leavesfly.jimi.soul.runtime.BuiltinSystemPromptArgs;
 import io.leavesfly.jimi.soul.runtime.Runtime;
 import io.leavesfly.jimi.tool.ToolRegistry;
 import io.leavesfly.jimi.tool.ToolRegistryFactory;
-import io.leavesfly.jimi.tool.task.Task;
+import io.leavesfly.jimi.tool.ToolProvider;
+import io.leavesfly.jimi.tool.mcp.MCPToolProvider;
+import io.leavesfly.jimi.tool.Tool;
 import io.leavesfly.jimi.tool.mcp.MCPToolLoader;
-import io.leavesfly.jimi.tool.mcp.MCPTool;
 import io.leavesfly.jimi.wire.WireImpl;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -30,6 +31,7 @@ import reactor.core.publisher.Mono;
 import java.nio.file.Path;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -56,6 +58,8 @@ public class JimiFactory {
     private SessionManager sessionManager;
     @Autowired
     private Compaction compaction;
+    @Autowired
+    private List<ToolProvider> toolProviders;  // Spring 自动注入所有 ToolProvider
 
 
     /**
@@ -107,6 +111,7 @@ public class JimiFactory {
                 }
 
                 // 4. 创建 Context 并恢复历史
+                // 注意：可以通过 new Context(file, mapper, true) 启用异步批量Repository以提升性能
                 Context context = new Context(session.getHistoryFile(), objectMapper);
 
                 // 5. 创建 ToolRegistry（包含 Task 工具和 MCP 工具）
@@ -129,7 +134,7 @@ public class JimiFactory {
 
 
     /**
-     * 创建工具注册表（包含 Task 工具和 MCP 工具）
+     * 创建工具注册表（使用 ToolProvider SPI 机制）
      */
     private ToolRegistry createToolRegistry(
             BuiltinSystemPromptArgs builtinArgs,
@@ -143,28 +148,28 @@ public class JimiFactory {
                 builtinArgs,
                 approval
         );
-
-        // 如果 Agent 有子 Agent 规范，注册 Task 工具（使用 Spring 工厂）
-        if (agentSpec.getSubagents() != null && !agentSpec.getSubagents().isEmpty()) {
-            Task taskTool = toolRegistryFactory.createTask(agentSpec, runtime);
-            registry.register(taskTool);
-            log.info("Registered Task tool with {} subagents", agentSpec.getSubagents().size());
-        }
-
-        // 加载 MCP 工具（使用 Spring 单例服务）
-        if (mcpConfigFiles != null && !mcpConfigFiles.isEmpty()) {
-            for (Path configFile : mcpConfigFiles) {
-                try {
-                    List<MCPTool> mcpTools = mcpToolLoader.loadFromFile(configFile, registry);
-                    log.info("Loaded {} MCP tools from {}", mcpTools.size(), configFile);
-                } catch (Exception e) {
-                    log.error("Failed to load MCP config: {}", configFile, e);
-                    // 继续加载其他配置文件
-                }
-            }
-        }
-
-        log.debug("Created tool registry with {} tools", registry.getToolNames().size());
+        
+        // 使用 ToolProvider SPI 机制加载工具
+        log.debug("Applying {} tool providers", toolProviders.size());
+        
+        // 对于 MCP 提供者，需要设置配置文件
+        toolProviders.stream()
+            .filter(p -> p instanceof MCPToolProvider)
+            .forEach(p -> ((MCPToolProvider) p).setMcpConfigFiles(mcpConfigFiles));
+        
+        // 按顺序应用所有工具提供者
+        toolProviders.stream()
+            .sorted(Comparator.comparingInt(ToolProvider::getOrder))
+            .filter(provider -> provider.supports(agentSpec, runtime))
+            .forEach(provider -> {
+                log.info("Applying tool provider: {} (order={})", 
+                        provider.getName(), provider.getOrder());
+                List<Tool<?>> tools = provider.createTools(agentSpec, runtime);
+                tools.forEach(registry::register);
+                log.debug("  Registered {} tools from {}", tools.size(), provider.getName());
+            });
+        
+        log.info("Created tool registry with {} tools", registry.getToolNames().size());
         return registry;
     }
 
@@ -188,10 +193,10 @@ public class JimiFactory {
         String agentsMd = sessionManager.loadAgentsMd(workDir);
 
         return BuiltinSystemPromptArgs.builder()
-                .kimiNow(now)
-                .kimiWorkDir(workDir)
-                .kimiWorkDirLs(workDirLs)
-                .kimiAgentsMd(agentsMd)
+                .jimiNow(now)
+                .jimiWorkDir(workDir)
+                .jimiWorkDirLs(workDirLs)
+                .jimiAgentsMd(agentsMd)
                 .build();
     }
 }

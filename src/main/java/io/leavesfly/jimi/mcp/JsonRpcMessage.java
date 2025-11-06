@@ -1,4 +1,4 @@
-package io.leavesfly.jimi.tool.mcp;
+package io.leavesfly.jimi.mcp;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;

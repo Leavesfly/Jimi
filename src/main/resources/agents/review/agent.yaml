@@ -1,0 +1,17 @@
+# Review Agent - 专门负责代码审查
+name: Review Agent
+description: 专门负责代码质量审查和最佳实践检查的智能体
+
+# 系统提示词
+system_prompt: system_prompt.md
+
+# 系统提示词参数
+system_prompt_args: {}
+
+# 可用工具（专注于代码审查）
+tools:
+  - ReadFile      # 读取源代码
+  - Grep          # 搜索代码模式
+  - Glob          # 查找相关文件
+  - SearchWeb     # 搜索最佳实践
+  - Think         # 分析代码质量

@@ -20,20 +20,20 @@ public class BuiltinSystemPromptArgs {
     /**
      * 当前日期时间（ISO 8601 格式）
      */
-    private String kimiNow;
+    private String jimiNow;
     
     /**
      * 工作目录路径
      */
-    private Path kimiWorkDir;
+    private Path jimiWorkDir;
     
     /**
      * 工作目录列表
      */
-    private String kimiWorkDirLs;
+    private String jimiWorkDirLs;
     
     /**
      * AGENTS.md 内容
      */
-    private String kimiAgentsMd;
+    private String jimiAgentsMd;
 }

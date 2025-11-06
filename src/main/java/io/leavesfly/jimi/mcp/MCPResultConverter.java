@@ -1,4 +1,4 @@
-package io.leavesfly.jimi.tool.mcp;
+package io.leavesfly.jimi.mcp;
 
 import io.leavesfly.jimi.llm.message.ContentPart;
 import io.leavesfly.jimi.llm.message.ImagePart;

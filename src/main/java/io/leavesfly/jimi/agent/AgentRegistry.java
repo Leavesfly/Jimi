@@ -113,10 +113,10 @@ public class AgentRegistry {
         Map<String, String> substitutionMap = new HashMap<>();
 
         // 添加内置参数
-        substitutionMap.put("KIMI_NOW", builtinArgs.getKimiNow());
-        substitutionMap.put("KIMI_WORK_DIR", builtinArgs.getKimiWorkDir().toString());
-        substitutionMap.put("KIMI_WORK_DIR_LS", builtinArgs.getKimiWorkDirLs());
-        substitutionMap.put("KIMI_AGENTS_MD", builtinArgs.getKimiAgentsMd());
+        substitutionMap.put("JIMI_NOW", builtinArgs.getJimiNow());
+        substitutionMap.put("JIMI_WORK_DIR", builtinArgs.getJimiWorkDir().toString());
+        substitutionMap.put("JIMI_WORK_DIR_LS", builtinArgs.getJimiWorkDirLs());
+        substitutionMap.put("JIMI_AGENTS_MD", builtinArgs.getJimiAgentsMd());
 
         // 添加自定义参数（覆盖内置参数）
         if (args != null) {
@@ -169,6 +169,38 @@ public class AgentRegistry {
                 .map(AgentSpec::getName)
                 .sorted()
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * 获取所有 Agent 规范缓存
+     * 
+     * @return Agent 规范缓存映射（路径 -> 规范）
+     */
+    public Map<Path, AgentSpec> getAllAgentSpecs() {
+        return specLoader.getSpecCache();
+    }
+
+    /**
+     * 获取 AgentSpecLoader（用于访问缓存）
+     * 
+     * @return AgentSpecLoader 实例
+     */
+    AgentSpecLoader getSpecLoader() {
+        return specLoader;
+    }
+
+    /**
+     * 根据名称查找 Agent 配置文件路径
+     * 
+     * @param agentName Agent 名称
+     * @return Agent 配置文件路径，如果未找到返回 null
+     */
+    public Path findAgentPathByName(String agentName) {
+        return specLoader.getSpecCache().entrySet().stream()
+                .filter(entry -> agentName.equals(entry.getValue().getName()))
+                .map(Map.Entry::getKey)
+                .findFirst()
+                .orElse(null);
     }
 
 }

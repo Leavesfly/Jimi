@@ -1,4 +1,4 @@
-package io.leavesfly.jimi.tool.mcp;
+package io.leavesfly.jimi.mcp;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
