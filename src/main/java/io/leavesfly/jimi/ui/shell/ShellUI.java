@@ -29,6 +29,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -50,6 +51,8 @@ public class ShellUI implements AutoCloseable {
     private final AtomicBoolean running;
     private final AtomicReference<String> currentStatus;
     private final Map<String, String> activeTools;
+    private final AtomicBoolean assistantOutputStarted;
+    private final AtomicInteger currentLineLength; // 当前行的字符计数
     private Disposable wireSubscription;
 
     // 插件化组件
@@ -70,6 +73,8 @@ public class ShellUI implements AutoCloseable {
         this.running = new AtomicBoolean(false);
         this.currentStatus = new AtomicReference<>("ready");
         this.activeTools = new HashMap<>();
+        this.assistantOutputStarted = new AtomicBoolean(false);
+        this.currentLineLength = new AtomicInteger(0);
 
         // 初始化 Terminal
         this.terminal = TerminalBuilder.builder()
@@ -136,10 +141,18 @@ public class ShellUI implements AutoCloseable {
             if (message instanceof StepBegin stepBegin) {
                 currentStatus.set("thinking (step " + stepBegin.getStepNumber() + ")");
                 printStatus("🤔 Step " + stepBegin.getStepNumber() + " - Thinking...");
+                // 重置输出标志和行长度
+                assistantOutputStarted.set(false);
+                currentLineLength.set(0);
 
             } else if (message instanceof StepInterrupted) {
                 currentStatus.set("interrupted");
                 activeTools.clear();
+                // 如果有输出，添加换行
+                if (assistantOutputStarted.getAndSet(false)) {
+                    terminal.writer().println();
+                    terminal.flush();
+                }
                 printError("⚠️  Step interrupted");
 
             } else if (message instanceof CompactionBegin) {
@@ -159,11 +172,17 @@ public class ShellUI implements AutoCloseable {
                 // 打印 LLM 输出的内容部分
                 ContentPart part = contentMsg.getContentPart();
                 if (part instanceof TextPart textPart) {
+                    log.debug("Received content part: [{}]", textPart.getText());
                     printAssistantText(textPart.getText());
                 }
 
             } else if (message instanceof ToolCallMessage toolCallMsg) {
-                // 工具调用开始
+                // 工具调用开始 - 如果有输出，先添加换行
+                if (assistantOutputStarted.getAndSet(false)) {
+                    terminal.writer().println();
+                    terminal.flush();
+                }
+                
                 ToolCall toolCall = toolCallMsg.getToolCall();
                 String toolName = toolCall.getFunction().getName();
                 activeTools.put(toolCall.getId(), toolName);
@@ -318,16 +337,83 @@ public class ShellUI implements AutoCloseable {
     }
 
     /**
-     * 打印助手文本输出
+     * 打印助手文本输出（流式，带智能换行）
      */
     private void printAssistantText(String text) {
         if (text == null || text.isEmpty()) {
             return;
         }
+        
+        // 标记输出已开始
+        if (!assistantOutputStarted.getAndSet(true)) {
+            // 第一次输出，添加提示
+            terminal.writer().println();
+            terminal.flush();
+            currentLineLength.set(0);
+        }
 
+        // 获取终端宽度，默认80，减去一些边距
+        int terminalWidth = terminal.getWidth();
+        int maxLineWidth = terminalWidth > 20 ? terminalWidth - 4 : 76;
+        
         AttributedStyle style = AttributedStyle.DEFAULT.foreground(AttributedStyle.WHITE);
-        terminal.writer().print(new AttributedString(text, style).toAnsi());
+        
+        // 逐字符处理，实现智能换行
+        for (int i = 0; i < text.length(); i++) {
+            char ch = text.charAt(i);
+            
+            // 处理换行符
+            if (ch == '\n') {
+                terminal.writer().println();
+                currentLineLength.set(0);
+                continue;
+            }
+            
+            // 检查是否需要自动换行
+            int charWidth = isChineseChar(ch) ? 2 : 1; // 中文字符占2个宽度
+            if (currentLineLength.get() + charWidth > maxLineWidth) {
+                // 如果不是在空格处，尝试找到合适的断点
+                if (ch != ' ' && i > 0 && text.charAt(i - 1) != ' ') {
+                    // 在中文字符或标点符号后可以直接换行
+                    if (isChineseChar(ch) || isChinesePunctuation(ch)) {
+                        terminal.writer().println();
+                        currentLineLength.set(0);
+                    } else {
+                        // 英文单词中间，先换行再输出
+                        terminal.writer().println();
+                        currentLineLength.set(0);
+                    }
+                } else {
+                    terminal.writer().println();
+                    currentLineLength.set(0);
+                    // 跳过行首空格
+                    if (ch == ' ') {
+                        continue;
+                    }
+                }
+            }
+            
+            // 输出字符
+            terminal.writer().print(new AttributedString(String.valueOf(ch), style).toAnsi());
+            currentLineLength.addAndGet(charWidth);
+        }
+        
         terminal.flush();
+    }
+    
+    /**
+     * 判断是否为中文字符
+     */
+    private boolean isChineseChar(char ch) {
+        return ch >= 0x4E00 && ch <= 0x9FA5;
+    }
+    
+    /**
+     * 判断是否为中文标点符号
+     */
+    private boolean isChinesePunctuation(char ch) {
+        return (ch >= 0x3000 && ch <= 0x303F) || // CJK符号和标点
+               (ch >= 0xFF00 && ch <= 0xFFEF);   // 全角ASCII、全角标点
     }
 
     /**

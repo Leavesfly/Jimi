@@ -2,21 +2,21 @@ package io.leavesfly.jimi.soul;
 
 import io.leavesfly.jimi.agent.Agent;
 import io.leavesfly.jimi.exception.MaxStepsReachedException;
+import io.leavesfly.jimi.llm.ChatCompletionChunk;
 import io.leavesfly.jimi.llm.ChatCompletionResult;
 import io.leavesfly.jimi.llm.LLM;
 import io.leavesfly.jimi.llm.message.ContentPart;
 import io.leavesfly.jimi.llm.message.Message;
+import io.leavesfly.jimi.llm.message.TextPart;
 import io.leavesfly.jimi.llm.message.ToolCall;
+import io.leavesfly.jimi.llm.message.FunctionCall;
 import io.leavesfly.jimi.soul.compaction.Compaction;
 import io.leavesfly.jimi.soul.context.Context;
 import io.leavesfly.jimi.soul.runtime.Runtime;
 import io.leavesfly.jimi.tool.ToolRegistry;
 import io.leavesfly.jimi.tool.ToolResult;
 import io.leavesfly.jimi.wire.Wire;
-import io.leavesfly.jimi.wire.message.CompactionBegin;
-import io.leavesfly.jimi.wire.message.CompactionEnd;
-import io.leavesfly.jimi.wire.message.StepBegin;
-import io.leavesfly.jimi.wire.message.StepInterrupted;
+import io.leavesfly.jimi.wire.message.*;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -181,14 +181,46 @@ public class AgentExecutor {
             // 生成工具 Schema
             List<Object> toolSchemas = new ArrayList<>(toolRegistry.getToolSchemas(agent.getTools()));
             
-            // 调用 LLM
+            // 使用流式API调用 LLM
             return llm.getChatProvider()
-                    .generate(
+                    .generateStream(
                             agent.getSystemPrompt(),
                             context.getHistory(),
                             toolSchemas
                     )
-                    .flatMap(this::processLLMResponse)
+                    .reduce(new StreamAccumulator(), (acc, chunk) -> {
+                        // 处理流式数据块
+                        if (chunk.getType() == ChatCompletionChunk.ChunkType.CONTENT && chunk.getContentDelta() != null) {
+                            // 累积文本内容
+                            acc.contentBuilder.append(chunk.getContentDelta());
+                            // 发送到Wire以实时显示
+                            log.debug("Sending content delta to Wire: [{}]", chunk.getContentDelta());
+                            wire.send(new ContentPartMessage(new TextPart(chunk.getContentDelta())));
+                        } else if (chunk.getType() == ChatCompletionChunk.ChunkType.TOOL_CALL) {
+                            // 处理工具调用
+                            handleToolCallChunk(acc, chunk);
+                        } else if (chunk.getType() == ChatCompletionChunk.ChunkType.DONE) {
+                            // 保存使用统计
+                            log.debug("Stream completed, usage: {}", chunk.getUsage());
+                            acc.usage = chunk.getUsage();
+                        }
+                        return acc;
+                    })
+                    .flatMap(acc -> {
+                        // 构建完整的assistant消息
+                        Message assistantMessage = buildMessageFromAccumulator(acc);
+                        
+                        // 更新token计数
+                        Mono<Void> updateTokens = Mono.empty();
+                        if (acc.usage != null) {
+                            updateTokens = context.updateTokenCount(acc.usage.getTotalTokens());
+                        }
+                        
+                        // 添加消息到上下文并处理
+                        return updateTokens
+                                .then(context.appendMessage(assistantMessage))
+                                .then(processAssistantMessage(assistantMessage));
+                    })
                     .onErrorResume(e -> {
                         log.error("LLM API call failed", e);
                         return context.appendMessage(
@@ -199,32 +231,85 @@ public class AgentExecutor {
     }
     
     /**
-     * 处理 LLM 响应
+     * 流式累加器
      */
-    private Mono<Boolean> processLLMResponse(ChatCompletionResult result) {
-        Message assistantMessage = result.getMessage();
+    private static class StreamAccumulator {
+        StringBuilder contentBuilder = new StringBuilder();
+        List<ToolCall> toolCalls = new ArrayList<>();
+        ChatCompletionResult.Usage usage;
         
-        // 更新 token 计数
-        Mono<Void> updateTokens = Mono.empty();
-        if (result.getUsage() != null) {
-            updateTokens = context.updateTokenCount(result.getUsage().getTotalTokens());
+        // 用于临时存储正在构建的工具调用
+        String currentToolCallId;
+        String currentFunctionName;
+        StringBuilder currentArguments = new StringBuilder();
+    }
+    
+    /**
+     * 处理工具调用数据块
+     */
+    private void handleToolCallChunk(StreamAccumulator acc, ChatCompletionChunk chunk) {
+        if (chunk.getToolCallId() != null) {
+            // 新的工具调用开始
+            if (acc.currentToolCallId != null) {
+                // 保存上一个工具调用
+                acc.toolCalls.add(buildToolCall(acc));
+            }
+            acc.currentToolCallId = chunk.getToolCallId();
+            acc.currentFunctionName = chunk.getFunctionName();
+            acc.currentArguments = new StringBuilder();
         }
         
-        // 添加 assistant 消息到上下文
-        return updateTokens
-                .then(context.appendMessage(assistantMessage))
-                .then(Mono.defer(() -> {
-                    // 检查是否有工具调用
-                    if (assistantMessage.getToolCalls() == null || assistantMessage.getToolCalls().isEmpty()) {
-                        // 没有工具调用，结束循环
-                        log.info("No tool calls, finishing step");
-                        return Mono.just(true);
-                    }
-                    
-                    // 执行所有工具调用
-                    return executeToolCalls(assistantMessage.getToolCalls())
-                            .then(Mono.just(false)); // 继续循环
-                }));
+        // 累积参数
+        if (chunk.getArgumentsDelta() != null) {
+            acc.currentArguments.append(chunk.getArgumentsDelta());
+        }
+    }
+    
+    /**
+     * 从累加器构建ToolCall
+     */
+    private ToolCall buildToolCall(StreamAccumulator acc) {
+        return ToolCall.builder()
+                .id(acc.currentToolCallId)
+                .type("function")
+                .function(FunctionCall.builder()
+                        .name(acc.currentFunctionName)
+                        .arguments(acc.currentArguments.toString())
+                        .build())
+                .build();
+    }
+    
+    /**
+     * 从累加器构建Message
+     */
+    private Message buildMessageFromAccumulator(StreamAccumulator acc) {
+        // 如果还有未完成的工具调用，添加它
+        if (acc.currentToolCallId != null) {
+            acc.toolCalls.add(buildToolCall(acc));
+        }
+        
+        String content = acc.contentBuilder.toString();
+        if (!acc.toolCalls.isEmpty()) {
+            return Message.assistant(content.isEmpty() ? null : content, acc.toolCalls);
+        } else {
+            return Message.assistant(content);
+        }
+    }
+    
+    /**
+     * 处理assistant消息
+     */
+    private Mono<Boolean> processAssistantMessage(Message assistantMessage) {
+        // 检查是否有工具调用
+        if (assistantMessage.getToolCalls() == null || assistantMessage.getToolCalls().isEmpty()) {
+            // 没有工具调用，结束循环
+            log.info("No tool calls, finishing step");
+            return Mono.just(true);
+        }
+        
+        // 执行所有工具调用
+        return executeToolCalls(assistantMessage.getToolCalls())
+                .then(Mono.just(false)); // 继续循环
     }
     
     /**

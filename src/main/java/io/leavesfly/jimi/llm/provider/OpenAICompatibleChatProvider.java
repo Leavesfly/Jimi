@@ -105,6 +105,7 @@ public class OpenAICompatibleChatProvider implements ChatProvider {
         return Flux.defer(() -> {
             try {
                 ObjectNode requestBody = buildRequestBody(systemPrompt, history, tools, true);
+                log.debug("Sending streaming request to {}, body: {}", providerName, requestBody);
 
                 return webClient.post()
                         .uri("/chat/completions")
@@ -112,10 +113,25 @@ public class OpenAICompatibleChatProvider implements ChatProvider {
                         .bodyValue(requestBody)
                         .retrieve()
                         .bodyToFlux(String.class)
-                        .filter(line -> line.startsWith("data: "))
-                        .map(line -> line.substring(6))
-                        .filter(data -> !"[DONE]".equals(data))
+                        .doOnNext(line -> log.debug("Received SSE line: {}", line))
+                        .filter(line -> {
+                            // 支持两种格式：1) data: {json}  2) {json}
+                            if (line.trim().isEmpty()) return false;
+                            if (line.equals("[DONE]")) return false;
+                            return true;
+                        })
+                        .map(line -> {
+                            // 处理 SSE 格式：如果有 data: 前缀则移除
+                            if (line.startsWith("data: ")) {
+                                String data = line.substring(6).trim();
+                                return data.equals("[DONE]") ? null : data;
+                            }
+                            return line;
+                        })
+                        .filter(data -> data != null && !data.isEmpty())
                         .map(this::parseStreamChunk)
+                        .doOnNext(chunk -> log.debug("Parsed chunk: type={}, contentDelta={}", 
+                                chunk.getType(), chunk.getContentDelta()))
                         .doOnError(e -> log.error("{} streaming API error", providerName, e));
 
             } catch (Exception e) {
