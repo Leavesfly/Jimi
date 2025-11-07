@@ -83,7 +83,7 @@ public class StrReplaceFile extends AbstractTool<StrReplaceFile.Params> {
     public StrReplaceFile() {
         super(
             "StrReplaceFile",
-            "Apply string replacements to a file. Supports single or multiple edits.",
+            "对文件应用字符串替换。支持单个或多个编辑操作。",
             Params.class
         );
     }
@@ -100,6 +100,32 @@ public class StrReplaceFile extends AbstractTool<StrReplaceFile.Params> {
     public Mono<ToolResult> execute(Params params) {
         return Mono.defer(() -> {
             try {
+                // 验证参数
+                if (params.path == null || params.path.trim().isEmpty()) {
+                    return Mono.just(ToolResult.error(
+                        "File path is required. Please provide a valid file path.",
+                        "Missing path"
+                    ));
+                }
+                
+                if (params.edits == null || params.edits.isEmpty()) {
+                    return Mono.just(ToolResult.error(
+                        "Edits are required. Please provide at least one edit operation.",
+                        "Missing edits"
+                    ));
+                }
+                
+                // 验证每个编辑操作
+                for (int i = 0; i < params.edits.size(); i++) {
+                    Edit edit = params.edits.get(i);
+                    if (edit.old == null || edit.old.isEmpty()) {
+                        return Mono.just(ToolResult.error(
+                            String.format("Edit #%d: 'old' string is required and cannot be empty.", i + 1),
+                            "Invalid edit"
+                        ));
+                    }
+                }
+                
                 Path targetPath = Path.of(params.path);
                 
                 // 验证路径

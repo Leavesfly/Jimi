@@ -61,6 +61,14 @@ public class ReadFile extends AbstractTool<ReadFile.Params> {
     public Mono<ToolResult> execute(Params params) {
         return Mono.fromCallable(() -> {
             try {
+                // 验证参数
+                if (params.getPath() == null || params.getPath().trim().isEmpty()) {
+                    return ToolResult.error(
+                            "File path is required. Please provide a valid file path.",
+                            "缺少路径"
+                    );
+                }
+                
                 Path path = Paths.get(params.getPath());
                 
                 // 验证路径
@@ -86,9 +94,34 @@ public class ReadFile extends AbstractTool<ReadFile.Params> {
                     );
                 }
                 
+                // 验证行号参数
+                if (params.getLineOffset() < 1) {
+                    return ToolResult.error(
+                            String.format("起始行号必须大于等于1，当前值为：%d", params.getLineOffset()),
+                            "无效的行号"
+                    );
+                }
+                
+                if (params.getNLines() < 1) {
+                    return ToolResult.error(
+                            String.format("读取行数必须大于等于1，当前值为：%d", params.getNLines()),
+                            "无效的行数"
+                    );
+                }
+                
                 // 读取文件
                 List<String> allLines = Files.readAllLines(path);
                 int startLine = params.getLineOffset() - 1; // 转为0-based索引
+                
+                // 检查起始行是否超出文件范围
+                if (startLine >= allLines.size()) {
+                    return ToolResult.error(
+                            String.format("起始行号 %d 超出文件范围（文件共 %d 行）。", 
+                                    params.getLineOffset(), allLines.size()),
+                            "行号超出范围"
+                    );
+                }
+                
                 int endLine = Math.min(startLine + params.getNLines(), allLines.size());
                 endLine = Math.min(endLine, startLine + MAX_LINES);
                 

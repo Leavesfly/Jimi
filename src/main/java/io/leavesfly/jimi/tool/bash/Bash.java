@@ -61,7 +61,7 @@ public class Bash extends AbstractTool<Bash.Params> {
     public Bash() {
         super(
             "Bash",
-            "Execute bash commands with timeout control. Maximum timeout is " + MAX_TIMEOUT + " seconds.",
+            "执行 bash 命令并支持超时控制。最大超时时间为 " + MAX_TIMEOUT + " 秒。",
             Params.class
         );
     }
@@ -76,6 +76,14 @@ public class Bash extends AbstractTool<Bash.Params> {
     @Override
     public Mono<ToolResult> execute(Params params) {
         return Mono.defer(() -> {
+            // 验证参数
+            if (params.command == null || params.command.trim().isEmpty()) {
+                return Mono.just(ToolResult.error(
+                    "Command is required. Please provide a valid command to execute.",
+                    "Missing command"
+                ));
+            }
+            
             // 验证超时参数
             if (params.timeout < 1 || params.timeout > MAX_TIMEOUT) {
                 return Mono.just(ToolResult.error(

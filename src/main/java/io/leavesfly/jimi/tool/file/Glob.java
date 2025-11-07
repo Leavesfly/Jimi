@@ -51,7 +51,8 @@ public class Glob extends AbstractTool<Glob.Params> {
         /**
          * 搜索目录的绝对路径（默认为工作目录）
          */
-        private String directory;
+        @Builder.Default
+        private String directory = null;
         
         /**
          * 是否包含目录
@@ -63,7 +64,7 @@ public class Glob extends AbstractTool<Glob.Params> {
     public Glob() {
         super(
             "Glob",
-            String.format("Search for files/directories using glob patterns. Maximum %d matches returned.", MAX_MATCHES),
+            String.format("使用 glob 模式搜索文件/目录。最多返回 %d 个匹配项。", MAX_MATCHES),
             Params.class
         );
     }
@@ -76,6 +77,14 @@ public class Glob extends AbstractTool<Glob.Params> {
     public Mono<ToolResult> execute(Params params) {
         return Mono.defer(() -> {
             try {
+                // 验证参数
+                if (params.pattern == null || params.pattern.trim().isEmpty()) {
+                    return Mono.just(ToolResult.error(
+                        "Pattern is required. Please provide a valid glob pattern.",
+                        "Missing pattern"
+                    ));
+                }
+                
                 // 验证模式
                 if (params.pattern.startsWith("**")) {
                     // 列出工作目录顶层

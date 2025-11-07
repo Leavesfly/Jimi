@@ -62,7 +62,8 @@ public class Grep extends AbstractTool<Grep.Params> {
         /**
          * Glob 模式过滤文件
          */
-        private String glob;
+        @Builder.Default
+        private String glob = null;
         
         /**
          * 输出模式：content, files_with_matches, count_matches
@@ -85,13 +86,14 @@ public class Grep extends AbstractTool<Grep.Params> {
         /**
          * 限制输出行数
          */
-        private Integer headLimit;
+        @Builder.Default
+        private Integer headLimit = null;
     }
     
     public Grep() {
         super(
             "Grep",
-            "Search for patterns in file contents using regular expressions.",
+            "使用正则表达式搜索文件内容。",
             Params.class
         );
     }
@@ -104,6 +106,14 @@ public class Grep extends AbstractTool<Grep.Params> {
     public Mono<ToolResult> execute(Params params) {
         return Mono.defer(() -> {
             try {
+                // 验证参数
+                if (params.pattern == null || params.pattern.trim().isEmpty()) {
+                    return Mono.just(ToolResult.error(
+                        "Pattern is required. Please provide a valid regex pattern.",
+                        "Missing pattern"
+                    ));
+                }
+                
                 // 编译正则表达式
                 int flags = params.ignoreCase ? Pattern.CASE_INSENSITIVE : 0;
                 Pattern pattern;

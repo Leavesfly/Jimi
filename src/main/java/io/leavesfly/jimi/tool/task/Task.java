@@ -205,15 +205,15 @@ public class Task extends AbstractTool<Task.Params> implements WireAware {
      */
     private static String loadDescription(AgentSpec agentSpec) {
         StringBuilder sb = new StringBuilder();
-        sb.append("Spawn a subagent to perform a specific task. ");
-        sb.append("Subagent will be spawned with a fresh context without any history of yours.\n\n");
+        sb.append("生成一个子代理（subagent）来执行特定任务。");
+        sb.append("子代理将在全新的上下文中生成，不包含任何您的历史记录。\n\n");
 
-        sb.append("**Context Isolation**\n\n");
-        sb.append("Context isolation is one of the key benefits of using subagents. ");
-        sb.append("By delegating tasks to subagents, you can keep your main context clean ");
-        sb.append("and focused on the main goal requested by the user.\n\n");
+        sb.append("**上下文隔离**\n\n");
+        sb.append("上下文隔离是使用子代理的主要优势之一。");
+        sb.append("通过将任务委托给子代理，您可以保持主上下文的简洁，");
+        sb.append("并专注于用户请求的主要目标。\n\n");
 
-        sb.append("**Available Subagents:**\n\n");
+        sb.append("**可用的子代理：**\n\n");
         for (Map.Entry<String, SubagentSpec> entry : agentSpec.getSubagents().entrySet()) {
             sb.append("- `").append(entry.getKey()).append("`: ")
                     .append(entry.getValue().getDescription()).append("\n");

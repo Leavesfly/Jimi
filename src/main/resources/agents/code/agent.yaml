@@ -10,6 +10,7 @@ system_prompt_args: {}
 
 # 指定模型（可选，如果不指定则使用全局默认模型）
 model: qwen3-Coder-Plus
+#model: qwen3:4b-instruct-2507-q8_0
 
 # 可用工具（专注于代码编写）
 tools:

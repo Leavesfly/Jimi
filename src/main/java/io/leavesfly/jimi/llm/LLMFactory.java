@@ -38,7 +38,7 @@ public class LLMFactory {
 
     /**
      * LLM 实例缓存（使用 Caffeine 高性能缓存）
-     * 
+     * <p>
      * 特性：
      * - 最大容量：10个模型实例
      * - 过期策略：30分钟未访问自动过期
@@ -50,7 +50,7 @@ public class LLMFactory {
     public LLMFactory(JimiConfig config, ObjectMapper objectMapper) {
         this.config = config;
         this.objectMapper = objectMapper;
-        
+
         // 初始化 Caffeine 缓存
         this.llmCache = Caffeine.newBuilder()
                 .maximumSize(10)  // 最多缓存10个模型
@@ -135,9 +135,10 @@ public class LLMFactory {
         String baseUrl = providerConfig.getBaseUrl();
         String model = modelConfig.getModel();
 
-        if (apiKey == null || apiKey.isEmpty() || "xxxx".equals(apiKey)) {
+        if ((apiKey == null || apiKey.isEmpty())
+                && !providerConfig.getType().equals(LLMProviderConfig.ProviderType.OLLAMA)) {
             log.error("No valid API key configured for model '{}'. " +
-                    "Please set API key in config file or environment variable: {}_API_KEY",
+                            "Please set API key in config file or environment variable: {}_API_KEY",
                     modelName, providerConfig.getType().toString().toUpperCase());
             throw new ConfigException("Missing API key for provider: " + providerConfig.getType());
         }
@@ -214,11 +215,11 @@ public class LLMFactory {
     public String getCacheStats() {
         var stats = llmCache.stats();
         return String.format(
-            "LLM Cache - Size: %d, Hits: %.2f%%, Misses: %d, Evictions: %d",
-            llmCache.estimatedSize(),
-            stats.hitRate() * 100,
-            stats.missCount(),
-            stats.evictionCount()
+                "LLM Cache - Size: %d, Hits: %.2f%%, Misses: %d, Evictions: %d",
+                llmCache.estimatedSize(),
+                stats.hitRate() * 100,
+                stats.missCount(),
+                stats.evictionCount()
         );
     }
 
@@ -230,23 +231,23 @@ public class LLMFactory {
     private String resolveApiKey(LLMProviderConfig providerConfig) {
         // 获取配置文件中的 API Key
         String configApiKey = providerConfig.getApiKey();
-        
+
         // 构建环境变量名称
         String envVarName = providerConfig.getType().toString().toUpperCase() + "_API_KEY";
         String envApiKey = System.getenv(envVarName);
-        
+
         // 优先使用环境变量，如果环境变量不存在或为空，则使用配置文件中的值
         if (envApiKey != null && !envApiKey.isEmpty()) {
             log.debug("Using API key from environment variable: {}", envVarName);
             return envApiKey;
         }
-        
+
         // 如果配置文件中的值是占位符，返回 null
         if ("xxxx".equals(configApiKey) || configApiKey == null || configApiKey.isEmpty()) {
             log.debug("No valid API key found in config for provider: {}", providerConfig.getType());
             return null;
         }
-        
+
         log.debug("Using API key from config file for provider: {}", providerConfig.getType());
         return configApiKey;
     }

@@ -76,9 +76,9 @@ public class WebSearch extends AbstractTool<WebSearch.Params> {
     public WebSearch(String baseUrl, String apiKey, Map<String, String> customHeaders, ObjectMapper objectMapper) {
         super(
             "SearchWeb",
-            "Search the web for information using a search service. "
-            + "This tool allows you to search for web pages based on a query string. "
-            + "You can control the number of results and whether to include page content.",
+            "使用搜索服务搜索网络信息。"
+            + "此工具允许您根据查询字符串搜索网页。"
+            + "您可以控制结果数量以及是否包含页面内容。",
             Params.class
         );
         this.baseUrl = baseUrl;

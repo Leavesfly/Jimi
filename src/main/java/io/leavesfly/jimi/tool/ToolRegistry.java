@@ -92,16 +92,39 @@ public class ToolRegistry {
             Tool<?> tool = toolOpt.get();
 
             try {
+                // 验证参数是否为空或无效
+                String effectiveArguments = arguments;
+                if (effectiveArguments == null || effectiveArguments.trim().isEmpty()) {
+                    log.warn("Empty arguments for tool: {}, using empty object", toolName);
+                    effectiveArguments = "{}";
+                }
+                
+                // 记录参数内容以便调试
+                log.debug("Parsing tool arguments for {}: {}", toolName, effectiveArguments);
+                
                 // 解析参数
-                Object params = objectMapper.readValue(arguments, tool.getParamsType());
+                Object params = objectMapper.readValue(effectiveArguments, tool.getParamsType());
+                
+                // 记录解析成功的参数对象
+                log.debug("Parsed parameters for {}: {}", toolName, params);
 
                 // 执行工具（使用原始类型）
                 return executeToolUnchecked(tool, params);
 
-            } catch (Exception e) {
-                log.error("Failed to execute tool: {}", toolName, e);
+            } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+                // JSON解析错误 - 提供更详细的错误信息
+                log.error("JSON parsing failed for tool {}: {}. Arguments: '{}'", 
+                        toolName, e.getMessage(), arguments);
                 return Mono.just(ToolResult.error(
-                        String.format("Failed to execute tool. Error: %s", e.getMessage()),
+                        String.format("Invalid JSON arguments. Error: %s\nArguments received: %s", 
+                                e.getMessage(), arguments),
+                        "JSON parsing failed"
+                ));
+            } catch (Exception e) {
+                log.error("Failed to execute tool: {}. Arguments: {}", toolName, arguments, e);
+                return Mono.just(ToolResult.error(
+                        String.format("Failed to execute tool. Error: %s\nArguments: %s", 
+                                e.getMessage(), arguments),
                         "Execution failed"
                 ));
             }
@@ -171,6 +194,11 @@ public class ToolRegistry {
         Class<?> paramsType = tool.getParamsType();
         if (paramsType != null) {
             for (Field field : paramsType.getDeclaredFields()) {
+                // 跳过静态字段和合成字段
+                if (java.lang.reflect.Modifier.isStatic(field.getModifiers())) {
+                    continue;
+                }
+                
                 String propName = field.getName();
                 JsonProperty jp = field.getAnnotation(JsonProperty.class);
                 if (jp != null && !jp.value().isEmpty()) {
@@ -198,15 +226,25 @@ public class ToolRegistry {
                 }
 
                 properties.set(propName, propSchema);
-                required.add(propName);
+                
+                // 只有非 @Builder.Default 的字段才是必需的
+                // 简化处理：如果是基本类型且没有默认值注解，则为必需
+                if (!field.isAnnotationPresent(lombok.Builder.Default.class)) {
+                    required.add(propName);
+                }
             }
         }
 
         parameters.set("properties", properties);
-        parameters.set("required", required);
+        if (required.size() > 0) {
+            parameters.set("required", required);
+        }
 
         function.set("parameters", parameters);
         schema.set("function", function);
+        
+        // 记录生成的 schema 以便调试
+        log.debug("Generated schema for tool {}: {}", tool.getName(), schema.toPrettyString());
 
         return schema;
     }

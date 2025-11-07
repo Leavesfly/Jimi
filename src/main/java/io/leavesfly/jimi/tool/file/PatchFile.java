@@ -58,16 +58,16 @@ public class PatchFile extends AbstractTool<PatchFile.Params> {
     
     private static final String NAME = "PatchFile";
     private static final String DESCRIPTION = """
-            Apply a unified diff patch to a file.
+            对文件应用统一差异补丁（unified diff patch）。
             
-            **Tips:**
-            - The patch must be in unified diff format, the format used by `diff -u` and `git diff`.
-            - Only use this tool on text files.
-            - The tool will fail with error returned if the patch doesn't apply cleanly.
-            - The file must exist before applying the patch.
-            - You should prefer this tool over WriteFile tool and Bash `sed` command when editing an existing file.
+            **使用提示：**
+            - 补丁格式必须为 unified diff 格式，即 `diff -u` 和 `git diff` 使用的格式
+            - 仅用于文本文件
+            - 如果补丁无法清晰应用，工具将返回错误
+            - 应用补丁之前，文件必须已存在
+            - 编辑现有文件时，应优先使用此工具，而非 WriteFile 工具或 Bash `sed` 命令
             
-            **Unified Diff Format Example:**
+            **Unified Diff 格式示例：**
             ```diff
             --- a/file.txt
             +++ b/file.txt
@@ -122,6 +122,21 @@ public class PatchFile extends AbstractTool<PatchFile.Params> {
             log.debug("Patching file: {}", params.getPath());
             
             try {
+                // 验证参数
+                if (params.getPath() == null || params.getPath().trim().isEmpty()) {
+                    return ToolResult.error(
+                            "File path is required. Please provide a valid file path.",
+                            "Missing path"
+                    );
+                }
+                
+                if (params.getDiff() == null || params.getDiff().trim().isEmpty()) {
+                    return ToolResult.error(
+                            "Diff content is required. Please provide a valid unified diff.",
+                            "Missing diff"
+                    );
+                }
+                
                 // 1. 验证路径
                 Path filePath = Paths.get(params.getPath());
                 

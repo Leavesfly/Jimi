@@ -40,9 +40,9 @@ public class FetchURL extends AbstractTool<FetchURL.Params> {
     public FetchURL() {
         super(
             "FetchURL",
-            "Fetch and extract content from a web page. "
-            + "This tool retrieves the HTML content from a URL and extracts the main text content, "
-            + "removing scripts, styles, and formatting.",
+            "从网页获取并提取内容。"
+            + "此工具从 URL 获取 HTML 内容并提取主要文本内容，"
+            + "移除脚本、样式和格式。",
             Params.class
         );
         this.webClient = WebClient.builder()

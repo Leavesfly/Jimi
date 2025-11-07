@@ -87,7 +87,17 @@ public class OpenAICompatibleChatProvider implements ChatProvider {
                         .retrieve()
                         .bodyToMono(JsonNode.class)
                         .map(this::parseResponse)
-                        .doOnError(e -> log.error("{} API error", providerName, e));
+                        .onErrorResume(e -> {
+                            if (e instanceof org.springframework.web.reactive.function.client.WebClientResponseException) {
+                                org.springframework.web.reactive.function.client.WebClientResponseException webEx = 
+                                    (org.springframework.web.reactive.function.client.WebClientResponseException) e;
+                                log.error("{} API error: status={}, body={}", 
+                                        providerName, webEx.getStatusCode(), webEx.getResponseBodyAsString());
+                            } else {
+                                log.error("{} API error", providerName, e);
+                            }
+                            return Mono.error(e);
+                        });
 
             } catch (Exception e) {
                 log.error("Failed to generate chat completion with {}", providerName, e);
@@ -106,6 +116,11 @@ public class OpenAICompatibleChatProvider implements ChatProvider {
             try {
                 ObjectNode requestBody = buildRequestBody(systemPrompt, history, tools, true);
                 log.debug("Sending streaming request to {}, body: {}", providerName, requestBody);
+                
+                // 记录完整的请求体以便调试
+                if (tools != null && !tools.isEmpty()) {
+                    log.info("{} request with {} tools, full body: {}", providerName, tools.size(), requestBody.toPrettyString());
+                }
 
                 return webClient.post()
                         .uri("/chat/completions")
@@ -118,6 +133,7 @@ public class OpenAICompatibleChatProvider implements ChatProvider {
                             // 支持两种格式：1) data: {json}  2) {json}
                             if (line.trim().isEmpty()) return false;
                             if (line.equals("[DONE]")) return false;
+                            if (line.equals("data: [DONE]")) return false;
                             return true;
                         })
                         .map(line -> {
@@ -129,10 +145,31 @@ public class OpenAICompatibleChatProvider implements ChatProvider {
                             return line;
                         })
                         .filter(data -> data != null && !data.isEmpty())
-                        .map(this::parseStreamChunk)
-                        .doOnNext(chunk -> log.debug("Parsed chunk: type={}, contentDelta={}", 
-                                chunk.getType(), chunk.getContentDelta()))
-                        .doOnError(e -> log.error("{} streaming API error", providerName, e));
+                        .flatMap(data -> {
+                            // 使用 flatMap 替代 map,以便捕获单个chunk的解析错误而不中断整个流
+                            try {
+                                ChatCompletionChunk chunk = parseStreamChunk(data);
+                                log.debug("Parsed chunk: type={}, contentDelta={}", 
+                                        chunk.getType(), chunk.getContentDelta());
+                                return Mono.just(chunk);
+                            } catch (Exception e) {
+                                log.warn("Failed to parse stream chunk, skipping: {}", data, e);
+                                // 返回空流,跳过这个错误的chunk,不中断整个流
+                                return Mono.empty();
+                            }
+                        })
+                        .onErrorResume(e -> {
+                            if (e instanceof org.springframework.web.reactive.function.client.WebClientResponseException) {
+                                org.springframework.web.reactive.function.client.WebClientResponseException webEx = 
+                                    (org.springframework.web.reactive.function.client.WebClientResponseException) e;
+                                log.error("{} streaming API error: status={}, body={}", 
+                                        providerName, webEx.getStatusCode(), webEx.getResponseBodyAsString());
+                            } else {
+                                log.error("{} streaming API error: {}", providerName, e.getMessage());
+                                log.debug("Streaming error details", e);
+                            }
+                            return Flux.error(e);
+                        });
 
             } catch (Exception e) {
                 log.error("Failed to generate streaming chat completion with {}", providerName, e);
@@ -198,18 +235,24 @@ public class OpenAICompatibleChatProvider implements ChatProvider {
         if (msg.getContent() instanceof String) {
             node.put("content", (String) msg.getContent());
         } else if (msg.getContent() instanceof List) {
-            @SuppressWarnings("unchecked")
-            List<ContentPart> parts = (List<ContentPart>) msg.getContent();
-            ArrayNode contentArray = objectMapper.createArrayNode();
-            for (ContentPart part : parts) {
-                contentArray.add(objectMapper.valueToTree(part));
-            }
-            node.set("content", contentArray);
+            // 直接将 List 转换为 JsonNode，避免类型转换问题
+            // Jackson 会自动处理 ContentPart 或 LinkedHashMap
+            node.set("content", objectMapper.valueToTree(msg.getContent()));
         }
 
-        // 处理工具调用
+        // 处理工具调用 - 过滤无效的工具调用
         if (msg.getToolCalls() != null && !msg.getToolCalls().isEmpty()) {
-            node.set("tool_calls", objectMapper.valueToTree(msg.getToolCalls()));
+            // 过滤掉无效的工具调用（id或name为空/null的）
+            List<ToolCall> validToolCalls = msg.getToolCalls().stream()
+                    .filter(tc -> tc != null 
+                            && tc.getId() != null && !tc.getId().isEmpty()
+                            && tc.getFunction() != null
+                            && tc.getFunction().getName() != null && !tc.getFunction().getName().isEmpty())
+                    .toList();
+            
+            if (!validToolCalls.isEmpty()) {
+                node.set("tool_calls", objectMapper.valueToTree(validToolCalls));
+            }
         }
 
         // 处理工具调用ID
@@ -281,6 +324,16 @@ public class OpenAICompatibleChatProvider implements ChatProvider {
     private ChatCompletionChunk parseStreamChunk(String data) {
         try {
             JsonNode chunk = objectMapper.readTree(data);
+            
+            // 检查 choices 是否存在且非空
+            if (!chunk.has("choices") || chunk.get("choices").isNull() || chunk.get("choices").isEmpty()) {
+                log.warn("Stream chunk missing choices: {}", data);
+                return ChatCompletionChunk.builder()
+                        .type(ChatCompletionChunk.ChunkType.CONTENT)
+                        .contentDelta("")
+                        .build();
+            }
+            
             JsonNode choice = chunk.get("choices").get(0);
             JsonNode delta = choice.get("delta");
 
@@ -292,14 +345,25 @@ public class OpenAICompatibleChatProvider implements ChatProvider {
                 // 解析使用统计
                 if (chunk.has("usage") && !chunk.get("usage").isNull()) {
                     JsonNode usageNode = chunk.get("usage");
-                    builder.usage(ChatCompletionResult.Usage.builder()
-                            .promptTokens(usageNode.get("prompt_tokens").asInt())
-                            .completionTokens(usageNode.get("completion_tokens").asInt())
-                            .totalTokens(usageNode.get("total_tokens").asInt())
-                            .build());
+                    // 检查每个字段是否存在
+                    if (usageNode.has("prompt_tokens") && usageNode.has("completion_tokens") && usageNode.has("total_tokens")) {
+                        builder.usage(ChatCompletionResult.Usage.builder()
+                                .promptTokens(usageNode.get("prompt_tokens").asInt())
+                                .completionTokens(usageNode.get("completion_tokens").asInt())
+                                .totalTokens(usageNode.get("total_tokens").asInt())
+                                .build());
+                    }
                 }
 
                 return builder.build();
+            }
+            
+            // 检查 delta 是否存在
+            if (delta == null || delta.isNull()) {
+                return ChatCompletionChunk.builder()
+                        .type(ChatCompletionChunk.ChunkType.CONTENT)
+                        .contentDelta("")
+                        .build();
             }
 
             // 处理内容增量

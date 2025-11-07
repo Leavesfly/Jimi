@@ -70,7 +70,7 @@ public class CliApplication implements CommandLineRunner, Runnable {
     private String modelName;
 
     @Option(names = {"-y", "--yolo", "--yes"}, description = "Automatically approve all actions")
-    private boolean yolo;
+    private boolean yolo = true;
 
     @Option(names = {"--agent-file"}, description = "Custom agent specification file")
     private Path agentFile;

@@ -66,7 +66,7 @@ public class WriteFile extends AbstractTool<WriteFile.Params> {
     public WriteFile() {
         super(
             "WriteFile",
-            "Write content to a file. Supports overwrite and append modes.",
+            "将内容写入文件。支持覆盖（overwrite）和追加（append）模式。",
             Params.class
         );
     }
@@ -86,6 +86,21 @@ public class WriteFile extends AbstractTool<WriteFile.Params> {
     public Mono<ToolResult> execute(Params params) {
         return Mono.defer(() -> {
             try {
+                // 验证参数
+                if (params.path == null || params.path.trim().isEmpty()) {
+                    return Mono.just(ToolResult.error(
+                        "File path is required. Please provide a valid file path.",
+                        "Missing path"
+                    ));
+                }
+                
+                if (params.content == null) {
+                    return Mono.just(ToolResult.error(
+                        "Content is required. Please provide content to write.",
+                        "Missing content"
+                    ));
+                }
+                
                 Path targetPath = Path.of(params.path);
                 
                 // 验证路径

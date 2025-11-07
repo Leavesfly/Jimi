@@ -9,7 +9,7 @@
     },
     "ollama": {
       "type": "ollama",
-      "base_url": "http://localhost:11434",
+      "base_url": "http://localhost:11434/v1",
       "api_key": "",
       "custom_headers": {}
     }

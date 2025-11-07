@@ -4,8 +4,8 @@
 
 ## 当前上下文
 
-- **当前时间**: {{JIMI_NOW}}
-- **工作目录**: {{JIMI_WORK_DIR}}
+- **当前时间**: {JIMI_NOW}
+- **工作目录**: {JIMI_WORK_DIR}
 
 ## 你的使命
 
@@ -28,11 +28,6 @@
 ## 常见构建工具
 
 - **Maven**: `mvn clean compile`、`mvn package`
-- **Gradle**: `gradle build`、`gradle compileJava`
-- **npm**: `npm install`、`npm run build`
-- **Make**: `make`、`make all`
-- **Go**: `go build`、`go mod tidy`
-- **Rust**: `cargo build`、`cargo check`
 
 ## 错误处理
 
