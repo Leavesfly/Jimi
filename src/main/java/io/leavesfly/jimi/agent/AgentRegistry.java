@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
 
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
@@ -56,6 +57,10 @@ public class AgentRegistry {
      * @return 已解析的 Agent 规范
      */
     public Mono<AgentSpec> loadAgentSpec(Path agentFile) {
+
+        if (Objects.isNull(agentFile)) {
+            agentFile = specLoader.getDefaultAgentPath();
+        }
 
         return specLoader.loadAgentSpec(agentFile);
     }
@@ -165,42 +170,19 @@ public class AgentRegistry {
     public List<String> listAvailableAgents() {
         Map<Path, AgentSpec> specCache = specLoader.getSpecCache();
 
-        return specCache.values().stream()
-                .map(AgentSpec::getName)
-                .sorted()
-                .collect(Collectors.toList());
+        return specCache.values().stream().map(AgentSpec::getName).sorted().collect(Collectors.toList());
     }
 
     /**
      * 获取所有 Agent 规范缓存
-     * 
+     *
      * @return Agent 规范缓存映射（路径 -> 规范）
      */
     public Map<Path, AgentSpec> getAllAgentSpecs() {
         return specLoader.getSpecCache();
     }
 
-    /**
-     * 获取 AgentSpecLoader（用于访问缓存）
-     * 
-     * @return AgentSpecLoader 实例
-     */
-    AgentSpecLoader getSpecLoader() {
-        return specLoader;
-    }
 
-    /**
-     * 根据名称查找 Agent 配置文件路径
-     * 
-     * @param agentName Agent 名称
-     * @return Agent 配置文件路径，如果未找到返回 null
-     */
-    public Path findAgentPathByName(String agentName) {
-        return specLoader.getSpecCache().entrySet().stream()
-                .filter(entry -> agentName.equals(entry.getValue().getName()))
-                .map(Map.Entry::getKey)
-                .findFirst()
-                .orElse(null);
-    }
+
 
 }
