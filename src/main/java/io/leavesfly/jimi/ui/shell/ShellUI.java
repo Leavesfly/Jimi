@@ -172,7 +172,7 @@ public class ShellUI implements AutoCloseable {
                 // 打印 LLM 输出的内容部分
                 ContentPart part = contentMsg.getContentPart();
                 if (part instanceof TextPart textPart) {
-                    log.debug("Received content part: [{}]", textPart.getText());
+//                    log.debug("Received content part: [{}]", textPart.getText());
                     printAssistantText(textPart.getText());
                 }
 

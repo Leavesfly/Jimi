@@ -188,65 +188,82 @@ public class AgentExecutor {
     private Mono<Boolean> step() {
         return Mono.defer(() -> {
             LLM llm = runtime.getLlm();
-
-            // 生成工具 Schema
             List<Object> toolSchemas = new ArrayList<>(toolRegistry.getToolSchemas(agent.getTools()));
 
-            // 使用流式API调用 LLM
             return llm.getChatProvider()
-                    .generateStream(
-                            agent.getSystemPrompt(),
-                            context.getHistory(),
-                            toolSchemas
-                    )
-                    .reduce(new StreamAccumulator(), (acc, chunk) -> {
-                        // 处理流式数据块
-                        if (chunk.getType() == ChatCompletionChunk.ChunkType.CONTENT && chunk.getContentDelta() != null
-                                && !chunk.getContentDelta().isEmpty()) {
-                            // 累积文本内容
-                            acc.contentBuilder.append(chunk.getContentDelta());
-                            // 发送到Wire以实时显示
-                            log.debug("Sending content delta to Wire: [{}]", chunk.getContentDelta());
-                            wire.send(new ContentPartMessage(new TextPart(chunk.getContentDelta())));
-                        } else if (chunk.getType() == ChatCompletionChunk.ChunkType.TOOL_CALL) {
-                            // 处理工具调用
-                            handleToolCallChunk(acc, chunk);
-                        } else if (chunk.getType() == ChatCompletionChunk.ChunkType.DONE) {
-                            // 保存使用统计
-                            log.debug("Stream completed, usage: {}", chunk.getUsage());
-                            acc.usage = chunk.getUsage();
-                        }
-                        return acc;
-                    })
-                    .flatMap(acc -> {
-                        // 构建完整的assistant消息
-                        Message assistantMessage = buildMessageFromAccumulator(acc);
-
-                        // 更新token计数
-                        Mono<Void> updateTokens = Mono.empty();
-                        if (acc.usage != null) {
-                            updateTokens = context.updateTokenCount(acc.usage.getTotalTokens());
-                        }
-
-                        // 添加消息到上下文并处理
-                        return updateTokens
-                                .then(context.appendMessage(assistantMessage))
-                                .then(processAssistantMessage(assistantMessage));
-                    })
-                    .onErrorResume(e -> {
-                        // 增强的错误处理：记录详细的错误信息
-                        if (e instanceof WebClientResponseException) {
-                            WebClientResponseException webEx = (WebClientResponseException) e;
-                            log.error("LLM API call failed: status={}, body={}",
-                                    webEx.getStatusCode(), webEx.getResponseBodyAsString(), e);
-                        } else {
-                            log.error("LLM API call failed", e);
-                        }
-                        return context.appendMessage(
-                                Message.assistant("抱歉，我遇到了一个错误：" + e.getMessage())
-                        ).thenReturn(true);
-                    });
+                    .generateStream(agent.getSystemPrompt(), context.getHistory(), toolSchemas)
+                    .reduce(new StreamAccumulator(), this::processStreamChunk)
+                    .flatMap(this::handleStreamCompletion)
+                    .onErrorResume(this::handleLLMError);
         });
+    }
+
+    /**
+     * 处理流式数据块
+     */
+    private StreamAccumulator processStreamChunk(StreamAccumulator acc, ChatCompletionChunk chunk) {
+        switch (chunk.getType()) {
+            case CONTENT:
+                handleContentChunk(acc, chunk);
+                break;
+            case TOOL_CALL:
+                handleToolCallChunk(acc, chunk);
+                break;
+            case DONE:
+                handleDoneChunk(acc, chunk);
+                break;
+        }
+        return acc;
+    }
+
+    /**
+     * 处理内容数据块
+     */
+    private void handleContentChunk(StreamAccumulator acc, ChatCompletionChunk chunk) {
+        String contentDelta = chunk.getContentDelta();
+        if (contentDelta != null && !contentDelta.isEmpty()) {
+            acc.contentBuilder.append(contentDelta);
+//            log.debug("Sending content delta to Wire: [{}]", contentDelta);
+            wire.send(new ContentPartMessage(new TextPart(contentDelta)));
+        }
+    }
+
+    /**
+     * 处理完成数据块
+     */
+    private void handleDoneChunk(StreamAccumulator acc, ChatCompletionChunk chunk) {
+        log.debug("Stream completed, usage: {}", chunk.getUsage());
+        acc.usage = chunk.getUsage();
+    }
+
+    /**
+     * 处理流式完成后的逻辑
+     */
+    private Mono<Boolean> handleStreamCompletion(StreamAccumulator acc) {
+        Message assistantMessage = buildMessageFromAccumulator(acc);
+        Mono<Void> updateTokens = acc.usage != null 
+                ? context.updateTokenCount(acc.usage.getTotalTokens()) 
+                : Mono.empty();
+
+        return updateTokens
+                .then(context.appendMessage(assistantMessage))
+                .then(processAssistantMessage(assistantMessage));
+    }
+
+    /**
+     * 处理LLM调用错误
+     */
+    private Mono<Boolean> handleLLMError(Throwable e) {
+        if (e instanceof WebClientResponseException) {
+            WebClientResponseException webEx = (WebClientResponseException) e;
+            log.error("LLM API call failed: status={}, body={}",
+                    webEx.getStatusCode(), webEx.getResponseBodyAsString(), e);
+        } else {
+            log.error("LLM API call failed", e);
+        }
+        return context.appendMessage(
+                Message.assistant("抱歉，我遇到了一个错误：" + e.getMessage())
+        ).thenReturn(true);
     }
 
     /**
@@ -272,39 +289,59 @@ public class AgentExecutor {
      * - 新的工具调用开始时才会有新的id
      */
     private void handleToolCallChunk(StreamAccumulator acc, ChatCompletionChunk chunk) {
-
-        // 只有当chunk包含新的toolCallId时，才表示新工具调用的开始
-        if (chunk.getToolCallId() != null && !chunk.getToolCallId().isEmpty()) {
-            // 新的工具调用开始
-            if (acc.currentToolCallId != null) {
-                // 保存上一个工具调用
-                acc.toolCalls.add(buildToolCall(acc));
-            }
-
-            // 初始化新的工具调用
-            acc.currentToolCallId = chunk.getToolCallId();
-            acc.currentFunctionName = chunk.getFunctionName(); // 可能为null，在后续chunk中补充
-            acc.currentArguments = new StringBuilder();
+        if (isNewToolCallStart(chunk)) {
+            startNewToolCall(acc, chunk);
         }
 
-        // 更新当前工具调用的函数名（如果之前为null且当前chunk包含）
-        // 这处理函数名在后续chunk中才出现的情况
+        updateFunctionName(acc, chunk);
+        appendArgumentsDelta(acc, chunk);
+    }
+
+    /**
+     * 判断是否为新工具调用的开始
+     */
+    private boolean isNewToolCallStart(ChatCompletionChunk chunk) {
+        return chunk.getToolCallId() != null && !chunk.getToolCallId().isEmpty();
+    }
+
+    /**
+     * 开始新的工具调用
+     */
+    private void startNewToolCall(StreamAccumulator acc, ChatCompletionChunk chunk) {
+        if (acc.currentToolCallId != null) {
+            acc.toolCalls.add(buildToolCall(acc));
+        }
+
+        acc.currentToolCallId = chunk.getToolCallId();
+        acc.currentFunctionName = chunk.getFunctionName();
+        acc.currentArguments = new StringBuilder();
+    }
+
+    /**
+     * 更新函数名（处理函数名在后续chunk中才出现的情况）
+     */
+    private void updateFunctionName(StreamAccumulator acc, ChatCompletionChunk chunk) {
         if (chunk.getFunctionName() != null && !chunk.getFunctionName().isEmpty()) {
             if (acc.currentToolCallId != null && acc.currentFunctionName == null) {
                 acc.currentFunctionName = chunk.getFunctionName();
             }
         }
+    }
 
-        // 累积参数增量（这是最常见的情况）
-        // 关键修复：即使没有toolCallId，只要有currentToolCallId就继续累积
-        if (chunk.getArgumentsDelta() != null && !chunk.getArgumentsDelta().isEmpty()) {
-            if (acc.currentToolCallId != null) {
-                acc.currentArguments.append(chunk.getArgumentsDelta());
-            } else {
-                // 这是一个异常情况：收到参数但没有工具调用上下文
-                log.error("收到孤立的argumentsDelta（没有对应的currentToolCallId）: '{}'",
-                        chunk.getArgumentsDelta().substring(0, Math.min(50, chunk.getArgumentsDelta().length())));
-            }
+    /**
+     * 累积参数增量
+     */
+    private void appendArgumentsDelta(StreamAccumulator acc, ChatCompletionChunk chunk) {
+        String argumentsDelta = chunk.getArgumentsDelta();
+        if (argumentsDelta == null || argumentsDelta.isEmpty()) {
+            return;
+        }
+
+        if (acc.currentToolCallId != null) {
+            acc.currentArguments.append(argumentsDelta);
+        } else {
+            log.error("收到孤立的argumentsDelta（没有对应的currentToolCallId）: '{}'",
+                    argumentsDelta.substring(0, Math.min(50, argumentsDelta.length())));
         }
     }
 
@@ -336,78 +373,95 @@ public class AgentExecutor {
      * 从累加器构建Message
      */
     private Message buildMessageFromAccumulator(StreamAccumulator acc) {
-        // 如果还有未完成的工具调用，添加它
+        finalizeCurrentToolCall(acc);
+        
+        String content = acc.contentBuilder.toString();
+        log.info("构建Assistant消息: content_length={}, toolCalls_count={}",
+                content.length(), acc.toolCalls.size());
+
+        List<ToolCall> validToolCalls = filterValidToolCalls(acc.toolCalls);
+        log.info("过滤后有效工具调用数量: {} (原始: {})", validToolCalls.size(), acc.toolCalls.size());
+
+        return validToolCalls.isEmpty() 
+                ? Message.assistant(content)
+                : Message.assistant(content.isEmpty() ? null : content, validToolCalls);
+    }
+
+    /**
+     * 完成当前未完成的工具调用
+     */
+    private void finalizeCurrentToolCall(StreamAccumulator acc) {
         if (acc.currentToolCallId != null && !acc.currentToolCallId.isEmpty()) {
-
             acc.toolCalls.add(buildToolCall(acc));
-
-            // 清空当前工具调用状态，防止重复添加
             acc.currentToolCallId = null;
             acc.currentFunctionName = null;
             acc.currentArguments = new StringBuilder();
         }
+    }
 
-        String content = acc.contentBuilder.toString();
-
-        // 记录构建的消息信息
-        log.info("构建Assistant消息: content_length={}, toolCalls_count={}",
-                content.length(), acc.toolCalls.size());
-
-        // 去重：移除id为空或重复的工具调用
+    /**
+     * 过滤有效的工具调用
+     */
+    private List<ToolCall> filterValidToolCalls(List<ToolCall> toolCalls) {
         List<ToolCall> validToolCalls = new ArrayList<>();
         Set<String> seenIds = new HashSet<>();
 
-        for (int i = 0; i < acc.toolCalls.size(); i++) {
-            ToolCall tc = acc.toolCalls.get(i);
-
-            // 检查id是否有效
-            if (tc.getId() == null || tc.getId().trim().isEmpty()) {
-                log.error("工具调用#{}缺少id，跳过此工具调用", i);
+        for (int i = 0; i < toolCalls.size(); i++) {
+            ToolCall tc = toolCalls.get(i);
+            
+            if (!isValidToolCall(tc, i, seenIds)) {
                 continue;
             }
 
-            // 检查是否重复
-            if (seenIds.contains(tc.getId())) {
-                log.warn("发现重复的工具调用id: {}，跳过重复项", tc.getId());
-                continue;
-            }
-
-            // 检查function对象
-            if (tc.getFunction() == null) {
-                log.error("工具调用#{} (id={})缺少function对象，跳过此工具调用", i, tc.getId());
-                continue;
-            }
-
-            // 检查function.name
-            if (tc.getFunction().getName() == null || tc.getFunction().getName().trim().isEmpty()) {
-                log.error("工具调用#{} (id={})缺少function.name，跳过此工具调用", i, tc.getId());
-                continue;
-            }
-
-            // 检查arguments
-            if (tc.getFunction().getArguments() == null) {
-                log.warn("工具调用#{} (id={}, name={})的arguments为null，将使用空对象",
-                        i, tc.getId(), tc.getFunction().getName());
-            }
-
-            // 添加到有效列表
             validToolCalls.add(tc);
             seenIds.add(tc.getId());
-
-            log.info("有效工具调用#{}: id={}, function={}, arguments_length={}",
-                    validToolCalls.size() - 1,
-                    tc.getId(),
-                    tc.getFunction().getName(),
-                    tc.getFunction().getArguments() != null ? tc.getFunction().getArguments().length() : 0);
+            logValidToolCall(tc, validToolCalls.size() - 1);
         }
 
-        log.info("过滤后有效工具调用数量: {} (原始: {})", validToolCalls.size(), acc.toolCalls.size());
+        return validToolCalls;
+    }
 
-        if (!validToolCalls.isEmpty()) {
-            return Message.assistant(content.isEmpty() ? null : content, validToolCalls);
-        } else {
-            return Message.assistant(content);
+    /**
+     * 验证工具调用是否有效
+     */
+    private boolean isValidToolCall(ToolCall tc, int index, Set<String> seenIds) {
+        if (tc.getId() == null || tc.getId().trim().isEmpty()) {
+            log.error("工具调用#{}缺少id，跳过此工具调用", index);
+            return false;
         }
+
+        if (seenIds.contains(tc.getId())) {
+            log.warn("发现重复的工具调用id: {}，跳过重复项", tc.getId());
+            return false;
+        }
+
+        if (tc.getFunction() == null) {
+            log.error("工具调用#{} (id={})缺少function对象，跳过此工具调用", index, tc.getId());
+            return false;
+        }
+
+        if (tc.getFunction().getName() == null || tc.getFunction().getName().trim().isEmpty()) {
+            log.error("工具调用#{} (id={})缺少function.name，跳过此工具调用", index, tc.getId());
+            return false;
+        }
+
+        if (tc.getFunction().getArguments() == null) {
+            log.warn("工具调用#{} (id={}, name={})的arguments为null，将使用空对象",
+                    index, tc.getId(), tc.getFunction().getName());
+        }
+
+        return true;
+    }
+
+    /**
+     * 记录有效工具调用信息
+     */
+    private void logValidToolCall(ToolCall tc, int index) {
+        log.info("有效工具调用#{}: id={}, function={}, arguments_length={}",
+                index,
+                tc.getId(),
+                tc.getFunction().getName(),
+                tc.getFunction().getArguments() != null ? tc.getFunction().getArguments().length() : 0);
     }
 
     /**
@@ -444,20 +498,36 @@ public class AgentExecutor {
      * 执行工具调用
      */
     private Mono<Void> executeToolCalls(List<ToolCall> toolCalls) {
+        log.info("Starting execution of {} tool calls", toolCalls.size());
+        
         // 并行执行所有工具调用
         List<Mono<Message>> toolResultMonos = new ArrayList<>();
 
-        for (ToolCall toolCall : toolCalls) {
-            Mono<Message> resultMono = executeToolCall(toolCall);
+        for (int i = 0; i < toolCalls.size(); i++) {
+            final int toolIndex = i; // 必须是final类型供lambda使用
+            ToolCall toolCall = toolCalls.get(i);
+//            log.debug("Preparing to execute tool call #{}: {}", toolIndex, toolCall);
+            Mono<Message> resultMono = executeToolCall(toolCall)
+                    .doOnError(e -> log.error("Tool call #{} failed", toolIndex, e))
+                    .onErrorResume(e -> {
+                        log.error("Caught error in tool call #{}, returning error message", toolIndex, e);
+                        String toolCallId = (toolCall != null && toolCall.getId() != null) 
+                                ? toolCall.getId() : "unknown_" + toolIndex;
+                        return Mono.just(Message.tool(toolCallId, 
+                                "Tool execution failed: " + e.getMessage()));
+                    });
             toolResultMonos.add(resultMono);
         }
 
         // 等待所有工具执行完成，并添加结果到上下文
         return Flux.merge(toolResultMonos)
                 .collectList()
+                .doOnNext(results -> log.info("Collected {} tool results", results.size()))
                 .flatMap(results -> {
                     // 批量添加工具结果消息
-                    return context.appendMessage(results);
+                    return context.appendMessage(results)
+                            .doOnSuccess(v -> log.info("Successfully appended {} tool results to context", results.size()))
+                            .doOnError(e -> log.error("Failed to append tool results to context", e));
                 });
     }
 
@@ -465,147 +535,284 @@ public class AgentExecutor {
      * 执行单个工具调用
      */
     private Mono<Message> executeToolCall(ToolCall toolCall) {
-        // 首先验证toolCall的完整性
+        return Mono.defer(() -> {
+            try {
+                ValidationResult validation = validateToolCall(toolCall);
+                if (!validation.isValid()) {
+                    log.warn("Tool call validation failed: {}", validation.getErrorMessage());
+                    return Mono.just(Message.tool(validation.getToolCallId(), validation.getErrorMessage()));
+                }
+
+                String toolName = toolCall.getFunction().getName();
+                String toolCallId = validation.getToolCallId();
+                
+                // 获取原始参数（可能为null）
+                String rawArgs = toolCall.getFunction().getArguments();
+                log.debug("Tool arguments (raw) for {}: {}", toolName, rawArgs);
+                
+                // 标准化参数
+                String normalizedArgs = normalizeArguments(rawArgs, toolName);
+                String toolSignature = toolName + ":" + normalizedArgs;
+
+                log.info("Executing tool: {} with id: {}", toolName, toolCallId);
+
+                Mono<Message> incompleteJsonCheck = checkIncompleteJson(normalizedArgs, toolName, toolCallId, toolSignature);
+                if (incompleteJsonCheck != null) {
+                    return incompleteJsonCheck;
+                }
+
+                return executeValidToolCall(toolName, normalizedArgs, toolCallId, toolSignature);
+            } catch (Exception e) {
+                log.error("Unexpected error in executeToolCall", e);
+                String errorToolCallId = (toolCall != null && toolCall.getId() != null) 
+                        ? toolCall.getId() : "unknown";
+                return Mono.just(Message.tool(errorToolCallId, 
+                        "Internal error executing tool: " + e.getMessage()));
+            }
+        });
+    }
+
+    /**
+     * 验证工具调用
+     */
+    private ValidationResult validateToolCall(ToolCall toolCall) {
         if (toolCall == null) {
             log.error("Received null toolCall");
-            return Mono.just(Message.tool(
-                    "invalid_tool_call",
-                    "Error: Tool not found: null"
-            ));
+            return ValidationResult.invalid("invalid_tool_call", "Error: Tool not found: null");
         }
 
         if (toolCall.getFunction() == null) {
             log.error("ToolCall {} has null function", toolCall.getId());
-            return Mono.just(Message.tool(
-                    toolCall.getId() != null ? toolCall.getId() : "unknown",
-                    "Error: Tool not found: null"
-            ));
+            String id = toolCall.getId() != null ? toolCall.getId() : "unknown";
+            return ValidationResult.invalid(id, "Error: Tool not found: null");
         }
 
         String toolName = toolCall.getFunction().getName();
-        String arguments = toolCall.getFunction().getArguments();
-        String rawToolCallId = toolCall.getId();
-
-        // 验证工具名
         if (toolName == null || toolName.trim().isEmpty()) {
-            log.error("ToolCall {} has null or empty tool name. ToolCall: {}", rawToolCallId, toolCall);
-            return Mono.just(Message.tool(
-                    rawToolCallId != null ? rawToolCallId : "unknown",
-                    "Error: Tool not found: null"
-            ));
+            log.error("ToolCall {} has null or empty tool name. ToolCall: {}", toolCall.getId(), toolCall);
+            String id = toolCall.getId() != null ? toolCall.getId() : "unknown";
+            return ValidationResult.invalid(id, "Error: Tool not found: null");
         }
 
-        // 验证并标准化toolCallId
-        final String toolCallId;
+        String toolCallId = normalizeToolCallId(toolCall.getId(), toolName);
+        return ValidationResult.valid(toolCallId);
+    }
+
+    /**
+     * 标准化工具调用ID
+     */
+    private String normalizeToolCallId(String rawToolCallId, String toolName) {
         if (rawToolCallId == null || rawToolCallId.trim().isEmpty()) {
             log.warn("ToolCall for {} has no ID, generating one", toolName);
-            toolCallId = "generated_" + System.currentTimeMillis();
-        } else {
-            toolCallId = rawToolCallId;
+            return "generated_" + System.currentTimeMillis();
         }
+        return rawToolCallId;
+    }
 
-        log.info("Executing tool: {} with id: {}", toolName, toolCallId);
-        log.debug("Tool arguments (raw): {}", arguments);
-
-        // 验证参数并标准化
-        String normalizedArgs = arguments;
+    /**
+     * 标准化参数
+     */
+    private String normalizeArguments(String arguments, String toolName) {
         if (arguments == null || arguments.trim().isEmpty()) {
             log.warn("Empty or null arguments for tool: {}, using empty object", toolName);
-            normalizedArgs = "{}";
-        } else {
-            // 检测并修复双重转义问题
-            // 如果 arguments 是 "{\"命令\": \"ls\"}"，需要解析为 {"command": "ls"}
-            String trimmed = arguments.trim();
-            if (trimmed.startsWith("\"") && trimmed.endsWith("\"") && trimmed.length() > 2) {
-                try {
-                    // 尝试把trimmed当作被转义的JSON字符串解析
-                    String unescaped = trimmed.substring(1, trimmed.length() - 1)
-                            .replace("\\\"", "\"")
-                            .replace("\\\\", "\\");
-                    log.warn("Detected double-escaped JSON arguments for tool {}. Original: {}, Unescaped: {}",
-                            toolName, arguments, unescaped);
-                    normalizedArgs = unescaped;
-                } catch (Exception e) {
-                    log.debug("Failed to unescape arguments, using as-is", e);
+            return "{}";
+        }
+
+        return unescapeDoubleEscapedJson(arguments, toolName);
+    }
+
+    /**
+     * 修复双重转义的JSON和异常格式
+     */
+    private String unescapeDoubleEscapedJson(String arguments, String toolName) {
+        String trimmed = arguments.trim();
+        
+        // 处理末尾带有null的情况: {...}null
+        if (trimmed.endsWith("null") && !trimmed.equals("null")) {
+            int nullIndex = trimmed.lastIndexOf("null");
+            // 确保null前面有有效的JSON结构
+            if (nullIndex > 0) {
+                String beforeNull = trimmed.substring(0, nullIndex).trim();
+                // 检查null前是否是完整的JSON对象或数组
+                if ((beforeNull.startsWith("{") && beforeNull.endsWith("}")) ||
+                    (beforeNull.startsWith("[") && beforeNull.endsWith("]"))) {
+                    log.warn("Detected arguments with trailing 'null' for tool {}. Original: {}, Fixed: {}",
+                            toolName, arguments, beforeNull);
+                    trimmed = beforeNull;
                 }
             }
         }
+        
+        // 处理开头带有null的情况: null{...}
+        if (trimmed.startsWith("null") && !trimmed.equals("null")) {
+            String afterNull = trimmed.substring(4).trim();
+            if ((afterNull.startsWith("{") && afterNull.endsWith("}")) ||
+                (afterNull.startsWith("[") && afterNull.endsWith("]"))) {
+                log.warn("Detected arguments with leading 'null' for tool {}. Original: {}, Fixed: {}",
+                        toolName, arguments, afterNull);
+                trimmed = afterNull;
+            }
+        }
+        
+        // 处理双重转义的JSON
+        if (trimmed.startsWith("\"") && trimmed.endsWith("\"") && trimmed.length() > 2) {
+            try {
+                String unescaped = trimmed.substring(1, trimmed.length() - 1)
+                        .replace("\\\"", "\"")
+                        .replace("\\\\", "\\");
+                log.warn("Detected double-escaped JSON arguments for tool {}. Original: {}, Unescaped: {}",
+                        toolName, arguments, unescaped);
+                return unescaped;
+            } catch (Exception e) {
+                log.debug("Failed to unescape arguments, using as-is", e);
+            }
+        }
+        
+        return trimmed;
+    }
 
-        // 创建工具调用的签名用于重复检测 (使用标准化后的参数)
-        final String toolSignature = toolName + ":" + normalizedArgs;
-
-        // 检查是否为不完整的 JSON
+    /**
+     * 检查不完整的JSON
+     */
+    private Mono<Message> checkIncompleteJson(String normalizedArgs, String toolName, 
+                                              String toolCallId, String toolSignature) {
         String trimmedArgs = normalizedArgs.trim();
         if (trimmedArgs.startsWith("{") && !trimmedArgs.endsWith("}")) {
             log.error("Incomplete JSON arguments for tool {}: {}", toolName, normalizedArgs);
-
-            // 记录不完整JSON错误
-            recentToolErrors.add(toolSignature);
-            if (recentToolErrors.size() > MAX_REPEATED_ERRORS) {
-                recentToolErrors.remove(0);
-            }
-
-            String errorMsg = "Error: Incomplete tool call arguments received from LLM. Arguments: " + normalizedArgs;
-
-            // 检查是否重复出现相同错误
-            boolean allSame = recentToolErrors.stream()
-                    .allMatch(sig -> sig.equals(toolSignature));
-            if (allSame && recentToolErrors.size() >= MAX_REPEATED_ERRORS) {
-                errorMsg += "\n\n⚠️ CRITICAL: This same incomplete JSON error has occurred " +
-                        MAX_REPEATED_ERRORS + " times. The LLM appears to be stuck. " +
-                        "Please report this issue or try a different model.";
-                log.error("Detected repeated incomplete JSON errors: {}", toolSignature);
-            }
-
+            
+            trackToolError(toolSignature);
+            String errorMsg = buildIncompleteJsonErrorMessage(normalizedArgs, toolSignature);
+            
             return Mono.just(Message.tool(toolCallId, errorMsg));
         }
+        return null;
+    }
 
-        final String finalArguments = normalizedArgs;
-        return toolRegistry.execute(toolName, finalArguments)
-                .map(result -> {
-                    // 将工具结果转换为消息
-                    String content;
-                    if (result.isOk()) {
-                        // 成功时清空错误追踪
-                        recentToolErrors.clear();
-                        content = formatToolResult(result);
-                    } else if (result.isError()) {
-                        // 检测重复错误
-                        recentToolErrors.add(toolSignature);
-                        if (recentToolErrors.size() > MAX_REPEATED_ERRORS) {
-                            recentToolErrors.remove(0);
-                        }
+    /**
+     * 构建不完整JSON错误消息
+     */
+    private String buildIncompleteJsonErrorMessage(String normalizedArgs, String toolSignature) {
+        String errorMsg = "Error: Incomplete tool call arguments received from LLM. Arguments: " + normalizedArgs;
+        
+        if (isRepeatedError(toolSignature)) {
+            errorMsg += "\n\n⚠️ CRITICAL: This same incomplete JSON error has occurred " +
+                    MAX_REPEATED_ERRORS + " times. The LLM appears to be stuck. " +
+                    "Please report this issue or try a different model.";
+            log.error("Detected repeated incomplete JSON errors: {}", toolSignature);
+        }
+        
+        return errorMsg;
+    }
 
-                        // 检查是否所有最近的错误都相同
-                        boolean allSame = recentToolErrors.stream()
-                                .allMatch(sig -> sig.equals(toolSignature));
+    /**
+     * 执行有效的工具调用
+     */
+    private Mono<Message> executeValidToolCall(String toolName, String arguments, 
+                                               String toolCallId, String toolSignature) {
+        return toolRegistry.execute(toolName, arguments)
+                .map(result -> convertToolResultToMessage(result, toolCallId, toolSignature))
+                .onErrorResume(e -> handleToolExecutionError(e, toolName, toolCallId));
+    }
 
-                        content = "Error: " + result.getMessage();
-                        if (!result.getOutput().isEmpty()) {
-                            content += "\n" + result.getOutput();
-                        }
+    /**
+     * 将工具结果转换为消息
+     */
+    private Message convertToolResultToMessage(ToolResult result, String toolCallId, String toolSignature) {
+        String content;
+        
+        if (result.isOk()) {
+            recentToolErrors.clear();
+            content = formatToolResult(result);
+        } else if (result.isError()) {
+            trackToolError(toolSignature);
+            content = buildErrorContent(result, toolSignature);
+        } else {
+            content = result.getMessage();
+        }
+        
+        return Message.tool(toolCallId, content);
+    }
 
-                        // 如果检测到重复错误,添加警告
-                        if (allSame && recentToolErrors.size() >= MAX_REPEATED_ERRORS) {
-                            content += "\n\n⚠️ WARNING: You have called this tool with the same arguments " +
-                                    MAX_REPEATED_ERRORS + " times and it keeps failing. " +
-                                    "Please try a different approach or different arguments.";
-                            log.warn("Detected repeated tool call errors: {}", toolSignature);
-                        }
-                    } else {
-                        // REJECTED
-                        content = result.getMessage();
-                    }
+    /**
+     * 构建错误内容
+     */
+    private String buildErrorContent(ToolResult result, String toolSignature) {
+        StringBuilder content = new StringBuilder("Error: ").append(result.getMessage());
+        
+        if (!result.getOutput().isEmpty()) {
+            content.append("\n").append(result.getOutput());
+        }
+        
+        if (isRepeatedError(toolSignature)) {
+            content.append("\n\n⚠️ WARNING: You have called this tool with the same arguments ")
+                   .append(MAX_REPEATED_ERRORS)
+                   .append(" times and it keeps failing. ")
+                   .append("Please try a different approach or different arguments.");
+            log.warn("Detected repeated tool call errors: {}", toolSignature);
+        }
+        
+        return content.toString();
+    }
 
-                    return Message.tool(toolCallId, content);
-                })
-                .onErrorResume(e -> {
-                    log.error("Tool execution failed: {}", toolName, e);
-                    return Mono.just(Message.tool(
-                            toolCallId,
-                            "Tool execution error: " + e.getMessage()
-                    ));
-                });
+    /**
+     * 记录工具错误
+     */
+    private void trackToolError(String toolSignature) {
+        recentToolErrors.add(toolSignature);
+        if (recentToolErrors.size() > MAX_REPEATED_ERRORS) {
+            recentToolErrors.remove(0);
+        }
+    }
+
+    /**
+     * 检查是否为重复错误
+     */
+    private boolean isRepeatedError(String toolSignature) {
+        return recentToolErrors.stream().allMatch(sig -> sig.equals(toolSignature)) 
+                && recentToolErrors.size() >= MAX_REPEATED_ERRORS;
+    }
+
+    /**
+     * 处理工具执行错误
+     */
+    private Mono<Message> handleToolExecutionError(Throwable e, String toolName, String toolCallId) {
+        log.error("Tool execution failed: {}", toolName, e);
+        return Mono.just(Message.tool(toolCallId, "Tool execution error: " + e.getMessage()));
+    }
+
+    /**
+     * 工具调用验证结果
+     */
+    private static class ValidationResult {
+        private final boolean valid;
+        private final String toolCallId;
+        private final String errorMessage;
+
+        private ValidationResult(boolean valid, String toolCallId, String errorMessage) {
+            this.valid = valid;
+            this.toolCallId = toolCallId;
+            this.errorMessage = errorMessage;
+        }
+
+        static ValidationResult valid(String toolCallId) {
+            return new ValidationResult(true, toolCallId, null);
+        }
+
+        static ValidationResult invalid(String toolCallId, String errorMessage) {
+            return new ValidationResult(false, toolCallId, errorMessage);
+        }
+
+        boolean isValid() {
+            return valid;
+        }
+
+        String getToolCallId() {
+            return toolCallId;
+        }
+
+        String getErrorMessage() {
+            return errorMessage;
+        }
     }
 
     /**

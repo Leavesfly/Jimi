@@ -1,6 +1,7 @@
 package io.leavesfly.jimi.tool;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -111,7 +112,7 @@ public class ToolRegistry {
                 // 执行工具（使用原始类型）
                 return executeToolUnchecked(tool, params);
 
-            } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            } catch (JsonProcessingException e) {
                 // JSON解析错误 - 提供更详细的错误信息
                 log.error("JSON parsing failed for tool {}: {}. Arguments: '{}'", 
                         toolName, e.getMessage(), arguments);
@@ -249,8 +250,8 @@ public class ToolRegistry {
         function.set("parameters", parameters);
         schema.set("function", function);
         
-        // 记录生成的 schema 以便调试
-        log.debug("Generated schema for tool {}: {}", tool.getName(), schema.toPrettyString());
+//        // 记录生成的 schema 以便调试
+//        log.debug("Generated schema for tool {}: {}", tool.getName(), schema.toPrettyString());
 
         return schema;
     }

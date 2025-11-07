@@ -16,6 +16,7 @@ import io.leavesfly.jimi.llm.message.ToolCall;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -88,8 +89,8 @@ public class OpenAICompatibleChatProvider implements ChatProvider {
                         .bodyToMono(JsonNode.class)
                         .map(this::parseResponse)
                         .onErrorResume(e -> {
-                            if (e instanceof org.springframework.web.reactive.function.client.WebClientResponseException) {
-                                org.springframework.web.reactive.function.client.WebClientResponseException webEx = 
+                            if (e instanceof WebClientResponseException) {
+                                WebClientResponseException webEx =
                                     (org.springframework.web.reactive.function.client.WebClientResponseException) e;
                                 log.error("{} API error: status={}, body={}", 
                                         providerName, webEx.getStatusCode(), webEx.getResponseBodyAsString());
@@ -115,12 +116,12 @@ public class OpenAICompatibleChatProvider implements ChatProvider {
         return Flux.defer(() -> {
             try {
                 ObjectNode requestBody = buildRequestBody(systemPrompt, history, tools, true);
-                log.debug("Sending streaming request to {}, body: {}", providerName, requestBody);
+//                log.debug("Sending streaming request to {}, body: {}", providerName, requestBody);
                 
                 // 记录完整的请求体以便调试
-                if (tools != null && !tools.isEmpty()) {
-                    log.info("{} request with {} tools, full body: {}", providerName, tools.size(), requestBody.toPrettyString());
-                }
+//                if (tools != null && !tools.isEmpty()) {
+//                    log.info("{} request with {} tools, full body: {}", providerName, tools.size(), requestBody.toPrettyString());
+//                }
 
                 return webClient.post()
                         .uri("/chat/completions")
@@ -128,7 +129,7 @@ public class OpenAICompatibleChatProvider implements ChatProvider {
                         .bodyValue(requestBody)
                         .retrieve()
                         .bodyToFlux(String.class)
-                        .doOnNext(line -> log.debug("Received SSE line: {}", line))
+//                        .doOnNext(line -> log.debug("Received SSE line: {}", line))
                         .filter(line -> {
                             // 支持两种格式：1) data: {json}  2) {json}
                             if (line.trim().isEmpty()) return false;
@@ -149,8 +150,8 @@ public class OpenAICompatibleChatProvider implements ChatProvider {
                             // 使用 flatMap 替代 map,以便捕获单个chunk的解析错误而不中断整个流
                             try {
                                 ChatCompletionChunk chunk = parseStreamChunk(data);
-                                log.debug("Parsed chunk: type={}, contentDelta={}", 
-                                        chunk.getType(), chunk.getContentDelta());
+//                                log.debug("Parsed chunk: type={}, contentDelta={}",
+//                                        chunk.getType(), chunk.getContentDelta());
                                 return Mono.just(chunk);
                             } catch (Exception e) {
                                 log.warn("Failed to parse stream chunk, skipping: {}", data, e);
