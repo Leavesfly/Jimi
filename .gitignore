@@ -33,6 +33,7 @@ build/
 ### VS Code ###
 .vscode/
 .qoder/
+.jimi/
 
 ### Mac OS ###
 .DS_Store

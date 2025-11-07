@@ -18,16 +18,31 @@
     "qwen-max": {
       "provider": "qwen",
       "model": "qwen-max",
-      "max_context_size": 32000
+      "max_context_size": 200000
     },
-    "qwen2.5-coder:32b": {
+    "qwen3-Coder-Plus": {
+      "provider": "qwen",
+      "model": "qwen3-Coder-Plus",
+      "max_context_size": 200000
+    },
+    "Moonshot-Kimi-K2-Instruct": {
+      "provider": "qwen",
+      "model": "Moonshot-Kimi-K2-Instruct",
+      "max_context_size": 200000
+    },
+    "qwen3:4b-instruct-2507-q8_0": {
       "provider": "ollama",
-      "model": "qwen2.5-coder:32b",
-      "max_context_size": 32768
+      "model": "qwen3:4b-instruct-2507-q8_0",
+      "max_context_size": 8000
+    },
+    "qwen3:4b-thinking-2507-q8_0": {
+      "provider": "ollama",
+      "model": "qwen3:4b-thinking-2507-q8_0",
+      "max_context_size": 8000
     }
   },
   "loop_control": {
-    "max_steps_per_run": 10,
-    "max_retries_per_step": 3
+    "max_steps_per_run": 30,
+    "max_retries_per_step": 10
   }
 }
