@@ -1,0 +1,99 @@
+package io.leavesfly.jimi.soul.toolcall;
+
+import lombok.extern.slf4j.Slf4j;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * 工具错误追踪器
+ * <p>
+ * 职责：
+ * - 追踪工具调用错误
+ * - 检测重复错误
+ * - 提供错误统计和警告
+ */
+@Slf4j
+public class ToolErrorTracker {
+
+    private static final int MAX_REPEATED_ERRORS = 3; // 最大重复错误次数
+
+    // 用于跟踪连续的工具调用错误
+    private final List<String> recentToolErrors = new ArrayList<>();
+
+    /**
+     * 记录工具错误
+     *
+     * @param toolSignature 工具签名（工具名:参数）
+     */
+    public void trackError(String toolSignature) {
+        recentToolErrors.add(toolSignature);
+        if (recentToolErrors.size() > MAX_REPEATED_ERRORS) {
+            recentToolErrors.remove(0);
+        }
+    }
+
+    /**
+     * 清除错误记录
+     */
+    public void clearErrors() {
+        recentToolErrors.clear();
+    }
+
+    /**
+     * 检查是否为重复错误
+     *
+     * @param toolSignature 工具签名
+     * @return true 表示是重复错误
+     */
+    public boolean isRepeatedError(String toolSignature) {
+        return recentToolErrors.stream().allMatch(sig -> sig.equals(toolSignature))
+                && recentToolErrors.size() >= MAX_REPEATED_ERRORS;
+    }
+
+    /**
+     * 构建不完整JSON错误消息
+     *
+     * @param normalizedArgs 标准化后的参数
+     * @param toolSignature  工具签名
+     * @return 错误消息
+     */
+    public String buildIncompleteJsonErrorMessage(String normalizedArgs, String toolSignature) {
+        String errorMsg = "Error: Incomplete tool call arguments received from LLM. Arguments: " + normalizedArgs;
+
+        if (isRepeatedError(toolSignature)) {
+            errorMsg += "\n\n⚠️ CRITICAL: This same incomplete JSON error has occurred " +
+                    MAX_REPEATED_ERRORS + " times. The LLM appears to be stuck. " +
+                    "Please report this issue or try a different model.";
+            log.error("Detected repeated incomplete JSON errors: {}", toolSignature);
+        }
+
+        return errorMsg;
+    }
+
+    /**
+     * 构建工具执行错误内容
+     *
+     * @param errorMessage  错误消息
+     * @param output        输出内容
+     * @param toolSignature 工具签名
+     * @return 错误内容
+     */
+    public String buildErrorContent(String errorMessage, String output, String toolSignature) {
+        StringBuilder content = new StringBuilder("Error: ").append(errorMessage);
+
+        if (!output.isEmpty()) {
+            content.append("\n").append(output);
+        }
+
+        if (isRepeatedError(toolSignature)) {
+            content.append("\n\n⚠️ WARNING: You have called this tool with the same arguments ")
+                    .append(MAX_REPEATED_ERRORS)
+                    .append(" times and it keeps failing. ")
+                    .append("Please try a different approach or different arguments.");
+            log.warn("Detected repeated tool call errors: {}", toolSignature);
+        }
+
+        return content.toString();
+    }
+}
