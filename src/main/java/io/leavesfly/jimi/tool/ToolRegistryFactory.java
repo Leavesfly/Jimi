@@ -10,6 +10,8 @@ import io.leavesfly.jimi.tool.file.*;
 import io.leavesfly.jimi.tool.task.Task;
 import io.leavesfly.jimi.tool.think.Think;
 import io.leavesfly.jimi.tool.todo.SetTodoList;
+import io.leavesfly.jimi.tool.web.FetchURL;
+import io.leavesfly.jimi.tool.web.WebSearch;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
@@ -54,6 +56,10 @@ public class ToolRegistryFactory {
         
         // 注册 Bash 工具
         registry.register(createBash(approval));
+        
+        // 注册 Web 工具
+        registry.register(createFetchURL());
+        // registry.register(createWebSearch());
         
         // 注册 Think 工具
         registry.register(createThink());
@@ -144,6 +150,24 @@ public class ToolRegistryFactory {
     private SetTodoList createSetTodoList() {
         return applicationContext.getBean(SetTodoList.class);
     }
+    
+    /**
+     * 创建 FetchURL 工具实例
+     */
+    private FetchURL createFetchURL() {
+        return applicationContext.getBean(FetchURL.class);
+    }
+    
+    // /**
+    //  * 创建 WebSearch 工具实例
+    //  * WebSearch 需要搜索服务配置，如果未配置则使用空参数创建
+    //  * 工具在执行时会检查配置并返回相应错误
+    //  */
+    // private WebSearch createWebSearch() {
+    //     WebSearch tool = applicationContext.getBean(WebSearch.class);
+    //     // TODO: 从配置中读取搜索服务配置（baseUrl, apiKey）
+    //     return tool;
+    // }
     
     /**
      * 创建 Task 工具实例

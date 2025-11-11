@@ -27,8 +27,8 @@ tools:
   - PatchFile
   - Glob
   - Grep
-  #  - WebSearch
-  #  - FetchURL
+#  - WebSearch
+  - FetchURL
   - Think
   - SetTodoList
   - Task
@@ -59,6 +59,6 @@ subagents:
   doc:
     path: doc/agent.yaml
     description: 技术文档编写和维护
-#  research:
-#    path: research/agent.yaml
-#    description: 搜索和研究技术信息
+  research:
+    path: research/agent.yaml
+    description: 搜索和研究技术信息

@@ -17,5 +17,5 @@ tools:
   - ReadFile      # 读取配置文件
   - WriteFile     # 编写部署脚本
   - Grep          # 搜索日志和配置
-  - SearchWeb     # 搜索运维文档
+#  - SearchWeb     # 搜索运维文档
   - Think         # 分析部署策略

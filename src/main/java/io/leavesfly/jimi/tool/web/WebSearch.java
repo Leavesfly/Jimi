@@ -10,6 +10,9 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.config.ConfigurableBeanFactory;
+import org.springframework.context.annotation.Scope;
+import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
@@ -21,8 +24,12 @@ import java.util.Map;
 /**
  * Web 搜索工具
  * 使用搜索服务（如 Moonshot Search）进行网页搜索
+ * 
+ * 使用 @Scope("prototype") 使每次获取都是新实例
  */
 @Slf4j
+@Component
+@Scope(ConfigurableBeanFactory.SCOPE_PROTOTYPE)
 public class WebSearch extends AbstractTool<WebSearch.Params> {
     
     private final String baseUrl;
@@ -30,6 +37,14 @@ public class WebSearch extends AbstractTool<WebSearch.Params> {
     private final Map<String, String> customHeaders;
     private final WebClient webClient;
     private final ObjectMapper objectMapper;
+    
+    /**
+     * 默认构造函数（用于 Spring Bean）
+     * 创建未配置的实例，execute 时会返回错误
+     */
+    public WebSearch(ObjectMapper objectMapper) {
+        this(null, null, null, objectMapper);
+    }
     
     /**
      * 搜索参数
@@ -90,12 +105,16 @@ public class WebSearch extends AbstractTool<WebSearch.Params> {
         this.customHeaders = customHeaders != null ? customHeaders : new HashMap<>();
         this.objectMapper = objectMapper;
         
-        // 创建 WebClient
-        this.webClient = WebClient.builder()
-            .baseUrl(baseUrl)
-            .defaultHeader("User-Agent", "Jimi/0.1.0")
-            .defaultHeader("Authorization", "Bearer " + apiKey)
-            .build();
+        // 创建 WebClient（仅在配置有效时）
+        if (baseUrl != null && !baseUrl.isEmpty() && apiKey != null && !apiKey.isEmpty()) {
+            this.webClient = WebClient.builder()
+                .baseUrl(baseUrl)
+                .defaultHeader("User-Agent", "Jimi/0.1.0")
+                .defaultHeader("Authorization", "Bearer " + apiKey)
+                .build();
+        } else {
+            this.webClient = null;
+        }
     }
     
     @Override

@@ -6,7 +6,7 @@ description: 专门负责技术文档编写和维护的智能体
 system_prompt: system_prompt.md
 
 # 系统提示词参数
-system_prompt_args: {}
+system_prompt_args: { }
 
 # 指定模型（可选，如果不指定则使用全局默认模型）
 model: qwen3-coder-plus
@@ -17,5 +17,5 @@ tools:
   - WriteFile     # 编写文档
   - Grep          # 搜索代码和文档
   - Glob          # 查找相关文件
-  - SearchWeb     # 搜索文档规范
+  - FetchURL      # 获取网页内容
   - Think         # 组织文档结构

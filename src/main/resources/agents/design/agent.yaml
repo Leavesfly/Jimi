@@ -21,5 +21,5 @@ tools:
   - Grep          # 搜索相关代码结构
   - Glob          # 查找项目文件
 #  - SearchWeb     # 搜索设计模式和最佳实践
-#  - FetchURL      # 获取参考资料
+  - FetchURL      # 获取参考资料
   - Think         # 设计思考和方案对比

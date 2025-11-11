@@ -9,11 +9,12 @@ system_prompt: system_prompt.md
 system_prompt_args: {}
 
 # 指定模型（可选，如果不指定则使用全局默认模型）
-model: qwen3-coder-plus
+#model: qwen3-coder-plus
+model: qwen3-max
 
 # 可用工具（专注于信息搜集）
 tools:
-  - SearchWeb     # 搜索技术文档
+#  - SearchWeb     # 搜索技术文档
   - FetchURL      # 获取网页内容
   - ReadFile      # 读取本地文档
   - Grep          # 搜索代码示例
