@@ -82,6 +82,269 @@ Jimi 是一个功能强大的AI驱动的命令行智能代理系统，它将大�
 
 ---
 
+## 🏛️ 全局架构
+
+### 系统整体架构
+
+```mermaid
+graph TB
+    subgraph 用户交互层
+        CLI[CLI命令行]
+        Shell[JLine Shell]
+    end
+    
+    subgraph 核心引擎层
+        Engine[JimiEngine]
+        Executor[AgentExecutor]
+        Context[ExecutionContext]
+        Approval[审批机制]
+        Compaction[上下文压缩]
+    end
+    
+    subgraph Agent系统
+        AgentRegistry[Agent注册表]
+        DefaultAgent[默认Agent]
+        DesignAgent[设计Agent]
+        CodeAgent[编码Agent]
+        ReviewAgent[审查Agent]
+    end
+    
+    subgraph 工具系统
+        ToolRegistry[工具注册表]
+        FileTools[文件工具]
+        BashTools[Shell工具]
+        WebTools[网络工具]
+        MCPTools[MCP工具]
+        SubagentTools[子Agent工具]
+    end
+    
+    subgraph LLM集成层
+        LLMFactory[LLM工厂]
+        ChatProvider[聊天提供商]
+        OpenAI[OpenAI]
+        Moonshot[Moonshot]
+    end
+    
+    subgraph Skills系统
+        SkillRegistry[Skills注册表]
+        SkillMatcher[Skills匹配器]
+        SkillLoader[Skills加载器]
+    end
+    
+    subgraph 外部服务
+        MCPServer[MCP服务]
+        Database[数据库服务]
+        GitService[Git服务]
+    end
+    
+    CLI --> Shell
+    Shell --> Engine
+    Engine --> Executor
+    Executor --> Context
+    Executor --> AgentRegistry
+    Executor --> ToolRegistry
+    Executor --> LLMFactory
+    AgentRegistry --> DefaultAgent
+    AgentRegistry --> DesignAgent
+    AgentRegistry --> CodeAgent
+    AgentRegistry --> ReviewAgent
+    ToolRegistry --> FileTools
+    ToolRegistry --> BashTools
+    ToolRegistry --> WebTools
+    ToolRegistry --> MCPTools
+    ToolRegistry --> SubagentTools
+    LLMFactory --> ChatProvider
+    ChatProvider --> OpenAI
+    ChatProvider --> Moonshot
+    Engine --> Approval
+    Engine --> Compaction
+    Engine --> SkillRegistry
+    SkillRegistry --> SkillMatcher
+    SkillRegistry --> SkillLoader
+    MCPTools --> MCPServer
+    MCPServer --> Database
+    MCPServer --> GitService
+```
+
+### 核心执行流程
+
+```mermaid
+sequenceDiagram
+    participant User as 用户
+    participant Shell as Shell UI
+    participant Engine as JimiEngine
+    participant Agent as Agent
+    participant LLM as LLM Provider
+    participant Tool as Tool System
+    
+    User->>Shell: 输入指令
+    Shell->>Engine: 传递用户消息
+    Engine->>Agent: 选择合适的Agent
+    Agent->>Engine: 获取系统提示词
+    Engine->>LLM: 发送消息(含工具定义)
+    
+    loop 多轮推理
+        LLM-->>Engine: 返回响应(可能含工具调用)
+        
+        alt 包含工具调用
+            Engine->>Tool: 执行工具
+            Tool-->>Engine: 返回工具结果
+            Engine->>LLM: 发送工具结果
+        else 纯文本响应
+            Engine-->>Shell: 返回文本
+            Shell-->>User: 显示结果
+        end
+    end
+```
+
+### Agent协作机制
+
+```mermaid
+graph LR
+    subgraph 主Agent
+        DefaultAgent[默认Agent]
+    end
+    
+    subgraph 专业Agent
+        DesignAgent[设计Agent<br/>需求分析/架构设计]
+        CodeAgent[编码Agent<br/>代码实现/重构]
+        ReviewAgent[审查Agent<br/>代码质量/安全]
+        TestAgent[测试Agent<br/>测试运行/分析]
+        BuildAgent[构建Agent<br/>编译/依赖]
+        DebugAgent[调试Agent<br/>错误修复]
+        DocAgent[文档Agent<br/>文档编写]
+    end
+    
+    DefaultAgent -->|设计任务| DesignAgent
+    DefaultAgent -->|编码任务| CodeAgent
+    DefaultAgent -->|审查任务| ReviewAgent
+    DefaultAgent -->|测试任务| TestAgent
+    DefaultAgent -->|构建任务| BuildAgent
+    DefaultAgent -->|调试任务| DebugAgent
+    DefaultAgent -->|文档任务| DocAgent
+    
+    DesignAgent -.->|设计完成| CodeAgent
+    CodeAgent -.->|实现完成| ReviewAgent
+    ReviewAgent -.->|审查通过| TestAgent
+```
+
+### 工具系统架构
+
+```mermaid
+graph TD
+    subgraph 工具注册机制
+        ToolRegistry[工具注册表]
+        ToolProvider[工具提供者接口]
+        ToolRegistryFactory[工具注册表工厂]
+    end
+    
+    subgraph 内置工具
+        FileTools[文件操作工具]
+        ReadFile[ReadFile]
+        WriteFile[WriteFile]
+        SearchFile[SearchFile]
+        PatchFile[PatchFile]
+        
+        BashTools[Shell工具]
+        RunCommand[RunCommand]
+        
+        WebTools[网络工具]
+        FetchURL[FetchURL]
+        SearchWeb[SearchWeb]
+        
+        ThinkTools[思考工具]
+        Think[Think]
+        
+        TodoTools[待办工具]
+        ManageTodo[ManageTodo]
+    end
+    
+    subgraph 外部工具
+        MCPTools[MCP工具]
+        MCPClient[MCP客户端]
+        HttpClient[HTTP客户端]
+        StdioClient[StdIO客户端]
+    end
+    
+    subgraph 子Agent工具
+        SubagentTools[子Agent任务]
+        DelegateTask[任务委托]
+    end
+    
+    ToolRegistryFactory --> ToolRegistry
+    ToolProvider --> ToolRegistry
+    
+    ToolRegistry --> FileTools
+    ToolRegistry --> BashTools
+    ToolRegistry --> WebTools
+    ToolRegistry --> ThinkTools
+    ToolRegistry --> TodoTools
+    ToolRegistry --> MCPTools
+    ToolRegistry --> SubagentTools
+    
+    FileTools --> ReadFile
+    FileTools --> WriteFile
+    FileTools --> SearchFile
+    FileTools --> PatchFile
+    
+    BashTools --> RunCommand
+    
+    WebTools --> FetchURL
+    WebTools --> SearchWeb
+    
+    ThinkTools --> Think
+    
+    TodoTools --> ManageTodo
+    
+    MCPTools --> MCPClient
+    MCPClient --> HttpClient
+    MCPClient --> StdioClient
+    
+    SubagentTools --> DelegateTask
+```
+
+### 消息总线架构
+
+```mermaid
+graph TB
+    subgraph 消息总线Wire
+        Wire[Wire接口]
+        WireImpl[Wire实现]
+    end
+    
+    subgraph 消息类型
+        SystemMsg[系统消息]
+        UserMsg[用户消息]
+        AssistantMsg[助手消息]
+        ToolCallMsg[工具调用消息]
+        ToolResultMsg[工具结果消息]
+        ErrorMsg[错误消息]
+        StatusMsg[状态消息]
+    end
+    
+    subgraph 消息监听者
+        ShellUI[Shell UI]
+        Logger[日志系统]
+        SessionMgr[会话管理器]
+    end
+    
+    Wire --> WireImpl
+    
+    WireImpl --> SystemMsg
+    WireImpl --> UserMsg
+    WireImpl --> AssistantMsg
+    WireImpl --> ToolCallMsg
+    WireImpl --> ToolResultMsg
+    WireImpl --> ErrorMsg
+    WireImpl --> StatusMsg
+    
+    WireImpl -.-> ShellUI
+    WireImpl -.-> Logger
+    WireImpl -.-> SessionMgr
+```
+
+---
+
 ## 🏗️ 技术栈
 
 ### 核心框架
