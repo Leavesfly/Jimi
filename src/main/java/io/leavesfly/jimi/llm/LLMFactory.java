@@ -194,6 +194,10 @@ public class LLMFactory {
                 return new OpenAICompatibleChatProvider(
                         model, config, objectMapper, "OpenAI");
 
+            case CLAUDE:
+                return new OpenAICompatibleChatProvider(
+                        model, config, objectMapper, "Claude");
+
             default:
                 throw new ConfigException("Unsupported provider type: " + type);
         }

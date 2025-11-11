@@ -12,6 +12,14 @@
       "base_url": "http://localhost:11434/v1",
       "api_key": "",
       "custom_headers": {}
+    },
+    "claude": {
+      "type": "claude",
+      "base_url": "https://api.anthropic.com/v1",
+      "api_key": "xxxx",
+      "custom_headers": {
+        "anthropic-version": "2023-06-01"
+      }
     }
   },
   "models": {
@@ -39,6 +47,21 @@
       "provider": "ollama",
       "model": "qwen3:4b-thinking-2507-q8_0",
       "max_context_size": 8000
+    },
+    "claude-3-5-sonnet-20241022": {
+      "provider": "claude",
+      "model": "claude-3-5-sonnet-20241022",
+      "max_context_size": 200000
+    },
+    "claude-3-5-haiku-20241022": {
+      "provider": "claude",
+      "model": "claude-3-5-haiku-20241022",
+      "max_context_size": 200000
+    },
+    "claude-3-opus-20240229": {
+      "provider": "claude",
+      "model": "claude-3-opus-20240229",
+      "max_context_size": 200000
     }
   },
   "loop_control": {

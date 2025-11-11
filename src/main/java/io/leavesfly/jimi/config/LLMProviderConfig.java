@@ -55,7 +55,9 @@ public class LLMProviderConfig {
 
         @JsonProperty("ollama") OLLAMA,
 
-        @JsonProperty("openai") OPENAI
+        @JsonProperty("openai") OPENAI,
+
+        @JsonProperty("claude") CLAUDE
 
     }
 }
