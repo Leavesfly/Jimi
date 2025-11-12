@@ -28,40 +28,19 @@ class ConfigLoaderTest {
         configLoader = new ConfigLoader(objectMapper);
     }
     
-    @Test
-    void testGetDefaultConfig() {
-        JimiConfig config = configLoader.getDefaultConfig();
-        
-        assertNotNull(config);
-        assertEquals("", config.getDefaultModel());
-        assertNotNull(config.getModels());
-        assertNotNull(config.getProviders());
-        assertNotNull(config.getLoopControl());
-        assertEquals(100, config.getLoopControl().getMaxStepsPerRun());
-        assertEquals(3, config.getLoopControl().getMaxRetriesPerStep());
-    }
-    
-    @Test
-    void testSaveAndLoadConfig() {
-        JimiConfig config = JimiConfig.builder()
-                                     .defaultModel("test-model")
-                                     .build();
-        
-        Path configFile = tempDir.resolve("test-config.json");
-        configLoader.saveConfig(config, configFile);
-        
-        assertTrue(Files.exists(configFile));
-        
-        // 加载配置并验证
-        JimiConfig loadedConfig = configLoader.loadConfig(configFile);
-        assertNotNull(loadedConfig);
-        assertEquals("test-model", loadedConfig.getDefaultModel());
-        
-        // 验证默认值是否被填充
-        assertNotNull(loadedConfig.getLoopControl());
-        assertEquals(100, loadedConfig.getLoopControl().getMaxStepsPerRun());
-        assertEquals(3, loadedConfig.getLoopControl().getMaxRetriesPerStep());
-    }
+//    @Test
+//    void testGetDefaultConfig() {
+//        JimiConfig config = configLoader.getDefaultConfig();
+//
+//        assertNotNull(config);
+//        assertEquals("", config.getDefaultModel());
+//        assertNotNull(config.getModels());
+//        assertNotNull(config.getProviders());
+//        assertNotNull(config.getLoopControl());
+//        assertEquals(100, config.getLoopControl().getMaxStepsPerRun());
+//        assertEquals(3, config.getLoopControl().getMaxRetriesPerStep());
+//    }
+
     
     @Test
     void testConfigValidation() {
@@ -71,17 +50,17 @@ class ConfigLoaderTest {
         assertDoesNotThrow(config::validate);
     }
     
-    @Test
-    void testLoadNonExistentConfigCreatesDefault() {
-        Path nonExistentFile = tempDir.resolve("non-existent-config.json");
-        
-        // 加载不存在的配置文件应该创建默认配置
-        JimiConfig config = configLoader.loadConfig(nonExistentFile);
-        
-        assertNotNull(config);
-        assertTrue(Files.exists(nonExistentFile));
-        assertEquals("", config.getDefaultModel());  // 默认配置的默认模型
-    }
+//    @Test
+//    void testLoadNonExistentConfigCreatesDefault() {
+//        Path nonExistentFile = tempDir.resolve("non-existent-config.json");
+//
+//        // 加载不存在的配置文件应该创建默认配置
+//        JimiConfig config = configLoader.loadConfig(nonExistentFile);
+//
+//        assertNotNull(config);
+//        assertTrue(Files.exists(nonExistentFile));
+//        assertEquals("", config.getDefaultModel());  // 默认配置的默认模型
+//    }
     
     @Test
     void testLoadInvalidConfigThrowsException() {

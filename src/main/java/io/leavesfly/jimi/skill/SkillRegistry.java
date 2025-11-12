@@ -59,10 +59,17 @@ public class SkillRegistry {
     public void initialize() {
         log.info("Initializing SkillRegistry...");
         
-        // 加载全局Skills（从类路径和用户目录）
-        List<Path> globalDirs = skillLoader.getGlobalSkillsDirectories();
         int loadedCount = 0;
         
+        // 1. 先尝试从类路径加载(JAR包模式)
+        List<SkillSpec> classpathSkills = skillLoader.loadSkillsFromClasspath(SkillScope.GLOBAL);
+        for (SkillSpec skill : classpathSkills) {
+            register(skill);
+            loadedCount++;
+        }
+        
+        // 2. 加载全局Skills（从文件系统和用户目录）
+        List<Path> globalDirs = skillLoader.getGlobalSkillsDirectories();
         for (Path dir : globalDirs) {
             List<SkillSpec> skills = skillLoader.loadSkillsFromDirectory(dir, SkillScope.GLOBAL);
             for (SkillSpec skill : skills) {

@@ -47,7 +47,8 @@ public class ConfigLoader {
         if (Files.exists(configFile)) {
             log.debug("Loading config from file: {}", configFile);
             try {
-                config = objectMapper.readValue(configFile.toFile(), JimiConfig.class);
+                // 使用 Files.newInputStream 替代 toFile(),兼容 JAR 包模式
+                config = objectMapper.readValue(Files.newInputStream(configFile), JimiConfig.class);
             } catch (IOException e) {
                 throw new ConfigException("Failed to load config from file: " + configFile, e);
             }
@@ -79,8 +80,9 @@ public class ConfigLoader {
             // 确保目录存在
             Files.createDirectories(configFile.getParent());
 
-            // 写入配置文件
-            objectMapper.writerWithDefaultPrettyPrinter().writeValue(configFile.toFile(), config);
+            // 使用 Files.newOutputStream 替代 toFile(),兼容 JAR 包模式
+            objectMapper.writerWithDefaultPrettyPrinter()
+                .writeValue(Files.newOutputStream(configFile), config);
 
             log.info("Config saved to: {}", configFile);
         } catch (IOException e) {

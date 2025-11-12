@@ -69,8 +69,19 @@ public class AgentRegistry {
     public Mono<Agent> loadAgent(Path agentFile, Runtime runtime) {
         return Mono.defer(() -> {
 
-            // 规范化路径
-            Path absolutePath = agentFile != null ? agentFile.toAbsolutePath().normalize() : specLoader.getDefaultAgentPath();
+            // 规范化路径 - 处理classpath资源和文件系统路径
+            Path absolutePath;
+            if (agentFile != null) {
+                String pathStr = agentFile.toString();
+                if (pathStr.startsWith("classpath:")) {
+                    // classpath资源不需要toAbsolutePath
+                    absolutePath = agentFile;
+                } else {
+                    absolutePath = agentFile.toAbsolutePath().normalize();
+                }
+            } else {
+                absolutePath = specLoader.getDefaultAgentPath();
+            }
 
             // 加载 Agent 规范
             return loadAgentSpec(absolutePath).flatMap(spec -> {
@@ -110,13 +121,23 @@ public class AgentRegistry {
      */
     private String renderSystemPrompt(Path promptPath, Map<String, String> args, BuiltinSystemPromptArgs builtinArgs) {
 
-        Path absolutePath = promptPath.toAbsolutePath().normalize();
-
         String template = null;
         try {
-            template = Files.readString(absolutePath).strip();
+            // 检查是否是classpath资源
+            String pathStr = promptPath.toString();
+            if (pathStr.startsWith("classpath:")) {
+                // 从类路径加载
+                String resourcePath = pathStr.substring("classpath:".length());
+                template = new String(
+                    getClass().getClassLoader().getResourceAsStream(resourcePath).readAllBytes()
+                ).strip();
+            } else {
+                // 从文件系统加载
+                Path absolutePath = promptPath.toAbsolutePath().normalize();
+                template = Files.readString(absolutePath).strip();
+            }
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            throw new RuntimeException("Failed to load system prompt from: " + promptPath, e);
         }
 
         // 准备替换参数
@@ -133,7 +154,7 @@ public class AgentRegistry {
             substitutionMap.putAll(args);
         }
 
-        log.debug("渲染系统提示词: {}", absolutePath);
+        log.debug("渲染系统提示词: {}", promptPath);
 
         // 执行字符串替换
         StringSubstitutor substitutor = new StringSubstitutor(substitutionMap);

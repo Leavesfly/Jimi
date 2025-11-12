@@ -153,7 +153,7 @@
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
             <version>${lombok.version}</version>
-            <scope>provided</scope>
+            <!-- 运行时需要保留注解,不使用 provided scope -->
         </dependency>
 
         <!-- Logging -->
@@ -216,12 +216,7 @@
                     <mainClass>io.leavesfly.jimi.JimiApplication</mainClass>
                     <executable>true</executable>
                     <layout>JAR</layout>
-                    <excludes>
-                        <exclude>
-                            <groupId>org.projectlombok</groupId>
-                            <artifactId>lombok</artifactId>
-                        </exclude>
-                    </excludes>
+                    <!-- 不排除 Lombok,运行时需要其注解 -->
                 </configuration>
                 <executions>
                     <execution>

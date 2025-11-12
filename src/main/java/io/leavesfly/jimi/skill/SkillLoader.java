@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -16,6 +17,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
+import java.util.Enumeration;
 
 /**
  * Skill加载器
@@ -49,6 +54,18 @@ public class SkillLoader {
     private ObjectMapper yamlObjectMapper;
     
     /**
+     * 判断是否在JAR包内运行
+     */
+    private static boolean isRunningFromJar() {
+        try {
+            URL resource = SkillLoader.class.getClassLoader().getResource("skills");
+            return resource != null && resource.getProtocol().equals("jar");
+        } catch (Exception e) {
+            return false;
+        }
+    }
+    
+    /**
      * 获取全局Skills目录列表
      * 返回所有可能的全局Skills目录（按优先级排序）
      * 
@@ -57,18 +74,21 @@ public class SkillLoader {
     public List<Path> getGlobalSkillsDirectories() {
         List<Path> directories = new ArrayList<>();
         
-        // 1. 尝试从类路径加载（resources/skills）
-        try {
-            URL resource = SkillLoader.class.getClassLoader().getResource("skills");
-            if (resource != null) {
-                Path classPathDir = Paths.get(resource.toURI());
-                if (Files.exists(classPathDir) && Files.isDirectory(classPathDir)) {
-                    directories.add(classPathDir);
-                    log.debug("Found skills directory in classpath: {}", classPathDir);
+        // JAR包模式下不返回类路径目录,而是标记为特殊处理
+        if (!isRunningFromJar()) {
+            // 1. 尝试从类路径加载（resources/skills）
+            try {
+                URL resource = SkillLoader.class.getClassLoader().getResource("skills");
+                if (resource != null) {
+                    Path classPathDir = Paths.get(resource.toURI());
+                    if (Files.exists(classPathDir) && Files.isDirectory(classPathDir)) {
+                        directories.add(classPathDir);
+                        log.debug("Found skills directory in classpath: {}", classPathDir);
+                    }
                 }
+            } catch (Exception e) {
+                log.debug("Unable to load skills from classpath", e);
             }
-        } catch (Exception e) {
-            log.debug("Unable to load skills from classpath", e);
         }
         
         // 2. 用户目录（~/.jimi/skills）
@@ -80,6 +100,55 @@ public class SkillLoader {
         }
         
         return directories;
+    }
+    
+    /**
+     * 从JAR包内的类路径加载Skills
+     * 
+     * @param scope Skill作用域
+     * @return 加载的SkillSpec列表
+     */
+    public List<SkillSpec> loadSkillsFromClasspath(SkillScope scope) {
+        List<SkillSpec> skills = new ArrayList<>();
+        
+        if (!isRunningFromJar()) {
+            log.debug("Not running from JAR, skipping classpath loading");
+            return skills;
+        }
+        
+        try {
+            // 扫描skills目录下的所有子目录
+            String[] skillDirs = {"code-review", "unit-testing"}; // 内置的skill目录名
+            
+            for (String skillDirName : skillDirs) {
+                String resourcePath = "skills/" + skillDirName + "/SKILL.md";
+                InputStream inputStream = getClass().getClassLoader().getResourceAsStream(resourcePath);
+                
+                if (inputStream != null) {
+                    try {
+                        SkillSpec skill = parseSkillFromStream(inputStream, resourcePath);
+                        if (skill != null) {
+                            skill.setScope(scope);
+                            // 使用虚拟路径标识
+                            skill.setSkillFilePath(Paths.get("classpath:" + resourcePath));
+                            
+                            skills.add(skill);
+                            log.debug("Loaded skill from classpath: {} ({})", skill.getName(), resourcePath);
+                        }
+                    } catch (Exception e) {
+                        log.warn("Failed to parse skill from classpath: {}", resourcePath, e);
+                    } finally {
+                        inputStream.close();
+                    }
+                }
+            }
+            
+            log.info("Loaded {} skills from classpath", skills.size());
+        } catch (Exception e) {
+            log.error("Failed to load skills from classpath", e);
+        }
+        
+        return skills;
     }
     
     /**
@@ -132,6 +201,27 @@ public class SkillLoader {
     }
     
     /**
+     * 从InputStream解析SKILL.md内容
+     * 用于从JAR包内读取
+     * 
+     * @param inputStream 输入流
+     * @param resourcePath 资源路径(用于日志)
+     * @return 解析的SkillSpec对象，解析失败返回null
+     */
+    private SkillSpec parseSkillFromStream(InputStream inputStream, String resourcePath) {
+        try {
+            // 读取文件全文
+            String fileContent = new String(inputStream.readAllBytes());
+            
+            return parseSkillContent(fileContent, resourcePath);
+            
+        } catch (IOException e) {
+            log.error("Failed to read skill from stream: {}", resourcePath, e);
+            return null;
+        }
+    }
+    
+    /**
      * 解析单个SKILL.md文件
      * 
      * 文件格式：
@@ -152,9 +242,43 @@ public class SkillLoader {
      */
     public SkillSpec parseSkillFile(Path skillFile) {
         try {
-            // 读取文件全文
-            String fileContent = Files.readString(skillFile);
+            // 检查是否是classpath资源
+            String pathStr = skillFile.toString();
+            if (pathStr.startsWith("classpath:")) {
+                // 从类路径读取
+                String resourcePath = pathStr.substring("classpath:".length());
+                InputStream inputStream = getClass().getClassLoader().getResourceAsStream(resourcePath);
+                if (inputStream != null) {
+                    try {
+                        return parseSkillFromStream(inputStream, resourcePath);
+                    } finally {
+                        inputStream.close();
+                    }
+                } else {
+                    log.error("Classpath resource not found: {}", resourcePath);
+                    return null;
+                }
+            }
             
+            // 从文件系统读取
+            String fileContent = Files.readString(skillFile);
+            return parseSkillContent(fileContent, skillFile.toString());
+            
+        } catch (IOException e) {
+            log.error("Failed to read skill file: {}", skillFile, e);
+            return null;
+        }
+    }
+    
+    /**
+     * 解析Skill内容(YAML Front Matter + Markdown)
+     * 
+     * @param fileContent 文件内容
+     * @param filePath 文件路径(用于日志)
+     * @return 解析的SkillSpec对象，解析失败返回null
+     */
+    private SkillSpec parseSkillContent(String fileContent, String filePath) {
+        try {
             // 尝试匹配YAML Front Matter
             Matcher matcher = FRONT_MATTER_PATTERN.matcher(fileContent);
             
@@ -167,7 +291,7 @@ public class SkillLoader {
                 markdownContent = matcher.group(2).trim();
             } else {
                 // 没有Front Matter，使用默认值
-                log.warn("SKILL.md file missing YAML Front Matter: {}", skillFile);
+                log.warn("SKILL.md file missing YAML Front Matter: {}", filePath);
                 yamlContent = null;
                 markdownContent = fileContent.trim();
             }
@@ -200,7 +324,7 @@ public class SkillLoader {
                     }
                     
                 } catch (Exception e) {
-                    log.warn("Failed to parse YAML Front Matter in {}, using defaults", skillFile, e);
+                    log.warn("Failed to parse YAML Front Matter in {}, using defaults", filePath, e);
                 }
             }
             
@@ -211,21 +335,21 @@ public class SkillLoader {
             
             // 验证必填字段
             if (skill.getName() == null || skill.getName().isEmpty()) {
-                log.error("Skill name is required in: {}", skillFile);
+                log.error("Skill name is required in: {}", filePath);
                 return null;
             }
             if (skill.getDescription() == null || skill.getDescription().isEmpty()) {
-                log.warn("Skill description is missing in: {}", skillFile);
+                log.warn("Skill description is missing in: {}", filePath);
                 skill.setDescription("No description");
             }
             if (skill.getContent() == null || skill.getContent().isEmpty()) {
-                log.warn("Skill content is empty in: {}", skillFile);
+                log.warn("Skill content is empty in: {}", filePath);
             }
             
             return skill;
             
-        } catch (IOException e) {
-            log.error("Failed to read skill file: {}", skillFile, e);
+        } catch (Exception e) {
+            log.error("Failed to parse skill content from: {}", filePath, e);
             return null;
         }
     }

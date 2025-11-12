@@ -107,7 +107,7 @@ public class SessionManager {
         Path metadataPath = getMetadataPath();
         if (Files.exists(metadataPath)) {
             try {
-                return objectMapper.readValue(metadataPath.toFile(), Metadata.class);
+                return objectMapper.readValue(Files.newInputStream(metadataPath), Metadata.class);
             } catch (IOException e) {
                 log.warn("Failed to load metadata, using empty metadata", e);
                 return new Metadata();
@@ -121,7 +121,7 @@ public class SessionManager {
         try {
             Files.createDirectories(metadataPath.getParent());
             objectMapper.writerWithDefaultPrettyPrinter()
-                       .writeValue(metadataPath.toFile(), metadata);
+                       .writeValue(Files.newOutputStream(metadataPath), metadata);
         } catch (IOException e) {
             log.error("Failed to save metadata", e);
         }

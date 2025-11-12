@@ -30,7 +30,8 @@ public class ArgumentsNormalizer {
     /**
      * 通用容错函数：将 LLM 工具调用中的 arguments 参数转换为标准 JSON 格式
      * <p>
-     * 八步标准化流程：
+     * 标准化流程：
+     * 0. 校验 arguments 是否已经是合法的 JSON，如果是则直接返回
      * 1. 移除前后多余的 null
      * 2. 处理双重转义
      * 3. 修复字符串值中未转义的引号
@@ -51,6 +52,18 @@ public class ArgumentsNormalizer {
         }
 
         String normalized = arguments.trim();
+        
+        // 步骤 0: 先校验是否已经是合法的 JSON，是的话直接返回
+        try {
+            objectMapper.readTree(normalized);
+            // 如果能够成功解析，说明已经是合法的 JSON，直接返回
+//            log.debug("Arguments is already valid JSON, skip normalization: {}", normalized);
+            return normalized;
+        } catch (Exception e) {
+            // 不是合法的 JSON，继续执行标准化流程
+            log.debug("Arguments is not valid JSON, proceeding with normalization: {}", e.getMessage());
+        }
+        
         String original = normalized; // 保存原始值用于错误信息
 
         // 步骤 1: 移除前后多余的 null

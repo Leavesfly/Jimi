@@ -71,28 +71,38 @@ public class JimiCompleter implements Completer {
         String word = line.word();
         String fullLine = line.line();
         
+        log.debug("Completion triggered - word: '{}', line: '{}', wordIndex: {}", word, fullLine, line.wordIndex());
+        
         try {
             // 1. 元命令补全（以 / 开头）
             if (word.startsWith("/")) {
+                log.debug("Meta command completion for: {}", word);
                 completeMetaCommands(word, candidates);
+                log.debug("Found {} meta command candidates", candidates.size());
                 return;
             }
             
             // 2. 文件路径补全（以 @ 开头）
             if (word.startsWith("@")) {
+                log.debug("File path completion for: {}", word);
                 completeFilePaths(word, candidates);
+                log.debug("Found {} file path candidates", candidates.size());
                 return;
             }
             
             // 3. 常用短语补全（仅在行首或空白后）
             if (shouldCompletePhrase(line, word)) {
+                log.debug("Common phrase completion for: {}", word);
                 completeCommonPhrases(word, candidates);
             }
             
             // 4. 文件扩展名建议（在合适的上下文中）
             if (shouldSuggestFiles(fullLine, word)) {
+                log.debug("File type suggestion for: {}", word);
                 suggestFileTypes(word, candidates);
             }
+            
+            log.debug("Total candidates: {}", candidates.size());
             
         } catch (Exception e) {
             log.error("Error during completion", e);

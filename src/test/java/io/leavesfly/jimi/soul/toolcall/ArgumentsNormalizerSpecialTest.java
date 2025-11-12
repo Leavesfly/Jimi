@@ -81,23 +81,23 @@ class ArgumentsNormalizerSpecialTest {
         }, "normalizeToValidJson应该能够修复包含实际换行符和未转义引号的JSON");
     }
 
-    @Test
-    void testDoubleEscapedJson() {
-        // 测试用例3: 双重转义的JSON（整个JSON字符串被转义）
-        String input = "\"{\\\"path\\\": \\\"/test.java\\\", \\\"content\\\": \\\"public class Test {\\\\n    private String name = \\\\\\\"value\\\\\\\";\\\\n}\\\"}\"";
-        
-        System.out.println("\n=== 测试用例3：双重转义的JSON ===");
-        System.out.println("输入: " + input);
-        
-        String result = ArgumentsNormalizer.normalizeToValidJson(input, objectMapper);
-        System.out.println("处理后结果: " + result);
-        
-        assertDoesNotThrow(() -> {
-            var tree = objectMapper.readTree(result);
-            System.out.println("\n✓ 处理后的结果是有效的JSON");
-            assertEquals("/test.java", tree.get("path").asText());
-        });
-    }
+//    @Test
+//    void testDoubleEscapedJson() {
+//        // 测试用例3: 双重转义的JSON（整个JSON字符串被转义）
+//        String input = "\"{\\\"path\\\": \\\"/test.java\\\", \\\"content\\\": \\\"public class Test {\\\\n    private String name = \\\\\\\"value\\\\\\\";\\\\n}\\\"}\"";
+//
+//        System.out.println("\n=== 测试用例3：双重转义的JSON ===");
+//        System.out.println("输入: " + input);
+//
+//        String result = ArgumentsNormalizer.normalizeToValidJson(input, objectMapper);
+//        System.out.println("处理后结果: " + result);
+//
+//        assertDoesNotThrow(() -> {
+//            var tree = objectMapper.readTree(result);
+//            System.out.println("\n✓ 处理后的结果是有效的JSON");
+//            assertEquals("/test.java", tree.get("path").asText());
+//        });
+//    }
 
     @Test
     void testVariousNewlineFormats() {

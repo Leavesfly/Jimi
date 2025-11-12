@@ -96,7 +96,16 @@ public class ShellUI implements AutoCloseable {
                 .completer(new JimiCompleter(commandRegistry, workingDir))
                 .highlighter(new JimiHighlighter())
                 .parser(new JimiParser())
+                // 禁用事件扩展（!字符）
                 .option(LineReader.Option.DISABLE_EVENT_EXPANSION, true)
+                // 启用自动补全功能
+                .option(LineReader.Option.AUTO_LIST, true)           // 自动显示补全列表
+                .option(LineReader.Option.AUTO_MENU, true)           // 启用自动菜单
+                .option(LineReader.Option.AUTO_MENU_LIST, true)      // 自动显示菜单列表
+                .option(LineReader.Option.INSERT_TAB, false)         // 行首按Tab触发补全而非Tab字符
+                // 其他有用的补全选项
+                .option(LineReader.Option.COMPLETE_IN_WORD, true)    // 允许在单词中间补全
+                .option(LineReader.Option.CASE_INSENSITIVE, true)    // 不区分大小写匹配
                 .build();
 
         // 初始化输出格式化器
