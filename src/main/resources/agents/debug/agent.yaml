@@ -10,7 +10,8 @@ system_prompt_args: {}
 
 # 指定模型（可选，如果不指定则使用全局默认模型）
 model: qwen3-coder-plus
-#model: qwen-max
+#model: qwen3-max
+#model: qwen3-coder-flash
 
 
 # 可用工具（专注于调试）

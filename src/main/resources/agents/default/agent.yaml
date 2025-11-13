@@ -9,13 +9,15 @@ system_prompt: system_prompt.md
 system_prompt_args: { }
 
 # 指定模型（可选，如果不指定则使用全局默认模型）
-#model: qwen-plus-latest
-#model: qwen3:4b-instruct-2507-q8_0
+#model: qwen3-max
+#model: qwen3-coder-flash
 #model: qwen3-coder-plus
-model: qwen3-max
 #model: qwen-max
+#model: qwen-plus-latest
 #model: deepseek-v3.2-exp
 #model: Moonshot-Kimi-K2-Instruct
+#model: qwen3:4b-thinking-2507-q8_0
+model: qwen3:4b-instruct-2507-q8_0
 
 
 # 可用工具列表
@@ -27,7 +29,7 @@ tools:
   - PatchFile
   - Glob
   - Grep
-#  - WebSearch
+  #  - WebSearch
   - FetchURL
   - Think
   - SetTodoList
@@ -53,9 +55,9 @@ subagents:
   debug:
     path: debug/agent.yaml
     description: 调试和修复运行时错误及缺陷
-#  deploy:
-#    path: deploy/agent.yaml
-#    description: 应用部署、配置管理和运维支持
+  #  deploy:
+  #    path: deploy/agent.yaml
+  #    description: 应用部署、配置管理和运维支持
   doc:
     path: doc/agent.yaml
     description: 技术文档编写和维护

@@ -151,7 +151,7 @@ public class AgentExecutor {
         return Mono.defer(() -> {
             // 检查上下文是否超限，触发压缩
             return checkAndCompactContext()
-                    .then(context.checkpoint(true))
+                    .then(context.checkpoint(false))
                     .then(matchAndInjectSkills(stepNo))  // 在每个步骤开始前匹配和注入 Skills
                     .then(step())
                     .flatMap(finished -> {
@@ -547,16 +547,16 @@ public class AgentExecutor {
         int contentLength = content.length();
         int toolCallsCount = acc.toolCalls.size();
 
-        // 简化日志，避免打印过长内容
-        log.info("构建Assistant消息: content_length={}, toolCalls_count={}", contentLength, toolCallsCount);
-
-        // 详细内容使用 debug 级别
-        if (log.isDebugEnabled() && contentLength > 0) {
-            String contentPreview = contentLength > 100
-                    ? content.substring(0, 100) + "... (截断)"
-                    : content;
-            log.debug("Assistant内容预览: {}", contentPreview);
-        }
+//        // 简化日志，避免打印过长内容
+//        log.info("构建Assistant消息: content_length={}, toolCalls_count={}", contentLength, toolCallsCount);
+//
+//        // 详细内容使用 debug 级别
+//        if (log.isDebugEnabled() && contentLength > 0) {
+//            String contentPreview = contentLength > 100
+//                    ? content.substring(0, 100) + "... (截断)"
+//                    : content;
+//            log.debug("Assistant内容预览: {}", contentPreview);
+//        }
 
         List<ToolCall> validToolCalls = toolCallFilter.filterValid(acc.toolCalls);
         log.info("过滤后有效工具调用数量: {} (原始: {})", validToolCalls.size(), acc.toolCalls.size());

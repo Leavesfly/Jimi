@@ -30,6 +30,8 @@ import reactor.core.publisher.Mono;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -57,6 +59,9 @@ public class ShellUI implements AutoCloseable {
     private final AtomicInteger currentLineLength; // 当前行的字符计数
     private Disposable wireSubscription;
 
+    // 审批请求队列
+    private final BlockingQueue<ApprovalRequest> approvalQueue;
+
     // 插件化组件
     private final OutputFormatter outputFormatter;
     private final CommandRegistry commandRegistry;
@@ -77,6 +82,7 @@ public class ShellUI implements AutoCloseable {
         this.activeTools = new HashMap<>();
         this.assistantOutputStarted = new AtomicBoolean(false);
         this.currentLineLength = new AtomicInteger(0);
+        this.approvalQueue = new LinkedBlockingQueue<>();
 
         // 初始化 Terminal
         this.terminal = TerminalBuilder.builder()
@@ -220,6 +226,8 @@ public class ShellUI implements AutoCloseable {
                 activeTools.remove(toolCallId);
             } else if (message instanceof ApprovalRequest approvalRequest) {
                 // 处理审批请求
+                log.info("[ShellUI] Received ApprovalRequest: action={}, description={}", 
+                        approvalRequest.getAction(), approvalRequest.getDescription());
                 handleApprovalRequest(approvalRequest);
             }
         } catch (Exception e) {
@@ -516,10 +524,81 @@ public class ShellUI implements AutoCloseable {
     }
 
     /**
-     * 处理审批请求
-     * 显示审批提示并等待用户输入
+     * 处理审批请求（在 Wire 订阅线程中调用）
+     * 直接在当前线程处理，不再使用队列
      */
     private void handleApprovalRequest(ApprovalRequest request) {
+        try {
+            log.info("[ShellUI] Processing approval request for action: {}", request.getAction());
+            
+            // 如果有助手输出，先换行
+            if (assistantOutputStarted.getAndSet(false)) {
+                terminal.writer().println();
+                terminal.flush();
+            }
+
+            // 打印审批请求
+            terminal.writer().println();
+            terminal.flush();
+            outputFormatter.printStatus("\u26a0\ufe0f  需要审批:");
+            outputFormatter.printInfo("  操作类型: " + request.getAction());
+            outputFormatter.printInfo("  操作描述: " + request.getDescription());
+            terminal.writer().println();
+            terminal.flush();
+
+            // 读取用户输入 - 直接在当前线程读取
+            String prompt = new AttributedString("\u2753 是否批准？[y/n/a] (y=批准, n=拒绝, a=本次会话全部批准): ",
+                    AttributedStyle.DEFAULT.foreground(AttributedStyle.YELLOW).bold())
+                    .toAnsi();
+
+            String response = lineReader.readLine(prompt).trim().toLowerCase();
+
+            // 解析响应
+            ApprovalResponse approvalResponse;
+            switch (response) {
+                case "y":
+                case "yes":
+                    approvalResponse = ApprovalResponse.APPROVE;
+                    outputFormatter.printSuccess("\u2705 已批准");
+                    break;
+                case "a":
+                case "all":
+                    approvalResponse = ApprovalResponse.APPROVE_FOR_SESSION;
+                    outputFormatter.printSuccess("\u2705 已批准（本次会话全部同类操作）");
+                    break;
+                case "n":
+                case "no":
+                default:
+                    approvalResponse = ApprovalResponse.REJECT;
+                    outputFormatter.printError("\u274c 已拒绝");
+                    break;
+            }
+
+            terminal.writer().println();
+            terminal.flush();
+
+            // 发送响应
+            request.resolve(approvalResponse);
+            
+            log.info("[ShellUI] Approval request resolved: {}", approvalResponse);
+
+        } catch (UserInterruptException e) {
+            // 用户按 Ctrl-C，默认拒绝
+            log.info("Approval interrupted by user");
+            outputFormatter.printError("\u274c 审批已取消");
+            request.resolve(ApprovalResponse.REJECT);
+        } catch (Exception e) {
+            log.error("Error handling approval request", e);
+            // 发生错误时默认拒绝
+            request.resolve(ApprovalResponse.REJECT);
+        }
+    }
+
+    /**
+     * 在主线程中处理审批请求
+     * 显示审批提示并等待用户输入
+     */
+    private void handleApprovalRequestInMainThread(ApprovalRequest request) {
         try {
             // 如果有助手输出，先换行
             if (assistantOutputStarted.getAndSet(false)) {
@@ -567,6 +646,11 @@ public class ShellUI implements AutoCloseable {
             // 发送响应
             request.resolve(approvalResponse);
 
+        } catch (UserInterruptException e) {
+            // 用户按 Ctrl-C，默认拒绝
+            log.info("Approval interrupted by user");
+            outputFormatter.printError("\u274c 审批已取消");
+            request.resolve(ApprovalResponse.REJECT);
         } catch (Exception e) {
             log.error("Error handling approval request", e);
             // 发生错误时默认拒绝
