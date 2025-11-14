@@ -34,6 +34,10 @@ public class OpenAICompatibleChatProvider implements ChatProvider {
     private final WebClient webClient;
     private final ObjectMapper objectMapper;
     private final String providerName;
+    
+    // <think>标签解析状态（流式处理）
+    private boolean insideThinkTag = false;
+    private StringBuilder thinkTagBuffer = new StringBuilder();
 
     public OpenAICompatibleChatProvider(
             String modelName,
@@ -115,6 +119,10 @@ public class OpenAICompatibleChatProvider implements ChatProvider {
     ) {
         return Flux.defer(() -> {
             try {
+                // 重置流式处理状态(每次新请求都重置)
+                insideThinkTag = false;
+                thinkTagBuffer = new StringBuilder();
+                
                 ObjectNode requestBody = buildRequestBody(systemPrompt, history, tools, true);
 
                 return webClient.post()
@@ -144,9 +152,10 @@ public class OpenAICompatibleChatProvider implements ChatProvider {
                             // 使用 flatMap 替代 map,以便捕获单个chunk的解析错误而不中断整个流
                             try {
                                 ChatCompletionChunk chunk = parseStreamChunk(data);
-//                                log.debug("Parsed chunk: type={}, contentDelta={}, reasoningDelta={}",
-//                                        chunk.getType(), chunk.getContentDelta(), 
-//                                        data.contains("reasoning_content") ? "HAS_REASONING" : "NO_REASONING");
+//                                log.debug("Parsed chunk: type={}, contentDelta={}, isReasoning={}",
+//                                        chunk.getType(), 
+//                                        chunk.getContentDelta() != null ? chunk.getContentDelta().substring(0, Math.min(50, chunk.getContentDelta().length())) : null,
+//                                        chunk.isReasoning());
                                 return Mono.just(chunk);
                             } catch (Exception e) {
                                 log.warn("Failed to parse stream chunk, skipping: {}", data, e);
@@ -411,11 +420,8 @@ public class OpenAICompatibleChatProvider implements ChatProvider {
             if (delta.has("content") && !delta.get("content").isNull()) {
                 String contentDelta = delta.get("content").asText();
                 if (contentDelta != null && !contentDelta.isEmpty()) {
-                    return ChatCompletionChunk.builder()
-                            .type(ChatCompletionChunk.ChunkType.CONTENT)
-                            .contentDelta(contentDelta)
-                            .isReasoning(false)  // 标记为正式内容
-                            .build();
+                    // 解析 <think> 标签，返回处理后的chunk
+                    return parseThinkTags(contentDelta);
                 }
             }
 
@@ -447,5 +453,87 @@ public class OpenAICompatibleChatProvider implements ChatProvider {
                     .contentDelta("")
                     .build();
         }
+    }
+    
+    /**
+     * 解析内容中的 <think> 标签
+     * 支持流式处理,正确识别标签边界
+     * 
+     * @param contentDelta 内容增量
+     * @return 处理后的chunk
+     */
+    private ChatCompletionChunk parseThinkTags(String contentDelta) {
+        // 将缓冲区和Delta合并后再处理
+        thinkTagBuffer.append(contentDelta);
+        String fullContent = thinkTagBuffer.toString();
+        
+//        log.debug("parseThinkTags: contentDelta='{}', insideThinkTag={}, bufferSize={}",
+//                contentDelta.length() > 100 ? contentDelta.substring(0, 100) + "..." : contentDelta,
+//                insideThinkTag,
+//                thinkTagBuffer.length());
+        
+        StringBuilder processedContent = new StringBuilder();
+        boolean currentIsReasoning = insideThinkTag;
+        
+        int i = 0;
+        int lastProcessedIndex = 0; // 记录已处理的位置
+        
+        while (i < fullContent.length()) {
+            // 检查是否遇到<think>标签开始
+            if (!insideThinkTag && fullContent.startsWith("<think>", i)) {
+//                log.debug("Found <think> tag at position {}", i);
+                insideThinkTag = true;
+                i += 7; // 跳过"<think>"
+                lastProcessedIndex = i;
+                currentIsReasoning = true;
+                continue;
+            }
+            
+            // 检查是否遇到</think>标签结束
+            if (insideThinkTag && fullContent.startsWith("</think>", i)) {
+//                log.debug("Found </think> tag at position {}", i);
+                insideThinkTag = false;
+                i += 8; // 跳过"</think>"
+                lastProcessedIndex = i;
+                currentIsReasoning = false;
+                continue;
+            }
+            
+            // 检查是否可能是部分标签(需要等待下一个chunk)
+            if (i >= fullContent.length() - 8) {
+                // 剩余的字符不够组成完整标签,检查是否是标签的开头
+                String remaining = fullContent.substring(i);
+                if ("<think>".startsWith(remaining) || "</think>".startsWith(remaining)) {
+                    // 可能是部分标签,保留到缓冲区等待下一个chunk
+                    thinkTagBuffer = new StringBuilder(remaining);
+                    break;
+                }
+            }
+            
+            // 添加普通字符
+            processedContent.append(fullContent.charAt(i));
+            lastProcessedIndex = i + 1;
+            i++;
+        }
+        
+        // 如果所有内容都处理完毕,清空缓冲区
+        if (lastProcessedIndex >= fullContent.length()) {
+            thinkTagBuffer = new StringBuilder();
+        }
+        
+        // 如果没有实际内容(只有标签),返回空chunk
+        if (processedContent.length() == 0) {
+            return ChatCompletionChunk.builder()
+                    .type(ChatCompletionChunk.ChunkType.CONTENT)
+                    .contentDelta("")
+                    .build();
+        }
+        
+        // 返回处理后的内容,带上正确的reasoning标记
+        return ChatCompletionChunk.builder()
+                .type(ChatCompletionChunk.ChunkType.CONTENT)
+                .contentDelta(processedContent.toString())
+                .isReasoning(currentIsReasoning)
+                .build();
     }
 }
