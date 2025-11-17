@@ -40,6 +40,10 @@ public class OpenAICompatibleChatProvider implements ChatProvider {
     // <think>标签解析状态（流式处理）
     private boolean insideThinkTag = false;
     private StringBuilder thinkTagBuffer = new StringBuilder();
+    
+    // Kimi K2 thinking 模式检测
+    private boolean isKimiThinkingMode = false;
+    private boolean kimiFirstParagraphSent = false;
 
     public OpenAICompatibleChatProvider(
             String modelName,
@@ -138,6 +142,8 @@ public class OpenAICompatibleChatProvider implements ChatProvider {
                 // 重置流式处理状态(每次新请求都重置)
                 insideThinkTag = false;
                 thinkTagBuffer = new StringBuilder();
+                isKimiThinkingMode = false;
+                kimiFirstParagraphSent = false;
                 
                 ObjectNode requestBody = buildRequestBody(systemPrompt, history, tools, true);
 
@@ -416,6 +422,12 @@ public class OpenAICompatibleChatProvider implements ChatProvider {
             // 处理推理内容（支持多种字段名）
             // 1. reasoning_content - DeepSeek-R1 使用
             // 2. reasoning - Ollama qwen3-thinking 使用
+            
+            // Kimi K2 thinking 模式检测：如果 reasoning_content 字段存在且为 null，说明是 Kimi K2
+            if (delta.has("reasoning_content") && delta.get("reasoning_content").isNull() && delta.has("content")) {
+                isKimiThinkingMode = true;
+            }
+            
             String reasoningField = null;
             if (delta.has("reasoning_content") && !delta.get("reasoning_content").isNull()) {
                 reasoningField = delta.get("reasoning_content").asText();
@@ -424,7 +436,6 @@ public class OpenAICompatibleChatProvider implements ChatProvider {
             }
             
             if (reasoningField != null && !reasoningField.isEmpty()) {
-//                log.debug("Found reasoning content: {}", reasoningField.substring(0, Math.min(50, reasoningField.length())));
                 return ChatCompletionChunk.builder()
                         .type(ChatCompletionChunk.ChunkType.CONTENT)
                         .contentDelta(reasoningField)
@@ -432,11 +443,15 @@ public class OpenAICompatibleChatProvider implements ChatProvider {
                         .build();
             }
 
-            // 处理普通内容增量（也可能包含 <think> 标签，如 Ollama 的 qwen3-thinking 模型）
+            // 处理普通内容增量
             if (delta.has("content") && !delta.get("content").isNull()) {
                 String contentDelta = delta.get("content").asText();
                 if (contentDelta != null && !contentDelta.isEmpty()) {
-                    // 解析 <think> 标签，返回处理后的chunk
+                    // 如果是 Kimi K2 thinking 模式，使用双换行分隔思考和回答
+                    if (isKimiThinkingMode) {
+                        return parseKimiThinkingContent(contentDelta);
+                    }
+                    // 否则解析 <think> 标签
                     return parseThinkTags(contentDelta);
                 }
             }
@@ -483,13 +498,9 @@ public class OpenAICompatibleChatProvider implements ChatProvider {
         thinkTagBuffer.append(contentDelta);
         String fullContent = thinkTagBuffer.toString();
         
-//        log.debug("parseThinkTags: contentDelta='{}', insideThinkTag={}, bufferSize={}",
-//                contentDelta.length() > 100 ? contentDelta.substring(0, 100) + "..." : contentDelta,
-//                insideThinkTag,
-//                thinkTagBuffer.length());
-        
         StringBuilder processedContent = new StringBuilder();
-        boolean currentIsReasoning = insideThinkTag;
+        // 记录第一个实际字符的reasoning状态（而不是最后一个标签的状态）
+        Boolean contentIsReasoning = null;
         
         int i = 0;
         int lastProcessedIndex = 0; // 记录已处理的位置
@@ -497,21 +508,17 @@ public class OpenAICompatibleChatProvider implements ChatProvider {
         while (i < fullContent.length()) {
             // 检查是否遇到<think>标签开始
             if (!insideThinkTag && fullContent.startsWith("<think>", i)) {
-//                log.debug("Found <think> tag at position {}", i);
                 insideThinkTag = true;
                 i += 7; // 跳过"<think>"
                 lastProcessedIndex = i;
-                currentIsReasoning = true;
                 continue;
             }
             
             // 检查是否遇到</think>标签结束
             if (insideThinkTag && fullContent.startsWith("</think>", i)) {
-//                log.debug("Found </think> tag at position {}", i);
                 insideThinkTag = false;
                 i += 8; // 跳过"</think>"
                 lastProcessedIndex = i;
-                currentIsReasoning = false;
                 continue;
             }
             
@@ -521,19 +528,26 @@ public class OpenAICompatibleChatProvider implements ChatProvider {
                 String remaining = fullContent.substring(i);
                 if ("<think>".startsWith(remaining) || "</think>".startsWith(remaining)) {
                     // 可能是部分标签,保留到缓冲区等待下一个chunk
-                    thinkTagBuffer = new StringBuilder(remaining);
                     break;
                 }
             }
             
             // 添加普通字符
             processedContent.append(fullContent.charAt(i));
+            // 记录第一个实际字符时的reasoning状态
+            if (contentIsReasoning == null) {
+                contentIsReasoning = insideThinkTag;
+            }
             lastProcessedIndex = i + 1;
             i++;
         }
         
-        // 如果所有内容都处理完毕,清空缓冲区
-        if (lastProcessedIndex >= fullContent.length()) {
+        // 更新缓冲区：保留未处理的部分
+        if (lastProcessedIndex < fullContent.length()) {
+            // 有未处理的部分（如部分标签），保留在缓冲区
+            thinkTagBuffer = new StringBuilder(fullContent.substring(lastProcessedIndex));
+        } else {
+            // 所有内容都处理完毕，清空缓冲区
             thinkTagBuffer = new StringBuilder();
         }
         
@@ -545,11 +559,77 @@ public class OpenAICompatibleChatProvider implements ChatProvider {
                     .build();
         }
         
-        // 返回处理后的内容,带上正确的reasoning标记
+        // 返回处理后的内容,带上正确的reasoning标记（使用第一个字符时的状态）
+        boolean isReasoning = contentIsReasoning != null && contentIsReasoning;
         return ChatCompletionChunk.builder()
                 .type(ChatCompletionChunk.ChunkType.CONTENT)
                 .contentDelta(processedContent.toString())
-                .isReasoning(currentIsReasoning)
+                .isReasoning(isReasoning)
+                .build();
+    }
+    
+    /**
+     * 解析 Kimi K2 thinking 模式的内容
+     * Kimi K2 使用双换行 (\n\n) 分隔思考过程和正式回答
+     * 第一个\n\n之前的内容为思考过程，之后的为正式回答
+     * 
+     * @param contentDelta 内容增量
+     * @return 处理后的chunk
+     */
+    private ChatCompletionChunk parseKimiThinkingContent(String contentDelta) {
+        thinkTagBuffer.append(contentDelta);
+        String fullContent = thinkTagBuffer.toString();
+        
+        // 如果还没发送第一段（思考过程）
+        if (!kimiFirstParagraphSent) {
+            // 查找双换行
+            int doubleNewlinePos = fullContent.indexOf("\n\n");
+            
+            if (doubleNewlinePos >= 0) {
+                // 找到了分隔符
+                String thinkingPart = fullContent.substring(0, doubleNewlinePos);
+                String remaining = fullContent.substring(doubleNewlinePos + 2);
+                
+                // 标记第一段已发送
+                kimiFirstParagraphSent = true;
+                
+                // 保留剩余内容
+                thinkTagBuffer = new StringBuilder(remaining);
+                
+                // 返回思考部分（标记为 reasoning）
+                if (!thinkingPart.isEmpty()) {
+                    return ChatCompletionChunk.builder()
+                            .type(ChatCompletionChunk.ChunkType.CONTENT)
+                            .contentDelta(thinkingPart)
+                            .isReasoning(true)
+                            .build();
+                }
+                
+                // 如果思考部分为空，直接返回正式内容
+                if (!remaining.isEmpty()) {
+                    thinkTagBuffer = new StringBuilder();
+                    return ChatCompletionChunk.builder()
+                            .type(ChatCompletionChunk.ChunkType.CONTENT)
+                            .contentDelta(remaining)
+                            .isReasoning(false)
+                            .build();
+                }
+            } else {
+                // 还没找到分隔符，继续缓冲
+                // 不返回任何内容，等待下一个 chunk
+                return ChatCompletionChunk.builder()
+                        .type(ChatCompletionChunk.ChunkType.CONTENT)
+                        .contentDelta("")
+                        .build();
+            }
+        }
+        
+        // 第一段已经发送，后面的全部是正式回答
+        thinkTagBuffer = new StringBuilder();
+        return ChatCompletionChunk.builder()
+                .type(ChatCompletionChunk.ChunkType.CONTENT)
+                .contentDelta(contentDelta)
+                .isReasoning(false)
                 .build();
     }
     

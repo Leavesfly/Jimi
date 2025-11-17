@@ -18,6 +18,8 @@ model: qwen3-max
 
 #model: qwen-max
 
+#model: deepseek-v3.2-exp
+
 #model: Moonshot-Kimi-K2-Instruct
 #model: kimi-k2-thinking
 
