@@ -148,14 +148,20 @@ public class AgentExecutor {
      * Agent 循环步骤
      */
     private Mono<Void> agentLoopStep(int stepNo) {
-        // 检查最大步数
+        // 获取并递增全局步数
+        int globalStepNo = runtime.getSession().incrementAndGetGlobalStep();
+        
+        // 检查全局最大步数
         int maxSteps = runtime.getConfig().getLoopControl().getMaxStepsPerRun();
-        if (stepNo > maxSteps) {
+        if (globalStepNo > maxSteps) {
             return Mono.error(new MaxStepsReachedException(maxSteps));
         }
 
-        // 发送步骤开始消息（带上Agent名称和子Agent标记）
-        wire.send(new StepBegin(stepNo, isSubagent, agentName));
+        // 发送步骤开始消息（使用全局步数）
+        wire.send(new StepBegin(globalStepNo, isSubagent, agentName));
+        
+        log.debug("Agent '{}' local step {}, global step {}/{}", 
+                agentName != null ? agentName : "main", stepNo, globalStepNo, maxSteps);
 
         return Mono.defer(() -> {
             // 检查上下文是否超限，触发压缩
@@ -165,7 +171,8 @@ public class AgentExecutor {
                     .then(step())
                     .flatMap(finished -> {
                         if (finished) {
-                            log.info("Agent loop finished at step {}", stepNo);
+                            log.info("Agent '{}' loop finished at local step {}, global step {}", 
+                                    agentName != null ? agentName : "main", stepNo, globalStepNo);
                             return Mono.empty();
                         } else {
                             // 继续下一步
@@ -173,7 +180,8 @@ public class AgentExecutor {
                         }
                     })
                     .onErrorResume(e -> {
-                        log.error("Error in step {}", stepNo, e);
+                        log.error("Error in Agent '{}' at local step {}, global step {}", 
+                                agentName != null ? agentName : "main", stepNo, globalStepNo, e);
                         wire.send(new StepInterrupted());
                         return Mono.error(e);
                     });

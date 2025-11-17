@@ -131,6 +131,14 @@ public class StrReplaceFile extends AbstractTool<StrReplaceFile.Params> {
                             "Invalid edit"
                         ));
                     }
+                    // 验证 newText 不为 null
+                    if (edit.newText == null) {
+                        edit.newText = "";  // 如果为 null，设置为空字符串
+                    }
+                    // 检查是否为无意义替换
+                    if (edit.old.equals(edit.newText)) {
+                        log.warn("Edit #{}: old and newText are identical, this is a no-op replacement", i + 1);
+                    }
                 }
                 
                 Path targetPath = Path.of(params.path);
@@ -143,11 +151,7 @@ public class StrReplaceFile extends AbstractTool<StrReplaceFile.Params> {
                     ));
                 }
                 
-                ToolResult pathError = validatePath(targetPath);
-                if (pathError != null) {
-                    return Mono.just(pathError);
-                }
-                
+                // 先检查文件是否存在（必须在 validatePath 之前）
                 if (!Files.exists(targetPath)) {
                     return Mono.just(ToolResult.error(
                         String.format("`%s` does not exist.", params.path),
@@ -160,6 +164,12 @@ public class StrReplaceFile extends AbstractTool<StrReplaceFile.Params> {
                         String.format("`%s` is not a file.", params.path),
                         "Invalid path"
                     ));
+                }
+                
+                // 现在验证路径安全性（文件已存在，toRealPath() 才能成功）
+                ToolResult pathError = validatePath(targetPath);
+                if (pathError != null) {
+                    return Mono.just(pathError);
                 }
                 
                 // 请求审批
@@ -255,6 +265,7 @@ public class StrReplaceFile extends AbstractTool<StrReplaceFile.Params> {
     
     /**
      * 验证路径安全性
+     * 注意：调用此方法前必须确保文件存在，否则 toRealPath() 会失败
      */
     private ToolResult validatePath(Path targetPath) {
         try {
@@ -268,7 +279,12 @@ public class StrReplaceFile extends AbstractTool<StrReplaceFile.Params> {
                 );
             }
         } catch (Exception e) {
-            log.warn("Failed to validate path: {}", targetPath, e);
+            // 路径验证失败应该返回错误，而不是默认通过
+            log.error("Path validation failed for: {}", targetPath, e);
+            return ToolResult.error(
+                String.format("Failed to validate path safety: %s", e.getMessage()),
+                "Path validation failed"
+            );
         }
         
         return null;
