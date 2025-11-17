@@ -15,7 +15,7 @@ model: qwen3-coder-plus
 #model: qwen3-coder-flash
 #model: qwen3-next-80b-a3b-instruct
 #model: Moonshot-Kimi-K2-Instruct
-
+#model: kimi-k2-thinking
 
 # 可用工具（专注于设计和规划）
 tools:
@@ -23,6 +23,6 @@ tools:
   - WriteFile     # 编写设计文档
   - Grep          # 搜索相关代码结构
   - Glob          # 查找项目文件
-#  - SearchWeb     # 搜索设计模式和最佳实践
+  - SearchWeb     # 搜索设计模式和最佳实践
   - FetchURL      # 获取参考资料
   - Think         # 设计思考和方案对比

@@ -52,7 +52,7 @@ public class ArgumentsNormalizer {
 
         // 步骤 0: 先校验是否已经是合法的 JSON，是的话直接返回
         if (isStrictValidJson(normalized, objectMapper)) {
-            log.debug("Input is already valid JSON, returning as-is: {}", normalized);
+//            log.debug("Input is already valid JSON, returning as-is: {}", normalized);
             return normalized;
         }
         

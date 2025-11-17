@@ -54,6 +54,14 @@ public class JimiConfig {
     @Builder.Default
     private LoopControlConfig loopControl = new LoopControlConfig();
 
+    /**
+     * Web搜索配置
+     */
+    @JsonProperty("web_search")
+    @Valid
+    @Builder.Default
+    private WebSearchConfig webSearch = new WebSearchConfig();
+
     
     /**
      * 验证配置的一致性

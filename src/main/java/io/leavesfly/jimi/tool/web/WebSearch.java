@@ -3,6 +3,8 @@ package io.leavesfly.jimi.tool.web;
 import com.fasterxml.jackson.annotation.JsonPropertyDescription;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.leavesfly.jimi.config.ConfigLoader;
+import io.leavesfly.jimi.config.WebSearchConfig;
 import io.leavesfly.jimi.tool.AbstractTool;
 import io.leavesfly.jimi.tool.ToolResult;
 import lombok.AllArgsConstructor;
@@ -10,6 +12,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Component;
@@ -40,10 +43,33 @@ public class WebSearch extends AbstractTool<WebSearch.Params> {
     
     /**
      * 默认构造函数（用于 Spring Bean）
-     * 创建未配置的实例，execute 时会返回错误
+     * 从配置文件读取 WebSearch 配置
      */
-    public WebSearch(ObjectMapper objectMapper) {
-        this(null, null, null, objectMapper);
+    @Autowired
+    public WebSearch(ConfigLoader configLoader, ObjectMapper objectMapper) {
+        this(loadConfig(configLoader), objectMapper);
+    }
+    
+    /**
+     * 从 ConfigLoader 加载 WebSearch 配置
+     */
+    private static WebSearchConfig loadConfig(ConfigLoader configLoader) {
+        try {
+            return configLoader.loadConfig(null).getWebSearch();
+        } catch (Exception e) {
+            log.warn("Failed to load WebSearch config, using empty config: {}", e.getMessage());
+            return new WebSearchConfig();
+        }
+    }
+    
+    /**
+     * 从 WebSearchConfig 创建 WebSearch 实例
+     */
+    private WebSearch(WebSearchConfig config, ObjectMapper objectMapper) {
+        this(config.getBaseUrl(), 
+             config.getApiKey(), 
+             config.getCustomHeaders(), 
+             objectMapper);
     }
     
     /**
@@ -147,10 +173,11 @@ public class WebSearch extends AbstractTool<WebSearch.Params> {
             
             // 构建请求体
             Map<String, Object> requestBody = new HashMap<>();
-            requestBody.put("text_query", params.query);
-            requestBody.put("limit", params.limit);
-            requestBody.put("enable_page_crawling", params.includeContent);
-            requestBody.put("timeout_seconds", 30);
+            requestBody.put("query", params.query);
+            requestBody.put("count", params.limit);
+            if (params.includeContent) {
+                requestBody.put("summary", true);
+            }
             
             // 发送请求
             return webClient.post()
@@ -174,7 +201,24 @@ public class WebSearch extends AbstractTool<WebSearch.Params> {
      */
     private Mono<ToolResult> parseSearchResults(JsonNode response, Params params) {
         try {
-            JsonNode resultsNode = response.get("search_results");
+            // 博查AI返回的是 data.webPages.value 数组
+            JsonNode dataNode = response.get("data");
+            if (dataNode == null) {
+                return Mono.just(ToolResult.error(
+                    "Failed to parse search results. Invalid response format.",
+                    "Parse error"
+                ));
+            }
+            
+            JsonNode webPagesNode = dataNode.get("webPages");
+            if (webPagesNode == null) {
+                return Mono.just(ToolResult.error(
+                    "Failed to parse search results. Invalid response format.",
+                    "Parse error"
+                ));
+            }
+            
+            JsonNode resultsNode = webPagesNode.get("value");
             if (resultsNode == null || !resultsNode.isArray()) {
                 return Mono.just(ToolResult.error(
                     "Failed to parse search results. Invalid response format.",
@@ -185,14 +229,13 @@ public class WebSearch extends AbstractTool<WebSearch.Params> {
             List<SearchResult> results = new ArrayList<>();
             for (JsonNode resultNode : resultsNode) {
                 SearchResult result = new SearchResult();
-                result.setSiteName(resultNode.path("site_name").asText(""));
-                result.setTitle(resultNode.path("title").asText(""));
+                result.setSiteName(resultNode.path("siteName").asText(""));
+                result.setTitle(resultNode.path("name").asText(""));
                 result.setUrl(resultNode.path("url").asText(""));
                 result.setSnippet(resultNode.path("snippet").asText(""));
-                result.setContent(resultNode.path("content").asText(""));
-                result.setDate(resultNode.path("date").asText(""));
-                result.setIcon(resultNode.path("icon").asText(""));
-                result.setMime(resultNode.path("mime").asText(""));
+                result.setContent(resultNode.path("summary").asText(""));
+                result.setDate(resultNode.path("datePublished").asText(""));
+                result.setIcon(resultNode.path("siteIcon").asText(""));
                 results.add(result);
             }
             
@@ -212,7 +255,9 @@ public class WebSearch extends AbstractTool<WebSearch.Params> {
                 
                 SearchResult result = results.get(i);
                 output.append("Title: ").append(result.getTitle()).append("\n");
-                output.append("Date: ").append(result.getDate()).append("\n");
+                if (result.getDate() != null && !result.getDate().isEmpty()) {
+                    output.append("Date: ").append(result.getDate()).append("\n");
+                }
                 output.append("URL: ").append(result.getUrl()).append("\n");
                 output.append("Summary: ").append(result.getSnippet()).append("\n\n");
                 

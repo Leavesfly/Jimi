@@ -74,5 +74,10 @@
   "loop_control": {
     "max_steps_per_run": 200,
     "max_retries_per_step": 3
+  },
+  "web_search": {
+    "base_url": "https://api.bochaai.com/v1/web-search",
+    "api_key": "YOUR_API_KEY_HERE",
+    "custom_headers": {}
   }
 }
