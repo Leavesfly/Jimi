@@ -62,6 +62,14 @@ public class JimiConfig {
     @Builder.Default
     private WebSearchConfig webSearch = new WebSearchConfig();
 
+    /**
+     * 向量索引配置
+     */
+    @JsonProperty("vector_index")
+    @Valid
+    @Builder.Default
+    private VectorIndexConfig vectorIndex = new VectorIndexConfig();
+
     
     /**
      * 验证配置的一致性

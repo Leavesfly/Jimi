@@ -17,6 +17,7 @@ import io.leavesfly.jimi.engine.runtime.Runtime;
 import io.leavesfly.jimi.engine.toolcall.ToolCallFilter;
 import io.leavesfly.jimi.engine.toolcall.ToolCallValidator;
 import io.leavesfly.jimi.engine.toolcall.ToolErrorTracker;
+import io.leavesfly.jimi.retrieval.RetrievalPipeline;
 import io.leavesfly.jimi.skill.SkillMatcher;
 import io.leavesfly.jimi.skill.SkillProvider;
 import io.leavesfly.jimi.skill.SkillSpec;
@@ -61,6 +62,7 @@ public class AgentExecutor {
     private final String agentName;    // Agent名称（用于显示）
     private final SkillMatcher skillMatcher;  // Skill匹配器（可选）
     private final SkillProvider skillProvider; // Skill提供者（可选）
+    private final RetrievalPipeline retrievalPipeline; // 检索增强管线（可选）
 
     // 工具调用相关的辅助组件
     private final ToolCallValidator toolCallValidator = new ToolCallValidator();
@@ -98,6 +100,24 @@ public class AgentExecutor {
             SkillMatcher skillMatcher,
             SkillProvider skillProvider
     ) {
+        this(agent, runtime, context, wire, toolRegistry, compaction, isSubagent, skillMatcher, skillProvider, null);
+    }
+
+    /**
+     * 最完整构造函数（支持检索增强）
+     */
+    public AgentExecutor(
+            Agent agent,
+            Runtime runtime,
+            Context context,
+            Wire wire,
+            ToolRegistry toolRegistry,
+            Compaction compaction,
+            boolean isSubagent,
+            SkillMatcher skillMatcher,
+            SkillProvider skillProvider,
+            RetrievalPipeline retrievalPipeline
+    ) {
         this.agent = agent;
         this.runtime = runtime;
         this.context = context;
@@ -108,6 +128,7 @@ public class AgentExecutor {
         this.agentName = agent.getName();
         this.skillMatcher = skillMatcher;
         this.skillProvider = skillProvider;
+        this.retrievalPipeline = retrievalPipeline;
     }
 
     /**
@@ -167,6 +188,7 @@ public class AgentExecutor {
             // 检查上下文是否超限，触发压缩
             return checkAndCompactContext()
                     .then(context.checkpoint(false))
+                    .then(retrieveAndInjectContext(stepNo))  // RAG：检索并注入相关代码片段
                     .then(matchAndInjectSkills(stepNo))  // 在每个步骤开始前匹配和注入 Skills
                     .then(step())
                     .flatMap(finished -> {
@@ -230,6 +252,37 @@ public class AgentExecutor {
 
             return Mono.empty();
         });
+    }
+
+    /**
+     * 检索并注入上下文（RAG）
+     * 
+     * @param stepNo 当前步骤号
+     * @return 完成的 Mono
+     */
+    private Mono<Void> retrieveAndInjectContext(int stepNo) {
+        // 如果没有配置 RetrievalPipeline，直接跳过
+        if (retrievalPipeline == null) {
+            return Mono.empty();
+        }
+
+        // 只在第一步执行检索（基于用户输入）
+        // TODO: 后续可以基于上下文动态触发检索
+        if (stepNo != 1) {
+            return Mono.empty();
+        }
+
+        return retrievalPipeline.retrieveAndInject(context, runtime)
+                .doOnNext(count -> {
+                    if (count > 0) {
+                        log.info("Retrieved and injected {} code chunks into context", count);
+                    }
+                })
+                .doOnError(e -> {
+                    log.warn("Retrieval failed, continuing without RAG: {}", e.getMessage());
+                })
+                .onErrorResume(e -> Mono.empty()) // 检索失败不影响主流程
+                .then();
     }
 
     /**

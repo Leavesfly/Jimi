@@ -11,6 +11,7 @@ import io.leavesfly.jimi.engine.compaction.Compaction;
 import io.leavesfly.jimi.engine.compaction.SimpleCompaction;
 
 import io.leavesfly.jimi.engine.runtime.Runtime;
+import io.leavesfly.jimi.retrieval.RetrievalPipeline;
 import io.leavesfly.jimi.skill.SkillMatcher;
 import io.leavesfly.jimi.skill.SkillProvider;
 import io.leavesfly.jimi.tool.ToolRegistry;
@@ -52,6 +53,7 @@ public class JimiEngine implements Engine {
     private final boolean isSubagent;  // 标记是否为子Agent
     private final SkillMatcher skillMatcher;  // Skill 匹配器（可选）
     private final SkillProvider skillProvider; // Skill 提供者（可选）
+    private final RetrievalPipeline retrievalPipeline; // 检索增强管线（可选）
 
     /**
      * 简化构造函数（保留兼容性）
@@ -101,6 +103,26 @@ public class JimiEngine implements Engine {
             SkillMatcher skillMatcher,
             SkillProvider skillProvider
     ) {
+        this(agent, runtime, context, toolRegistry, objectMapper, wire, compaction, 
+                isSubagent, skillMatcher, skillProvider, null);
+    }
+
+    /**
+     * 最完整构造函数（支持检索增强）
+     */
+    public JimiEngine(
+            Agent agent,
+            Runtime runtime,
+            Context context,
+            ToolRegistry toolRegistry,
+            ObjectMapper objectMapper,
+            Wire wire,
+            Compaction compaction,
+            boolean isSubagent,
+            SkillMatcher skillMatcher,
+            SkillProvider skillProvider,
+            RetrievalPipeline retrievalPipeline
+    ) {
         this.agent = agent;
         this.runtime = runtime;
         this.context = context;
@@ -111,10 +133,11 @@ public class JimiEngine implements Engine {
         this.isSubagent = isSubagent;
         this.skillMatcher = skillMatcher;
         this.skillProvider = skillProvider;
+        this.retrievalPipeline = retrievalPipeline;
         
-        // 创建执行器（传入isSubagent标记和Skill组件）
+        // 创建执行器（传入isSubagent标记、Skill组件和检索管线）
         this.executor = new AgentExecutor(agent, runtime, context, wire, toolRegistry, compaction, 
-                isSubagent, skillMatcher, skillProvider);
+                isSubagent, skillMatcher, skillProvider, retrievalPipeline);
         
         // 设置 Approval 事件转发
         runtime.getApproval().asFlux().subscribe(wire::send);

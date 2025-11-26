@@ -22,6 +22,7 @@ import io.leavesfly.jimi.tool.ToolProvider;
 import io.leavesfly.jimi.tool.mcp.MCPToolProvider;
 import io.leavesfly.jimi.tool.Tool;
 import io.leavesfly.jimi.tool.mcp.MCPToolLoader;
+import io.leavesfly.jimi.retrieval.RetrievalPipeline;
 import io.leavesfly.jimi.skill.SkillMatcher;
 import io.leavesfly.jimi.skill.SkillProvider;
 import io.leavesfly.jimi.wire.WireImpl;
@@ -67,6 +68,8 @@ public class JimiFactory {
     private SkillMatcher skillMatcher;  // Skill 匹配器（可选）
     @Autowired(required = false)
     private SkillProvider skillProvider; // Skill 提供者（可选）
+    @Autowired(required = false)
+    private RetrievalPipeline retrievalPipeline; // 检索增强管线（可选）
 
 
     /**
@@ -131,9 +134,9 @@ public class JimiFactory {
                 // 7. 创建 ToolRegistry（包含 Task 工具和 MCP 工具）
                 ToolRegistry toolRegistry = createToolRegistry(builtinArgs, approval, agentSpec, runtime, mcpConfigFiles);
 
-                // 8. 创建 JimiEngine（注入 Compaction 和 Skill 组件）
+                // 8. 创建 JimiEngine（注入 Compaction、Skill 组件和检索管线）
                 JimiEngine soul = new JimiEngine(agent, runtime, context, toolRegistry, objectMapper, 
-                        new WireImpl(), compaction, false, skillMatcher, skillProvider);
+                        new WireImpl(), compaction, false, skillMatcher, skillProvider, retrievalPipeline);
 
                 // 9. 恢复上下文历史
                 return context.restore()

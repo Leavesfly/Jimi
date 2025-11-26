@@ -79,5 +79,16 @@
     "base_url": "https://api.bochaai.com/v1/web-search",
     "api_key": "YOUR_API_KEY_HERE",
     "custom_headers": {}
+  },
+  "vector_index": {
+    "enabled": false,
+    "index_path": ".jimi/vector_index",
+    "embedding_provider": "qwen",
+    "embedding_model": "text-embedding-v3",
+    "embedding_dimension": 1024,
+    "chunk_size": 50,
+    "chunk_overlap": 5,
+    "top_k": 5,
+    "file_extensions": ".java,.kt,.py,.js,.ts,.go,.rs"
   }
 }
