@@ -8,6 +8,7 @@ import reactor.core.publisher.Mono;
 import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -33,9 +34,77 @@ public class InMemoryVectorStore implements VectorStore {
     private final Map<String, String> fileMD5Cache = new ConcurrentHashMap<>();
     private final ObjectMapper objectMapper;
     private Path indexPath;
+    
+    /**
+     * 当前工作目录（从 Session 获取）
+     * 用于持久化路径计算
+     */
+    private volatile Path workDir;
+    
+    /**
+     * 配置中的相对索引路径
+     */
+    private String configuredIndexPath;
 
     public InMemoryVectorStore(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
+    }
+
+    /**
+     * 设置配置的索引路径（相对路径）
+     * 
+     * @param configuredIndexPath 配置中的索引路径
+     */
+    public void setConfiguredIndexPath(String configuredIndexPath) {
+        this.configuredIndexPath = configuredIndexPath;
+    }
+    
+    /**
+     * 设置工作目录
+     * 应在 Session 创建后调用，用于持久化路径计算
+     * 
+     * @param workDir 工作目录
+     */
+    public void setWorkDir(Path workDir) {
+        if (this.workDir != null && this.workDir.equals(workDir)) {
+            return; // 已经设置且相同，无需重复设置
+        }
+        
+        this.workDir = workDir;
+        // 重新计算 indexPath
+        if (configuredIndexPath != null) {
+            this.indexPath = workDir.resolve(configuredIndexPath);
+            log.debug("Work directory set to: {}, index path updated to: {}", workDir, indexPath);
+        }
+    }
+    
+    /**
+     * 确保工作目录已初始化
+     * 如果 workDir 为 null，使用 user.dir 作为默认值
+     */
+    public void ensureWorkDirInitialized() {
+        if (workDir == null && configuredIndexPath != null) {
+            Path defaultWorkDir = Paths.get(System.getProperty("user.dir"));
+            log.debug("Work directory not set, using default: {}", defaultWorkDir);
+            setWorkDir(defaultWorkDir);
+        }
+    }
+    
+    /**
+     * 解析索引路径
+     * 优先使用 workDir（从 Session 获取），回退到配置的绝对路径
+     * 
+     * @return 索引路径
+     */
+    private Path resolveIndexPath() {
+        if (indexPath != null) {
+            return indexPath;
+        }
+        if (configuredIndexPath != null) {
+            Path baseDir = (workDir != null) ? workDir : Paths.get(System.getProperty("user.dir"));
+            return baseDir.resolve(configuredIndexPath);
+        }
+        return null;
     }
 
     @Override
@@ -161,17 +230,19 @@ public class InMemoryVectorStore implements VectorStore {
 
     @Override
     public Mono<Boolean> save() {
-        if (indexPath == null) {
+        Path savePath = resolveIndexPath();
+        if (savePath == null) {
+            log.warn("Index path not configured, cannot save");
             return Mono.just(false);
         }
 
         return Mono.fromCallable(() -> {
             try {
                 // 创建目录
-                Files.createDirectories(indexPath.getParent());
+                Files.createDirectories(savePath);
 
                 // 保存为JSONL格式（每行一个chunk的JSON）
-                Path chunksFile = indexPath.resolve("chunks.jsonl");
+                Path chunksFile = savePath.resolve("chunks.jsonl");
                 
                 try (BufferedWriter writer = Files.newBufferedWriter(chunksFile, 
                         StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
@@ -186,7 +257,7 @@ public class InMemoryVectorStore implements VectorStore {
                 }
 
                 // 保存向量为二进制文件
-                Path vectorsFile = indexPath.resolve("vectors.bin");
+                Path vectorsFile = savePath.resolve("vectors.bin");
                 try (DataOutputStream dos = new DataOutputStream(
                         new BufferedOutputStream(Files.newOutputStream(vectorsFile,
                                 StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)))) {
@@ -210,10 +281,10 @@ public class InMemoryVectorStore implements VectorStore {
                     }
                 }
 
-                log.info("Saved {} chunks to {}", chunks.size(), indexPath);
+                log.info("Saved {} chunks to {}", chunks.size(), savePath);
                 
                 // 保存MD5缓存
-                Path md5File = indexPath.resolve("md5_cache.json");
+                Path md5File = savePath.resolve("md5_cache.json");
                 objectMapper.writeValue(md5File.toFile(), fileMD5Cache);
                 log.debug("Saved MD5 cache: {} files", fileMD5Cache.size());
                 

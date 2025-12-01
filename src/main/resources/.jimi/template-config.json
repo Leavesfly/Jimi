@@ -90,5 +90,34 @@
     "chunk_overlap": 5,
     "top_k": 5,
     "file_extensions": ".java,.kt,.py,.js,.ts,.go,.rs"
+  },
+  "graph": {
+    "enabled": true,
+    "auto_build": false,
+    "build_on_startup": false,
+    "storage_path": ".jimi/code_graph",
+    "auto_load": true,
+    "auto_save": true,
+    "include_patterns": ["**/*.java"],
+    "exclude_patterns": [
+      "**/test/**",
+      "**/tests/**",
+      "**/target/**",
+      "**/build/**",
+      "**/node_modules/**",
+      "**/.git/**"
+    ],
+    "cache": {
+      "enabled": true,
+      "ttl": 3600,
+      "max_size": 10000
+    },
+    "search": {
+      "max_results": 50,
+      "enable_hybrid": true,
+      "graph_weight": 0.6,
+      "vector_weight": 0.4,
+      "min_similarity": 0.3
+    }
   }
 }

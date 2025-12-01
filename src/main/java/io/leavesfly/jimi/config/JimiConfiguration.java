@@ -5,7 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import io.leavesfly.jimi.graph.GraphManager;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -62,5 +64,25 @@ public class JimiConfiguration {
     @Autowired
     public JimiConfig jimiConfig(ConfigLoader configLoader) {
         return configLoader.loadConfig(null);
+    }
+
+    /**
+     * GraphConfig Bean - 代码图配置
+     * 从 application.yml 中加载 jimi.graph 配置
+     */
+    @Bean
+    @ConfigurationProperties(prefix = "jimi.graph")
+    public GraphConfig graphConfig() {
+        return new GraphConfig();
+    }
+
+    /**
+     * GraphManager Bean - 代码图管理器
+     * 统一管理代码图的生命周期
+     */
+    @Bean
+    @Autowired
+    public GraphManager graphManager(GraphConfig graphConfig) {
+        return new GraphManager(graphConfig);
     }
 }

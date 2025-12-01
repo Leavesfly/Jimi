@@ -2,10 +2,11 @@ package io.leavesfly.jimi.command.custom;
 
 import io.leavesfly.jimi.command.CommandHandler;
 import io.leavesfly.jimi.command.CommandRegistry;
-import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 
 import java.nio.file.Path;
@@ -46,9 +47,10 @@ public class CustomCommandRegistry {
     private Path projectDirectory;
     
     /**
-     * 应用启动时自动加载自定义命令
+     * 应用完全启动后自动加载自定义命令
+     * 使用 ApplicationReadyEvent 确保所有 Bean 已完全初始化,避免循环依赖
      */
-    @PostConstruct
+    @EventListener(ApplicationReadyEvent.class)
     public void init() {
         log.info("Initializing custom command registry...");
         

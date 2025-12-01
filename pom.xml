@@ -36,6 +36,7 @@
         <!-- Test -->
         <junit.version>5.10.2</junit.version>
         <mockito.version>5.11.0</mockito.version>
+        <javaparser.version>3.25.5</javaparser.version>
     </properties>
 
     <dependencyManagement>
@@ -139,6 +140,18 @@
             <groupId>com.github.ben-manes.caffeine</groupId>
             <artifactId>caffeine</artifactId>
             <version>${caffeine.version}</version>
+        </dependency>
+        
+        <!-- JavaParser for AST parsing -->
+        <dependency>
+            <groupId>com.github.javaparser</groupId>
+            <artifactId>javaparser-core</artifactId>
+            <version>${javaparser.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.javaparser</groupId>
+            <artifactId>javaparser-symbol-solver-core</artifactId>
+            <version>${javaparser.version}</version>
         </dependency>
         
         <!-- Netty DNS resolver for macOS -->

@@ -70,6 +70,14 @@ public class JimiConfig {
     @Builder.Default
     private VectorIndexConfig vectorIndex = new VectorIndexConfig();
 
+    /**
+     * 代码图配置
+     */
+    @JsonProperty("graph")
+    @Valid
+    @Builder.Default
+    private GraphConfig graph = new GraphConfig();
+
     
     /**
      * 验证配置的一致性

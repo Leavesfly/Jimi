@@ -64,3 +64,41 @@ jimi:
       log-injection-details: false
       # 是否记录性能指标
       log-performance-metrics: false
+
+  # 代码图功能配置
+  graph:
+    # 是否启用代码图功能
+    enabled: true
+    # 是否自动构建代码图（文件变化时）
+    auto-build: false
+    # 启动时是否构建代码图
+    build-on-startup: false
+    # 图存储路径
+    storage-path: ".jimi/code_graph"
+    # 启动时是否自动加载已保存的图
+    auto-load: true
+    # 构建后是否自动保存
+    auto-save: true
+    # 包含文件模式
+    include-patterns:
+      - "**/*.java"
+    # 排除文件模式
+    exclude-patterns:
+      - "**/test/**"
+      - "**/tests/**"
+      - "**/target/**"
+      - "**/build/**"
+      - "**/node_modules/**"
+      - "**/.git/**"
+    # 缓存配置
+    cache:
+      enabled: true
+      ttl: 3600
+      max-size: 10000
+    # 搜索配置
+    search:
+      max-results: 50
+      enable-hybrid: true
+      graph-weight: 0.6
+      vector-weight: 0.4
+      min-similarity: 0.3

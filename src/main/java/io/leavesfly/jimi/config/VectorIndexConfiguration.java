@@ -86,28 +86,21 @@ public class VectorIndexConfiguration {
         switch (storageType.toLowerCase()) {
             case "memory":
             case "file":
-                store = new InMemoryVectorStore(objectMapper);
+                InMemoryVectorStore inMemoryStore = new InMemoryVectorStore(objectMapper);
+                // 设置配置的索引路径（相对路径）
+                inMemoryStore.setConfiguredIndexPath(indexPath);
+                store = inMemoryStore;
                 break;
             default:
                 log.warn("Unknown storage type: {}, falling back to in-memory", storageType);
-                store = new InMemoryVectorStore(objectMapper);
+                InMemoryVectorStore fallbackStore = new InMemoryVectorStore(objectMapper);
+                fallbackStore.setConfiguredIndexPath(indexPath);
+                store = fallbackStore;
         }
         
-        // 如果配置了自动加载，尝试加载索引
-        if (config.isAutoLoad()) {
-            Path path = Paths.get(indexPath);
-            store.load(path)
-                .doOnSuccess(success -> {
-                    if (success) {
-                        log.info("Index loaded from: {}", indexPath);
-                    } else {
-                        log.debug("No existing index found at: {}", indexPath);
-                    }
-                })
-                .doOnError(e -> log.warn("Failed to load index: {}", e.getMessage()))
-                .onErrorResume(e -> reactor.core.publisher.Mono.just(false))
-                .block();
-        }
+        // 注意: 自动加载需要在工作目录设置后进行
+        // 将在 GraphToolProvider 或 IndexCommandHandler 中设置 workDir 后触发
+        log.debug("VectorStore created, auto-load will be triggered after workDir is set");
         
         return store;
     }
