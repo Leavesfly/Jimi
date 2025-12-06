@@ -17,7 +17,8 @@ model: qwen3-coder-plus
 #model: Moonshot-Kimi-K2-Instruct
 #model: kimi-k2-thinking
 
-# 可用工具（专注于设计和规划）
+# 可用工具(专注于设计和规划)
+# 注意:ask_human工具会通过HumanInteractionToolProvider自动注册,无需在此列出
 tools:
   - ReadFile      # 读取需求文档和现有代码
   - WriteFile     # 编写设计文档
@@ -26,4 +27,3 @@ tools:
   - SearchWeb     # 搜索设计模式和最佳实践
   - FetchURL      # 获取参考资料
   - Think         # 设计思考和方案对比
-  - ask_human     # 人工确认：方案确认、获取用户反馈

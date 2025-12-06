@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.leavesfly.jimi.agent.AgentRegistry;
 import io.leavesfly.jimi.agent.AgentSpec;
 import io.leavesfly.jimi.config.JimiConfig;
+import io.leavesfly.jimi.config.MemoryConfig;
+import io.leavesfly.jimi.engine.context.ActivePromptBuilder;
 import io.leavesfly.jimi.llm.LLM;
 import io.leavesfly.jimi.llm.LLMFactory;
 import io.leavesfly.jimi.session.Session;
@@ -70,6 +72,10 @@ public class JimiFactory {
     private SkillProvider skillProvider; // Skill 提供者（可选）
     @Autowired(required = false)
     private RetrievalPipeline retrievalPipeline; // 检索增强管线（可选）
+    @Autowired(required = false)
+    private ActivePromptBuilder promptBuilder;   // ReCAP 提示构建器（可选）
+    @Autowired(required = false)
+    private MemoryConfig memoryConfig;           // ReCAP 记忆配置（可选）
 
 
     /**
@@ -134,9 +140,10 @@ public class JimiFactory {
                 // 7. 创建 ToolRegistry（包含 Task 工具和 MCP 工具）
                 ToolRegistry toolRegistry = createToolRegistry(builtinArgs, approval, agentSpec, runtime, mcpConfigFiles);
 
-                // 8. 创建 JimiEngine（注入 Compaction、Skill 组件和检索管线）
+                // 8. 创建 JimiEngine（注入 Compaction、Skill 组件、检索管线、ReCAP 组件）
                 JimiEngine soul = new JimiEngine(agent, runtime, context, toolRegistry, objectMapper, 
-                        new WireImpl(), compaction, false, skillMatcher, skillProvider, retrievalPipeline);
+                        new WireImpl(), compaction, false, skillMatcher, skillProvider, retrievalPipeline,
+                        memoryConfig, promptBuilder);
 
                 // 9. 恢复上下文历史
                 return context.restore()

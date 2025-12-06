@@ -51,6 +51,7 @@ public class HelpCommandHandler implements CommandHandler {
         out.println("  /status         - 显示当前状态");
         out.println("  /config         - 显示配置信息");
         out.println("  /tools          - 显示可用工具列表");
+        out.println("  /plan           - 查看任务计划 (detail|history)");
         out.println("  /init           - 分析代码库并生成 AGENTS.md");
         out.println("  /graph, /g      - 代码图管理 (build|stats|clear)");
         out.println("  /clear, /cls    - 清屏");

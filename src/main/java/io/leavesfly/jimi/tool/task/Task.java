@@ -317,24 +317,36 @@ public class Task extends AbstractTool<Task.Params> implements WireAware {
     private Mono<ToolResult> runSubagent(Agent agent, String prompt) {
         return Mono.defer(() -> {
             try {
-                // 1. 子历史文件（基于子 Agent 名称）
+                // 1. 发送 Subagent 启动事件（ReCAP 阶段 2）
+                if (parentWire != null) {
+                    parentWire.send(new io.leavesfly.jimi.wire.message.SubagentStarting(agent.getName(), prompt));
+                }
+                
+                // 2. 子历史文件（基于子 Agent 名称）
                 Path subHistoryFile = getSubagentHistoryFile(agent.getName());
 
-                // 2. 子上下文
+                // 3. 子上下文
                 Context subContext = createSubContext(subHistoryFile);
 
-                // 3. 子工具注册表
+                // 4. 子工具注册表
                 ToolRegistry subToolRegistry = createSubToolRegistry();
 
-                // 4. 子 JimiEngine
+                // 5. 子 JimiEngine
                 JimiEngine subSoul = createSubSoul(agent, subContext, subToolRegistry);
 
-                // 5. 事件桥接（仅审批请求），返回订阅以便释放
+                // 6. 事件桥接（仅审批请求），返回订阅以便释放
                 Disposable subscription = bridgeWireEvents(subSoul.getWire());
 
-                // 6. 运行并后处理
+                // 7. 运行并后处理
                 return subSoul.run(prompt)
                         .then(Mono.defer(() -> extractFinalResponse(subContext, subSoul, prompt)))
+                        .doOnSuccess(result -> {
+                            // 8. 发送 Subagent 完成事件（附带摘要，ReCAP 阶段 2）
+                            if (parentWire != null) {
+                                String summary = result.getOutput();
+                                parentWire.send(new io.leavesfly.jimi.wire.message.SubagentCompleted(summary));
+                            }
+                        })
                         .doFinally(signalType -> {
                             if (subscription != null && !subscription.isDisposed()) {
                                 subscription.dispose();

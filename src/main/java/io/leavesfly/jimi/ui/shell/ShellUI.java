@@ -841,6 +841,20 @@ public class ShellUI implements AutoCloseable {
         if (text == null) return "null";
         return text.length() > 100 ? text.substring(0, 100) + "..." : text;
     }
+    
+    /**
+     * 根据步骤状态字符串返回对应的图标
+     */
+    private String getStatusIcon(String status) {
+        return switch (status) {
+            case "PENDING" -> "⏳";
+            case "IN_PROGRESS", "EXECUTING" -> "🔄";
+            case "DONE", "COMPLETED" -> "✅";
+            case "SKIPPED" -> "⏭️";
+            case "FAILED" -> "❌";
+            default -> "🟠";
+        };
+    }
 
     @Override
     public void close() throws Exception {

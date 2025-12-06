@@ -1,6 +1,8 @@
 package io.leavesfly.jimi.engine;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.leavesfly.jimi.config.MemoryConfig;
+import io.leavesfly.jimi.engine.context.ActivePromptBuilder;
 import io.leavesfly.jimi.engine.context.Context;
 import io.leavesfly.jimi.exception.LLMNotSetException;
 import io.leavesfly.jimi.llm.LLM;
@@ -54,6 +56,8 @@ public class JimiEngine implements Engine {
     private final SkillMatcher skillMatcher;  // Skill 匹配器（可选）
     private final SkillProvider skillProvider; // Skill 提供者（可选）
     private final RetrievalPipeline retrievalPipeline; // 检索增强管线（可选）
+    private final MemoryConfig memoryConfig; // 记忆配置（ReCAP）
+    private final ActivePromptBuilder promptBuilder; // 提示构建器（ReCAP）
 
     /**
      * 简化构造函数（保留兼容性）
@@ -104,11 +108,11 @@ public class JimiEngine implements Engine {
             SkillProvider skillProvider
     ) {
         this(agent, runtime, context, toolRegistry, objectMapper, wire, compaction, 
-                isSubagent, skillMatcher, skillProvider, null);
+                isSubagent, skillMatcher, skillProvider, null, null, null);
     }
 
     /**
-     * 最完整构造函数（支持检索增强）
+     * 最完整构造函数（支持检索增强 + ReCAP）
      */
     public JimiEngine(
             Agent agent,
@@ -121,7 +125,9 @@ public class JimiEngine implements Engine {
             boolean isSubagent,
             SkillMatcher skillMatcher,
             SkillProvider skillProvider,
-            RetrievalPipeline retrievalPipeline
+            RetrievalPipeline retrievalPipeline,
+            MemoryConfig memoryConfig,
+            ActivePromptBuilder promptBuilder
     ) {
         this.agent = agent;
         this.runtime = runtime;
@@ -134,10 +140,13 @@ public class JimiEngine implements Engine {
         this.skillMatcher = skillMatcher;
         this.skillProvider = skillProvider;
         this.retrievalPipeline = retrievalPipeline;
+        this.memoryConfig = memoryConfig;
+        this.promptBuilder = promptBuilder;
         
-        // 创建执行器（传入isSubagent标记、Skill组件和检索管线）
+        // 创建执行器（传入所有组件）
         this.executor = new AgentExecutor(agent, runtime, context, wire, toolRegistry, compaction, 
-                isSubagent, skillMatcher, skillProvider, retrievalPipeline);
+                isSubagent, skillMatcher, skillProvider, retrievalPipeline, 
+                promptBuilder, memoryConfig);
         
         // 设置 Approval 事件转发
         runtime.getApproval().asFlux().subscribe(wire::send);

@@ -102,3 +102,14 @@ jimi:
       graph-weight: 0.6
       vector-weight: 0.4
       min-similarity: 0.3
+
+  # 记忆模块配置 (ReCAP 优化)
+  memory:
+    # 有界提示最大 Token 数
+    active-prompt-max-tokens: 4000
+    # 关键发现窗口大小（最近 N 条进入提示）
+    insights-window-size: 5
+    # 是否启用 ReCAP 优化（默认关闭）
+    enable-recap: false
+    # 最大递归深度
+    max-recursion-depth: 5

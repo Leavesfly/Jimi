@@ -191,7 +191,18 @@ public class KimiChatProvider implements ChatProvider {
         
         // 处理工具调用
         if (msg.getToolCalls() != null && !msg.getToolCalls().isEmpty()) {
-            node.set("tool_calls", objectMapper.valueToTree(msg.getToolCalls()));
+            // 过滤掉无效的工具调用（id或name为空/null的，或者arguments不是有效JSON的）
+            List<ToolCall> validToolCalls = msg.getToolCalls().stream()
+                    .filter(tc -> tc != null
+                            && tc.getId() != null && !tc.getId().isEmpty()
+                            && tc.getFunction() != null
+                            && tc.getFunction().getName() != null && !tc.getFunction().getName().isEmpty()
+                            && isValidJsonArguments(tc.getFunction().getArguments()))
+                    .toList();
+
+            if (!validToolCalls.isEmpty()) {
+                node.set("tool_calls", objectMapper.valueToTree(validToolCalls));
+            }
         }
         
         // 处理工具调用ID
@@ -334,6 +345,24 @@ public class KimiChatProvider implements ChatProvider {
         }
     }
     
+    /**
+     * 校验 arguments 是否为有效的 JSON 格式
+     */
+    private boolean isValidJsonArguments(String arguments) {
+        if (arguments == null || arguments.trim().isEmpty()) {
+            log.warn("ToolCall arguments is null or empty");
+            return false;
+        }
+        
+        try {
+            objectMapper.readTree(arguments);
+            return true;
+        } catch (Exception e) {
+            log.warn("Invalid JSON format in ToolCall arguments: {}", arguments, e);
+            return false;
+        }
+    }
+
     /**
      * 应用限流（如果配置了）
      */

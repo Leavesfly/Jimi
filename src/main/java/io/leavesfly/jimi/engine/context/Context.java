@@ -8,6 +8,8 @@ import io.leavesfly.jimi.skill.SkillSpec;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Mono;
 
+import java.util.Optional;
+
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -55,6 +57,18 @@ public class Context {
     private final List<SkillSpec> activeSkills;
     
     /**
+     * 关键发现列表（外部状态，完整保留）
+     * 用于 ReCAP 记忆优化
+     */
+    private final List<String> keyInsights;
+    
+    /**
+     * 高层意图（从首条用户消息提取）
+     * 用于 ReCAP 记忆优化
+     */
+    private String highLevelIntent;
+    
+    /**
      * 构造器（使用同步Repository）
      */
     public Context(Path fileBackend, ObjectMapper objectMapper) {
@@ -76,6 +90,8 @@ public class Context {
         this.tokenCount = 0;
         this.nextCheckpointId = 0;
         this.activeSkills = new ArrayList<>();
+        this.keyInsights = new ArrayList<>();  // 初始化关键发现列表
+        this.highLevelIntent = null;            // 初始化高层意图
     }
     
 
@@ -285,5 +301,61 @@ public class Context {
             log.debug("Cleared {} active skills", count);
             return Mono.empty();
         });
+    }
+    
+    // ==================== ReCAP 记忆优化相关方法 ====================
+    
+    /**
+     * 添加关键发现
+     * 
+     * @param insight 发现内容
+     * @return 完成的 Mono
+     */
+    public Mono<Void> addKeyInsight(String insight) {
+        return Mono.defer(() -> {
+            if (insight == null || insight.trim().isEmpty()) {
+                return Mono.empty();
+            }
+            
+            keyInsights.add(insight);
+            log.debug("添加关键发现 (总数: {}): {}", keyInsights.size(), insight);
+            
+            // 保持最近 20 条（窗口压缩）
+            if (keyInsights.size() > 20) {
+                keyInsights.remove(0);
+            }
+            
+            return Mono.empty();
+        });
+    }
+    
+    /**
+     * 获取最近的关键发现
+     * 
+     * @param n 数量
+     * @return 发现列表
+     */
+    public List<String> getRecentInsights(int n) {
+        int start = Math.max(0, keyInsights.size() - n);
+        return new ArrayList<>(keyInsights.subList(start, keyInsights.size()));
+    }
+    
+    /**
+     * 设置高层意图
+     * 
+     * @param intent 意图内容
+     */
+    public void setHighLevelIntent(String intent) {
+        this.highLevelIntent = intent;
+        log.debug("设置高层意图: {}", intent);
+    }
+    
+    /**
+     * 获取高层意图
+     * 
+     * @return 意图内容
+     */
+    public String getHighLevelIntent() {
+        return highLevelIntent;
     }
 }

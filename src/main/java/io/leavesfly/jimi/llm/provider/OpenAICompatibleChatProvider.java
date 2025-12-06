@@ -278,12 +278,13 @@ public class OpenAICompatibleChatProvider implements ChatProvider {
 
         // 处理工具调用 - 过滤无效的工具调用
         if (msg.getToolCalls() != null && !msg.getToolCalls().isEmpty()) {
-            // 过滤掉无效的工具调用（id或name为空/null的）
+            // 过滤掉无效的工具调用（id或name为空/null的，或者arguments不是有效JSON的）
             List<ToolCall> validToolCalls = msg.getToolCalls().stream()
                     .filter(tc -> tc != null
                             && tc.getId() != null && !tc.getId().isEmpty()
                             && tc.getFunction() != null
-                            && tc.getFunction().getName() != null && !tc.getFunction().getName().isEmpty())
+                            && tc.getFunction().getName() != null && !tc.getFunction().getName().isEmpty()
+                            && isValidJsonArguments(tc.getFunction().getArguments()))
                     .toList();
 
             if (!validToolCalls.isEmpty()) {
@@ -681,6 +682,24 @@ public class OpenAICompatibleChatProvider implements ChatProvider {
                 .contentDelta(contentDelta)
                 .isReasoning(false)
                 .build();
+    }
+
+    /**
+     * 校验 arguments 是否为有效的 JSON 格式
+     */
+    private boolean isValidJsonArguments(String arguments) {
+        if (arguments == null || arguments.trim().isEmpty()) {
+            log.warn("ToolCall arguments is null or empty");
+            return false;
+        }
+        
+        try {
+            objectMapper.readTree(arguments);
+            return true;
+        } catch (Exception e) {
+            log.warn("Invalid JSON format in ToolCall arguments: {}", arguments, e);
+            return false;
+        }
     }
 
     /**

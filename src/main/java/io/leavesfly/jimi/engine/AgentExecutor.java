@@ -1,7 +1,10 @@
 package io.leavesfly.jimi.engine;
 
 import io.leavesfly.jimi.agent.Agent;
+import io.leavesfly.jimi.config.MemoryConfig;
+import io.leavesfly.jimi.engine.context.ActivePromptBuilder;
 import io.leavesfly.jimi.engine.context.Context;
+import io.leavesfly.jimi.engine.runtime.ParentContext;
 import io.leavesfly.jimi.exception.MaxStepsReachedException;
 import io.leavesfly.jimi.llm.ChatCompletionChunk;
 import io.leavesfly.jimi.llm.ChatCompletionResult;
@@ -31,7 +34,11 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.util.ArrayList;
+import java.util.Deque;
+import java.util.LinkedList;
 import java.util.List;
+import java.util.Optional;
+import java.util.stream.Collectors;
 
 /**
  * Agent 执行器
@@ -63,6 +70,8 @@ public class AgentExecutor {
     private final SkillMatcher skillMatcher;  // Skill匹配器（可选）
     private final SkillProvider skillProvider; // Skill提供者（可选）
     private final RetrievalPipeline retrievalPipeline; // 检索增强管线（可选）
+    private final ActivePromptBuilder promptBuilder;  // 活动提示构建器（ReCAP）
+    private final MemoryConfig memoryConfig;          // 记忆配置（ReCAP）
 
     // 工具调用相关的辅助组件
     private final ToolCallValidator toolCallValidator = new ToolCallValidator();
@@ -71,6 +80,12 @@ public class AgentExecutor {
 
     // 用于跟踪连续的无工具调用步数
     private int consecutiveNoToolCallSteps = 0;
+    
+    // ReCAP 记忆优化：父级上下文栈
+    private final Deque<ParentContext> parentStack = new LinkedList<>();
+    
+    // ReCAP 记忆优化：当前递归深度
+    private int currentDepth = 0;
 
     /**
      * 主Agent构造函数（默认isSubagent=false）
@@ -83,7 +98,7 @@ public class AgentExecutor {
             ToolRegistry toolRegistry,
             Compaction compaction
     ) {
-        this(agent, runtime, context, wire, toolRegistry, compaction, false, null, null);
+        this(agent, runtime, context, wire, toolRegistry, compaction, false, null, null, null, null, null);
     }
 
     /**
@@ -100,11 +115,11 @@ public class AgentExecutor {
             SkillMatcher skillMatcher,
             SkillProvider skillProvider
     ) {
-        this(agent, runtime, context, wire, toolRegistry, compaction, isSubagent, skillMatcher, skillProvider, null);
+        this(agent, runtime, context, wire, toolRegistry, compaction, isSubagent, skillMatcher, skillProvider, null, null, null);
     }
 
     /**
-     * 最完整构造函数（支持检索增强）
+     * 最完整构造函数（支持 ReCAP 记忆优化）
      */
     public AgentExecutor(
             Agent agent,
@@ -116,7 +131,9 @@ public class AgentExecutor {
             boolean isSubagent,
             SkillMatcher skillMatcher,
             SkillProvider skillProvider,
-            RetrievalPipeline retrievalPipeline
+            RetrievalPipeline retrievalPipeline,
+            ActivePromptBuilder promptBuilder,
+            MemoryConfig memoryConfig
     ) {
         this.agent = agent;
         this.runtime = runtime;
@@ -129,6 +146,13 @@ public class AgentExecutor {
         this.skillMatcher = skillMatcher;
         this.skillProvider = skillProvider;
         this.retrievalPipeline = retrievalPipeline;
+        this.promptBuilder = promptBuilder;
+        this.memoryConfig = memoryConfig;
+        
+        // 订阅 Subagent 事件（ReCAP 记忆优化）
+        if (memoryConfig != null && memoryConfig.isEnableRecap()) {
+            subscribeToSubagentEvents();
+        }
     }
 
     /**
@@ -141,6 +165,13 @@ public class AgentExecutor {
         return Mono.defer(() -> {
             // 创建用户消息
             Message userMessage = Message.user(userInput);
+            
+            // 提取高层意图（首条用户消息，ReCAP 优化）
+            if (memoryConfig != null && memoryConfig.isEnableRecap() && context.getHistory().isEmpty()) {
+                String intent = extractHighLevelIntent(userInput);
+                context.setHighLevelIntent(intent);
+                log.info("提取高层意图: {}", intent);
+            }
             
             // 估算用户输入的Token数（因为用户输入不会有LLM返回的usage）
             int userInputTokens = estimateTokensFromMessage(userMessage);
@@ -197,10 +228,10 @@ public class AgentExecutor {
                                     agentName != null ? agentName : "main", stepNo, globalStepNo);
                             return Mono.empty();
                         } else {
-                            // 继续下一步
                             return agentLoopStep(stepNo + 1);
                         }
                     })
+                    .then()
                     .onErrorResume(e -> {
                         log.error("Error in Agent '{}' at local step {}, global step {}", 
                                 agentName != null ? agentName : "main", stepNo, globalStepNo, e);
@@ -369,11 +400,21 @@ public class AgentExecutor {
             LLM llm = runtime.getLlm();
             List<Object> toolSchemas = new ArrayList<>(toolRegistry.getToolSchemas(agent.getTools()));
 
-            // 记录调用前的Token数(用于计算本次调用的实际消耗)
-            int tokensBefore = context.getTokenCount();
+            // 构建增强的系统提示（如果启用 ReCAP）
+            String systemPrompt = agent.getSystemPrompt();
+            if (memoryConfig != null && memoryConfig.isEnableRecap() && promptBuilder != null) {
+                systemPrompt = promptBuilder.buildEnhancedPrompt(
+                        agent.getSystemPrompt(),
+                        context.getHighLevelIntent(),
+                        context.getRecentInsights(memoryConfig.getInsightsWindowSize()),
+                        0  // currentDepth ，阶段1暂不支持递归
+                );
+                int estimatedTokens = systemPrompt.length() / 4;
+                log.debug("使用 ReCAP 增强提示 (Token 估算: {} tokens)", estimatedTokens);
+            }
             
             return llm.getChatProvider()
-                    .generateStream(agent.getSystemPrompt(), context.getHistory(), toolSchemas)
+                    .generateStream(systemPrompt, context.getHistory(), toolSchemas)
                     .contextWrite(ctx -> ctx.put("workDir", runtime.getWorkDir()))  // 传递工作目录到 Reactor Context
                     .reduce(new StreamAccumulator(), this::processStreamChunk)
                     .flatMap(this::handleStreamCompletion)
@@ -685,6 +726,7 @@ public class AgentExecutor {
             }
 
             log.info("No tool calls, finishing step (consecutive thinking steps: {})", consecutiveNoToolCallSteps);
+            
             return Mono.just(true);
         }
 
@@ -797,6 +839,14 @@ public class AgentExecutor {
         if (result.isOk()) {
             toolErrorTracker.clearErrors();
             content = formatToolResult(result);
+            
+            // 提取关键发现（如果启用 ReCAP）
+            if (memoryConfig != null && memoryConfig.isEnableRecap()) {
+                String insight = extractInsightFromToolResult(result, toolSignature);
+                if (insight != null) {
+                    context.addKeyInsight(insight).subscribe();
+                }
+            }
         } else if (result.isError()) {
             toolErrorTracker.trackError(toolSignature);
             content = toolErrorTracker.buildErrorContent(result.getMessage(), result.getOutput(), toolSignature);
@@ -865,5 +915,163 @@ public class AgentExecutor {
         int estimatedTokens = (int) Math.ceil(charCount / 4.0);
         log.debug("Estimated {} tokens from {} characters", estimatedTokens, charCount);
         return estimatedTokens;
+    }
+    
+    // ==================== ReCAP 记忆优化相关方法 ====================
+    
+    /**
+     * 提取高层意图（简化版：取用户输入的前 200 字符）
+     * 
+     * @param userInput 用户输入
+     * @return 高层意图
+     */
+    private String extractHighLevelIntent(List<ContentPart> userInput) {
+        String fullText = userInput.stream()
+                .filter(part -> part instanceof TextPart)
+                .map(part -> ((TextPart) part).getText())
+                .collect(Collectors.joining(" "));
+        
+        return fullText.length() > 200 
+                ? fullText.substring(0, 200) + "..." 
+                : fullText;
+    }
+    
+    /**
+     * 从工具结果提取关键发现（简化版：取输出的前 100 字符）
+     * 
+     * @param result 工具执行结果
+     * @param toolSignature 工具签名
+     * @return 关键发现
+     */
+    private String extractInsightFromToolResult(ToolResult result, String toolSignature) {
+        String output = result.getOutput();
+        if (output == null || output.isEmpty()) {
+            return null;
+        }
+        
+        String preview = output.length() > 100 
+                ? output.substring(0, 100) + "..." 
+                : output;
+        
+        String toolName = toolSignature.split(":")[0];
+        return String.format("[%s] %s", toolName, preview);
+    }
+    
+    // ==================== ReCAP 阶段 2：结构化恢复 ====================
+    
+    /**
+     * 订阅 Subagent 事件
+     */
+    private void subscribeToSubagentEvents() {
+        // 订阅 Subagent 启动事件
+        wire.asFlux()
+                .ofType(SubagentStarting.class)
+                .subscribe(event -> {
+                    log.debug("收到 SubagentStarting 事件: {}", event.getSubagentName());
+                    pushCurrentContext(event.getPrompt()).subscribe();
+                });
+        
+        // 订阅 Subagent 完成事件
+        wire.asFlux()
+                .ofType(SubagentCompleted.class)
+                .subscribe(event -> {
+                    log.debug("收到 SubagentCompleted 事件");
+                    restoreParentContext(event.getSummary()).subscribe();
+                });
+    }
+    
+    /**
+     * Push 父级上下文（在启动 Subagent 前调用）
+     * 
+     * @param subGoalDesc 子目标描述
+     * @return 完成的 Mono
+     */
+    public Mono<Void> pushCurrentContext(String subGoalDesc) {
+        if (memoryConfig == null || !memoryConfig.isEnableRecap()) {
+            return Mono.empty();
+        }
+        
+        return Mono.defer(() -> {
+            // 检查递归深度限制
+            if (currentDepth >= memoryConfig.getMaxRecursionDepth()) {
+                log.warn("达到最大递归深度 {}, 不再入栈", memoryConfig.getMaxRecursionDepth());
+                return Mono.empty();
+            }
+            
+            // 创建检查点
+            return context.checkpoint(false)
+                    .map(checkpointId -> {
+                        String latestThought = extractLatestThought();
+                        
+                        ParentContext parent = new ParentContext(
+                                checkpointId,
+                                latestThought,
+                                currentDepth,
+                                subGoalDesc
+                        );
+                        
+                        parentStack.push(parent);
+                        currentDepth++;
+                        
+                        log.info("Push 父级上下文 (depth: {} -> {}, checkpoint: {})", 
+                                parent.getDepth(), currentDepth, checkpointId);
+                        
+                        return parent;
+                    })
+                    .then();
+        });
+    }
+    
+    /**
+     * Restore 父级上下文（在 Subagent 完成后调用）
+     * 
+     * @param childSummary 子任务完成摘要
+     * @return 完成的 Mono
+     */
+    public Mono<Void> restoreParentContext(String childSummary) {
+        if (memoryConfig == null || !memoryConfig.isEnableRecap() || parentStack.isEmpty()) {
+            return Mono.empty();
+        }
+        
+        return Mono.defer(() -> {
+            ParentContext parent = parentStack.pop();
+            currentDepth = parent.getDepth();
+            
+            log.info("Restore 父级上下文 (depth: {} <- {}, checkpoint: {})", 
+                    currentDepth, currentDepth + 1, parent.getCheckpointId());
+            
+            // 回退到父级检查点
+            return context.revertTo(parent.getCheckpointId())
+                    .then(Mono.defer(() -> {
+                        // 注入结构化恢复消息
+                        String injectionMsg = parent.formatForInjection() 
+                                + "\n## 子目标完成摘要\n" 
+                                + (childSummary != null ? childSummary : "(无)");
+                        
+                        return context.appendMessage(Message.user(List.of(TextPart.of(injectionMsg))));
+                    }))
+                    .doOnSuccess(v -> log.debug("结构化注入完成"));
+        });
+    }
+    
+    /**
+     * 提取最新思考（从最后一条 assistant 消息）
+     */
+    private String extractLatestThought() {
+        List<Message> history = context.getHistory();
+        
+        for (int i = history.size() - 1; i >= 0; i--) {
+            Message msg = history.get(i);
+            if (msg.getRole() == MessageRole.ASSISTANT) {
+                String content = msg.getTextContent();
+                if (content != null && !content.isEmpty()) {
+                    return content.length() > 200 
+                            ? content.substring(0, 200) + "..." 
+                            : content;
+                }
+            }
+        }
+        
+        return "(无)";
     }
 }
