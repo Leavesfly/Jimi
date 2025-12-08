@@ -53,6 +53,34 @@ Jimi 是一个功能强大的AI驱动的命令行智能代理系统，它将大�
 - 团队知识共享与复用
 - 高性能缓存机制（Caffeine）
 
+### 🪝 Hooks系统
+- 事件驱动的自动化机制
+- 支持工具调用、Agent切换、错误处理等多种Hook类型
+- YAML配置,支持热加载
+- 条件执行与变量替换
+- 优先级控制与异步执行
+
+### 🔍 代码图(Code Graph)
+- 基于LocAgent论文的代码理解能力
+- AST图构建与持久化存储
+- 混合检索(图检索 + 向量检索)
+- 影响分析、调用图查询、可视化
+- 智能代码定位与导航
+
+### ⚡ 自定义命令系统
+- YAML配置文件定义命令
+- 支持Script/Agent/Composite类型
+- 参数定义与前置条件检查
+- 无需编写Java代码即可扩展
+- 支持命令别名与优先级
+
+### 🧠 ReCAP记忆优化
+- 有界活动提示,保持提示大小O(1)
+- 结构化上下文恢复机制
+- 关键发现压缩与滑窗管理
+- 支持递归Subagent协作
+- Token消耗优化(节省30-50%)
+
 ### 🔌 LLM集成
 - 支持多种LLM提供商（OpenAI、Moonshot等）
 - 灵活的模型切换
@@ -72,6 +100,8 @@ Jimi 是一个功能强大的AI驱动的命令行智能代理系统，它将大�
 - **待办事项**：任务管理与追踪
 - **子Agent任务委托**：复杂任务分解与并行处理
 - **MCP工具**：动态加载外部工具
+- **人工交互**：ask_human工具支持执行中暂停等待用户输入
+- **代码图工具**：代码定位、影响分析、调用图查询
 
 ### 🔐 高级功能
 - **上下文压缩**：智能消息压缩，节省Token
@@ -99,6 +129,8 @@ graph TB
         Context[ExecutionContext]
         Approval[审批机制]
         Compaction[上下文压缩]
+        Memory[ReCAP记忆优化]
+        Interaction[人工交互]
     end
     
     subgraph Agent系统
@@ -116,6 +148,8 @@ graph TB
         WebTools[网络工具]
         MCPTools[MCP工具]
         SubagentTools[子Agent工具]
+        GraphTools[代码图工具]
+        HumanTools[人工交互工具]
     end
     
     subgraph LLM集成层
@@ -131,6 +165,24 @@ graph TB
         SkillLoader[Skills加载器]
     end
     
+    subgraph Hooks系统
+        HookRegistry[Hooks注册表]
+        HookExecutor[Hooks执行器]
+        HookLoader[Hooks加载器]
+    end
+    
+    subgraph 代码图系统
+        GraphManager[Graph管理器]
+        GraphBuilder[图构建器]
+        GraphSearch[图检索引擎]
+        ImpactAnalyzer[影响分析器]
+    end
+    
+    subgraph 自定义命令
+        CommandRegistry[命令注册表]
+        CustomCommands[自定义命令]
+    end
+    
     subgraph 外部服务
         MCPServer[MCP服务]
         Database[数据库服务]
@@ -139,11 +191,13 @@ graph TB
     
     CLI --> Shell
     Shell --> Engine
+    Shell --> CommandRegistry
     Engine --> Executor
     Executor --> Context
     Executor --> AgentRegistry
     Executor --> ToolRegistry
     Executor --> LLMFactory
+    Executor --> HookExecutor
     AgentRegistry --> DefaultAgent
     AgentRegistry --> DesignAgent
     AgentRegistry --> CodeAgent
@@ -153,14 +207,25 @@ graph TB
     ToolRegistry --> WebTools
     ToolRegistry --> MCPTools
     ToolRegistry --> SubagentTools
+    ToolRegistry --> GraphTools
+    ToolRegistry --> HumanTools
     LLMFactory --> ChatProvider
     ChatProvider --> OpenAI
     ChatProvider --> Moonshot
     Engine --> Approval
     Engine --> Compaction
+    Engine --> Memory
+    Engine --> Interaction
     Engine --> SkillRegistry
+    Engine --> GraphManager
     SkillRegistry --> SkillMatcher
     SkillRegistry --> SkillLoader
+    HookRegistry --> HookExecutor
+    HookRegistry --> HookLoader
+    GraphManager --> GraphBuilder
+    GraphManager --> GraphSearch
+    GraphManager --> ImpactAnalyzer
+    CommandRegistry --> CustomCommands
     MCPTools --> MCPServer
     MCPServer --> Database
     MCPServer --> GitService
@@ -257,6 +322,16 @@ graph TD
         
         TodoTools[待办工具]
         ManageTodo[ManageTodo]
+        
+        HumanTools[人工交互工具]
+        AskHuman[AskHuman]
+    end
+    
+    subgraph 代码图工具
+        GraphTools[代码图工具]
+        CodeLocate[CodeLocate]
+        ImpactAnalysis[ImpactAnalysis]
+        CallGraph[CallGraph]
     end
     
     subgraph 外部工具
@@ -279,6 +354,8 @@ graph TD
     ToolRegistry --> WebTools
     ToolRegistry --> ThinkTools
     ToolRegistry --> TodoTools
+    ToolRegistry --> HumanTools
+    ToolRegistry --> GraphTools
     ToolRegistry --> MCPTools
     ToolRegistry --> SubagentTools
     
@@ -295,6 +372,12 @@ graph TD
     ThinkTools --> Think
     
     TodoTools --> ManageTodo
+    
+    HumanTools --> AskHuman
+    
+    GraphTools --> CodeLocate
+    GraphTools --> ImpactAnalysis
+    GraphTools --> CallGraph
     
     MCPTools --> MCPClient
     MCPClient --> HttpClient
@@ -389,6 +472,7 @@ src/main/java/io/leavesfly/jimi/
 ├── cli/                    # 命令行入口
 │   └── CliApplication.java # CLI应用主类
 ├── command/                # 命令处理系统
+│   ├── custom/             # 自定义命令
 │   ├── handlers/           # 各种命令处理器
 │   ├── CommandContext.java # 命令上下文
 │   ├── CommandHandler.java # 命令处理器接口
@@ -397,16 +481,36 @@ src/main/java/io/leavesfly/jimi/
 │   ├── ConfigLoader.java   # 配置加载器
 │   ├── JimiConfig.java     # 主配置类
 │   ├── LLMModelConfig.java # LLM模型配置
+│   ├── MemoryConfig.java   # 记忆配置(ReCAP)
 │   └── LoopControlConfig.java # 循环控制配置
 ├── engine/                 # 核心引擎
 │   ├── approval/           # 审批机制
 │   ├── compaction/         # 上下文压缩
 │   ├── context/            # 上下文管理
+│   ├── interaction/        # 人工交互
 │   ├── runtime/            # 运行时状态
 │   ├── toolcall/           # 工具调用处理
 │   ├── AgentExecutor.java  # Agent执行器
 │   ├── Engine.java         # 引擎接口
 │   └── JimiEngine.java     # Jimi引擎实现
+├── graph/                  # 代码图系统
+│   ├── builder/            # 图构建器
+│   ├── model/              # 图数据模型
+│   ├── navigator/          # 图导航
+│   ├── parser/             # AST解析器
+│   ├── search/             # 图检索引擎
+│   ├── store/              # 图存储
+│   ├── visualization/      # 可视化
+│   └── GraphManager.java   # 图管理器
+├── hook/                   # Hooks系统
+│   ├── HookCondition.java  # Hook条件
+│   ├── HookContext.java    # Hook上下文
+│   ├── HookExecutor.java   # Hook执行器
+│   ├── HookLoader.java     # Hook加载器
+│   ├── HookRegistry.java   # Hook注册表
+│   ├── HookSpec.java       # Hook规范
+│   ├── HookTrigger.java    # Hook触发器
+│   └── HookType.java       # Hook类型
 ├── llm/                    # LLM集成
 │   ├── message/            # 消息模型
 │   ├── provider/           # LLM提供商实现
@@ -432,6 +536,8 @@ src/main/java/io/leavesfly/jimi/
 ├── tool/                   # 工具系统
 │   ├── bash/               # Shell工具
 │   ├── file/               # 文件操作工具
+│   ├── graph/              # 代码图工具
+│   ├── human/              # 人工交互工具
 │   ├── mcp/                # MCP工具
 │   ├── task/               # 子Agent任务工具
 │   ├── think/              # 思考工具
@@ -459,6 +565,8 @@ src/main/resources/
 │   ├── code/               # 编码Agent
 │   ├── review/             # 审查Agent
 │   └── build/              # 构建Agent
+├── commands/               # 自定义命令配置
+├── hooks/                  # Hooks配置目录
 ├── skills/                 # Skills配置目录
 │   ├── code-review/        # 代码审查Skill
 │   └── unit-testing/       # 单元测试Skill
@@ -617,6 +725,20 @@ Spring Boot应用配置，包括：
 - `/reset` - 清除上下文历史
 - `/compact` - 压缩上下文
 - `/init` - 分析代码库并生成文档
+- `/graph` - 代码图管理命令
+  - `/graph build` - 构建代码图
+  - `/graph stats` - 查看图统计信息
+  - `/graph rebuild` - 重新构建代码图
+- `/hooks` - Hooks管理命令
+  - `/hooks list` - 列出所有Hooks
+  - `/hooks reload` - 重新加载Hooks
+  - `/hooks enable <name>` - 启用Hook
+  - `/hooks disable <name>` - 禁用Hook
+- `/commands` - 自定义命令管理
+  - `/commands list` - 列出所有自定义命令
+  - `/commands reload` - 重新加载命令
+  - `/commands enable <name>` - 启用命令
+  - `/commands disable <name>` - 禁用命令
 
 #### Shell快捷方式
 ```
@@ -777,6 +899,92 @@ public class MyCustomTool extends AbstractTool<MyParams> {
 
 ### 自定义命令
 
+1. **创建命令配置文件**
+
+在`~/.jimi/commands/`或项目的`.jimi/commands/`目录下创建命令配置：
+
+```yaml
+name: "quick-build"
+description: "快速构建并运行测试"
+category: "build"
+
+aliases:
+  - "qb"
+
+usage: "/quick-build [--skip-tests]"
+
+parameters:
+  - name: "skip-tests"
+    type: "boolean"
+    defaultValue: "false"
+
+execution:
+  type: "script"
+  script: |
+    #!/bin/bash
+    if [ "$SKIP_TESTS" = "true" ]; then
+      mvn clean install -DskipTests
+    else
+      mvn clean install
+    fi
+  timeout: 300
+
+preconditions:
+  - type: "file_exists"
+    path: "pom.xml"
+```
+
+2. **使用自定义命令**
+```bash
+/quick-build
+/qb --skip-tests
+```
+
+详细使用请参考：[docs/CUSTOM_COMMANDS.md](docs/CUSTOM_COMMANDS.md)
+
+### 自定义Hooks
+
+1. **创建Hook配置文件**
+
+在`~/.jimi/hooks/`或项目的`.jimi/hooks/`目录下创建Hook配置：
+
+```yaml
+name: "auto-format-java"
+description: "保存Java文件后自动格式化"
+enabled: true
+priority: 10
+
+trigger:
+  type: "POST_TOOL_CALL"
+  tools:
+    - "WriteFile"
+    - "StrReplaceFile"
+  file_patterns:
+    - "*.java"
+
+execution:
+  type: "script"
+  script: |
+    #!/bin/bash
+    for file in ${MODIFIED_FILES}; do
+      google-java-format -i "$file"
+      echo "✅ 已格式化: $file"
+    done
+  workingDir: "${JIMI_WORK_DIR}"
+  timeout: 30
+```
+
+2. **Hook类型**
+- `PRE_TOOL_CALL` - 工具执行前
+- `POST_TOOL_CALL` - 工具执行后
+- `PRE_AGENT_SWITCH` - Agent切换前
+- `POST_AGENT_SWITCH` - Agent切换后
+- `ON_ERROR` - 错误发生时
+- `ON_SESSION_START` - 会话启动时
+- `ON_SESSION_END` - 会话结束时
+
+详细使用请参考：[docs/HOOKS.md](docs/HOOKS.md)
+
 1. **实现CommandHandler接口**
 
 ```java
@@ -829,6 +1037,184 @@ Spring会自动扫描并注册所有`CommandHandler`实现。
 ---
 
 ## 📚 进阶功能
+
+### 代码图(Code Graph)
+
+代码图功能基于LocAgent论文实现,提供强大的代码理解和导航能力。
+
+#### 启用代码图
+
+1. **配置`application.yml`**
+```yaml
+jimi:
+  graph:
+    enabled: true
+    auto-build: false
+    build-on-startup: false
+    include-patterns:
+      - "**/*.java"
+    exclude-patterns:
+      - "**/test/**"
+      - "**/target/**"
+```
+
+2. **构建代码图**
+```bash
+jimi> /graph build
+开始构建代码图...
+项目路径: /path/to/project
+
+✅ 代码图构建完成
+
+统计信息:
+  实体数: 1523
+  关系数: 3847
+  耗时: 2345ms
+```
+
+3. **使用代码图工具**
+
+Agent会自动获得以下工具：
+- **CodeLocateTool**: 智能代码定位
+- **ImpactAnalysisTool**: 影响分析
+- **CallGraphTool**: 调用图查询
+
+```bash
+jimi> 查找GraphManager类的调用关系
+jimi> 分析修改GraphBuilder的影响
+```
+
+详细使用请参考：[docs/GRAPH_GUIDE.md](docs/GRAPH_GUIDE.md)
+
+### Hooks系统
+
+Hooks系统是Jimi的事件驱动自动化机制,允许在关键节点自动执行自定义操作。
+
+#### 常见场景
+
+1. **自动代码格式化**
+```yaml
+trigger:
+  type: "POST_TOOL_CALL"
+  tools:
+    - "WriteFile"
+  file_patterns:
+    - "*.java"
+
+execution:
+  type: "script"
+  script: "google-java-format -i ${MODIFIED_FILE}"
+```
+
+2. **Git提交前测试**
+```yaml
+trigger:
+  type: "PRE_TOOL_CALL"
+  tools:
+    - "Bash"
+
+execution:
+  type: "script"
+  script: |
+    if [[ "${TOOL_RESULT}" == *"git commit"* ]]; then
+      mvn test || exit 1
+    fi
+```
+
+3. **错误自动修复**
+```yaml
+trigger:
+  type: "ON_ERROR"
+  errorPattern: ".*compilation error.*"
+
+execution:
+  type: "agent"
+  agent: "Code-Agent"
+  task: "分析编译错误并自动修复"
+```
+
+详细使用请参考：[docs/HOOKS.md](docs/HOOKS.md)
+
+### 自定义命令
+
+通过YAML配置文件创建自定义命令,无需编写Java代码。
+
+#### 支持的执行类型
+
+1. **Script类型**: 执行Shell脚本
+2. **Agent类型**: 委托给Agent执行
+3. **Composite类型**: 组合多个步骤
+
+#### 示例：快速构建命令
+
+```yaml
+name: "quick-build"
+description: "快速构建并运行测试"
+
+aliases:
+  - "qb"
+
+parameters:
+  - name: "skip-tests"
+    type: "boolean"
+    defaultValue: "false"
+
+execution:
+  type: "script"
+  script: |
+    if [ "$SKIP_TESTS" = "true" ]; then
+      mvn clean install -DskipTests
+    else
+      mvn clean install
+    fi
+```
+
+使用：
+```bash
+/quick-build
+/qb --skip-tests
+```
+
+详细使用请参考：[docs/CUSTOM_COMMANDS.md](docs/CUSTOM_COMMANDS.md)
+
+### ReCAP记忆优化
+
+ReCAP(递归上下文感知推理与规划)是Jimi的记忆优化机制,解决长任务链和多 Subagent 协作场景下的记忆管理挑战。
+
+#### 核心机制
+
+1. **有界活动提示**：保持提示大小O(1),避免无限增长
+2. **结构化上下文恢复**：父子Agent间语义连续性
+3. **关键发现压缩**：高层意图+摘要式关键发现始终保持
+
+#### 配置启用
+
+在`application.yml`中配置：
+
+```yaml
+jimi:
+  memory:
+    # 有界提示最大Token数
+    activePromptMaxTokens: 4000
+    
+    # 关键发现窗口大小
+    insightsWindowSize: 5
+    
+    # 启用ReCAP优化
+    enableRecap: true
+    
+    # 最大递归深度
+    maxRecursionDepth: 5
+```
+
+#### 优化效果
+
+- 提示大小从O(n)变为O(1)
+- Token消耗节省30-50%
+- 支持深度递归Subagent协作(最多5层)
+- 高层意图和关键信息不丢失
+
+详细使用请参考：[docs/ReCAP记忆优化技术方案.md](docs/ReCAP记忆优化技术方案.md)
 
 ### Skills系统
 
