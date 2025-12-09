@@ -27,6 +27,7 @@ import io.leavesfly.jimi.tool.mcp.MCPToolLoader;
 import io.leavesfly.jimi.retrieval.RetrievalPipeline;
 import io.leavesfly.jimi.skill.SkillMatcher;
 import io.leavesfly.jimi.skill.SkillProvider;
+import io.leavesfly.jimi.tool.meta.MetaToolProvider;
 import io.leavesfly.jimi.wire.WireImpl;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -181,6 +182,11 @@ public class JimiFactory {
         toolProviders.stream()
             .filter(p -> p instanceof MCPToolProvider)
             .forEach(p -> ((MCPToolProvider) p).setMcpConfigFiles(mcpConfigFiles));
+        
+        // 对于 MetaToolProvider，需要提前注入 ToolRegistry
+        toolProviders.stream()
+            .filter(p -> p instanceof MetaToolProvider)
+            .forEach(p -> ((MetaToolProvider) p).setToolRegistry(registry));
         
         // 按顺序应用所有工具提供者
         toolProviders.stream()

@@ -44,6 +44,7 @@ tools:
   - Think
   - SetTodoList
   - Task
+  - MetaTool
 
 # 子 Agent 配置
 subagents:

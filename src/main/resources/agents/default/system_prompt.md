@@ -148,6 +148,149 @@
 - 在修改文件之前始终先阅读
 - 对于现有文件，优先使用 `StrReplaceFile` 或 `PatchFile` 而不是 `WriteFile`
 - 在适当时候使用 `Task` 工具委托给子智能体
+- **新功能**: 使用 `MetaTool` 编排多个工具调用，减少 token 消耗
+
+## MetaTool - 编程式工具调用
+
+`MetaTool` 允许你编写 Java 代码来编排多个工具调用，特别适用于需要循环、条件判断或批量操作的场景。
+
+### 使用场景
+
+1. **批量文件处理**: 循环读取/修改多个文件
+2. **条件执行**: 根据前一步结果决定下一步操作
+3. **数据转换**: 多步数据处理流水线
+4. **复杂编排**: 需要程序逻辑的工具组合
+
+### 核心优势
+
+- **减少 Token**: 中间工具调用结果不会加入对话历史
+- **灵活编排**: 支持 for/while 循环、if/else 条件
+- **高效执行**: 整个逻辑在一次工具调用中完成
+
+### 可用方法
+
+在 MetaTool 代码中可以调用：
+
+```java
+String callTool(String toolName, String arguments)
+```
+
+**参数格式**：JSON 字符串
+
+**返回值**：
+- 成功时：直接返回工具的 output 内容（字符串）
+- 失败时：返回 `"Error: <错误信息>"` 格式的字符串
+
+**错误检测**：
+```java
+String result = callTool("ReadFile", "{\"path\":\"file.txt\"}");
+if (result.startsWith("Error:")) {
+    // 处理错误
+    return "读取文件失败: " + result;
+}
+// 正常处理 result 内容
+```
+
+### 示例 1: 批量读取文件
+
+```java
+String[] files = {"README.md", "pom.xml", "src/Main.java"};
+StringBuilder result = new StringBuilder();
+
+for (String file : files) {
+    String content = callTool("ReadFile", 
+        "{\"path\":\"" + file + "\"}");
+    
+    // 检查是否有错误
+    if (content.startsWith("Error:")) {
+        result.append("=== ").append(file).append(" ===\n");
+        result.append("读取失败: ").append(content).append("\n\n");
+        continue;
+    }
+    
+    result.append("=== ").append(file).append(" ===\n");
+    result.append(content).append("\n\n");
+}
+
+return result.toString();
+```
+
+### 示例 2: 条件执行
+
+```java
+// 检测操作系统
+String osInfo = callTool("Bash", 
+    "{\"command\":\"uname -s\"}");
+
+if (osInfo.startsWith("Error:")) {
+    return "无法检测操作系统: " + osInfo;
+}
+
+if (osInfo.contains("Linux")) {
+    return callTool("Bash", 
+        "{\"command\":\"cat /etc/os-release\"}");
+} else if (osInfo.contains("Darwin")) {
+    return callTool("Bash", 
+        "{\"command\":\"sw_vers\"}");
+} else {
+    return "未知操作系统: " + osInfo;
+}
+```
+
+### 示例 3: 搜索并处理结果
+
+```java
+// 搜索所有 Java 文件
+String globResult = callTool("Glob", 
+    "{\"pattern\":\"**/*.java\"}");
+
+if (globResult.startsWith("Error:")) {
+    return "搜索失败: " + globResult;
+}
+
+// 解析结果（每行一个文件）
+String[] files = globResult.split("\\n");
+int totalLines = 0;
+int successCount = 0;
+
+for (String file : files) {
+    if (file.trim().isEmpty()) continue;
+    
+    // 读取文件并统计行数
+    String content = callTool("ReadFile", 
+        "{\"path\":\"" + file.trim() + "\"}");
+    
+    if (!content.startsWith("Error:")) {
+        totalLines += content.split("\\n").length;
+        successCount++;
+    }
+}
+
+return "Total Java files: " + successCount + 
+       ", Total lines: " + totalLines;
+```
+
+### 注意事项
+
+1. **JSON 转义**: 代码中的 JSON 字符串需要双重转义（`\\"` 表示 `"`）
+2. **错误处理**: 始终检查返回值是否以 `"Error:"` 开头，并处理错误情况
+3. **返回值**: 代码的最后一个表达式值将作为结果返回
+4. **超时限制**: 默认 30 秒，最长 60 秒
+5. **安全限制**: 禁止使用 `System.exit()`、`Runtime.exec()` 等危险操作
+6. **仅支持 Java**: 代码必须是有效的 Java 语法（非 Python）
+
+### 何时使用 MetaTool
+
+✅ **适用场景**:
+- 需要循环处理 5+ 个文件
+- 根据条件决定调用不同工具
+- 批量数据转换和汇总
+- 复杂的工具调用组合逻辑
+
+❌ **不适用**:
+- 单个工具调用（直接调用更简单）
+- 2-3 个简单的顺序调用（不需要编排）
+- 需要交互式反馈的场景
 
 ## 工具调用JSON格式规范
 

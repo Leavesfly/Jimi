@@ -113,3 +113,14 @@ jimi:
     enable-recap: false
     # 最大递归深度
     max-recursion-depth: 5
+
+  # 编程式工具调用配置 (Programmatic Tool Calling)
+  meta-tool:
+    # 是否启用 MetaTool
+    enabled: true
+    # 最大执行时间（秒）
+    max-execution-time: 30
+    # 最大代码长度（字符）
+    max-code-length: 10000
+    # 是否记录执行详情
+    log-execution-details: true
