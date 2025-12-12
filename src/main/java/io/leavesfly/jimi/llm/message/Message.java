@@ -27,7 +27,14 @@ public class Message {
      */
     @JsonProperty("role")
     private MessageRole role;
-    
+
+    /**
+     * 消息内容部分列表
+     * 可以是字符串或 ContentPart 列表
+     */
+    @JsonProperty("reasoning_content")
+    private Object reasoning;
+
     /**
      * 消息内容部分列表
      * 可以是字符串或 ContentPart 列表
@@ -82,7 +89,18 @@ public class Message {
                      .content(content)
                      .build();
     }
-    
+
+    /**
+     * 创建助手消息
+     */
+    public static Message assistant(String content, String reasoning) {
+        return Message.builder()
+                .role(MessageRole.ASSISTANT)
+                .content(content)
+                .reasoning(reasoning)
+                .build();
+    }
+
     /**
      * 创建助手消息（带工具调用）
      */
@@ -93,7 +111,19 @@ public class Message {
                      .toolCalls(toolCalls)
                      .build();
     }
-    
+
+    /**
+     * 创建助手消息（带工具调用）
+     */
+    public static Message assistant(String content, String reasoning, List<ToolCall> toolCalls) {
+        return Message.builder()
+                .role(MessageRole.ASSISTANT)
+                .content(content)
+                .reasoning(reasoning)
+                .toolCalls(toolCalls)
+                .build();
+    }
+
     /**
      * 创建系统消息
      */

@@ -58,6 +58,11 @@ public class ChatCompletionChunk {
          * 内容增量
          */
         CONTENT,
+
+        /**
+         * 推理内容
+         */
+        REASONING,
         
         /**
          * 工具调用
