@@ -144,8 +144,11 @@ public class WriteFile extends AbstractTool<WriteFile.Params> {
                         
                         try {
                             // 处理转义序列（将字面量 \n、\t、\r 转换为真正的控制字符）
-                            String processedContent = unescapeContent(params.content);
-                            
+                            // String processedContent = unescapeContent(params.content);
+
+                            // 转义的逻辑感觉不对，特别是在代码场景下不需要转义，否则会造成代码有问题
+                            String processedContent = params.content;
+
                             // 写入文件
                             if ("overwrite".equals(params.mode)) {
                                 Files.writeString(targetPath, processedContent);
