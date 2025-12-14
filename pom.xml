@@ -28,7 +28,7 @@
         <jackson.version>2.16.2</jackson.version>
         <snakeyaml.version>2.2</snakeyaml.version>
         <commons-exec.version>1.4.0</commons-exec.version>
-        <lombok.version>1.18.32</lombok.version>
+        <lombok.version>1.18.42</lombok.version>
         <slf4j.version>2.0.12</slf4j.version>
         <logback.version>1.4.14</logback.version>
         <caffeine.version>3.1.8</caffeine.version>

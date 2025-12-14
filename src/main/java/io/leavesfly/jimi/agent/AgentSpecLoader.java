@@ -1,8 +1,8 @@
 package io.leavesfly.jimi.agent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import io.leavesfly.jimi.exception.AgentSpecException;
+import io.leavesfly.jimi.util.ResourceUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -15,7 +15,6 @@ import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -281,11 +280,13 @@ class AgentSpecLoader {
         // 处理系统提示词路径 - 使用虚拟路径标识资源
         if (data.containsKey("system_prompt")) {
             String promptFile = (String) data.get("system_prompt");
-            Path virtualPath = Paths.get("classpath:agents/" + agentName + "/" + promptFile);
+            // Path virtualPath = Paths.get("classpath:agents/" + agentName + "/" + promptFile);
+            Path virtualPath = ResourceUtils.resolveFromClasspath("agents/" + agentName + "/" + promptFile);
             builder.systemPromptPath(virtualPath);
         } else if (data.containsKey("system_prompt_path")) {
             String promptFile = (String) data.get("system_prompt_path");
-            Path virtualPath = Paths.get("classpath:agents/" + agentName + "/" + promptFile);
+            // Path virtualPath = Paths.get("classpath:agents/" + agentName + "/" + promptFile);
+            Path virtualPath = ResourceUtils.resolveFromClasspath("agents/" + agentName + "/" + promptFile);
             builder.systemPromptPath(virtualPath);
         }
 
@@ -316,7 +317,8 @@ class AgentSpecLoader {
             for (Map.Entry<String, Map<String, Object>> entry : subagentsData.entrySet()) {
                 String subagentPath = (String) entry.getValue().get("path");
                 // 构造 classpath 虚拟路径
-                Path resolvedPath = Paths.get("classpath:agents/" + subagentPath);
+                // Path resolvedPath = Paths.get("classpath:agents/" + subagentPath);
+                Path resolvedPath = ResourceUtils.resolveFromClasspath("agents/" + subagentPath);
 
                 SubagentSpec subagent = SubagentSpec.builder()
                         .path(resolvedPath)
@@ -382,7 +384,10 @@ class AgentSpecLoader {
             for (Map.Entry<String, Map<String, Object>> entry : subagentsData.entrySet()) {
                 String subagentPath = (String) entry.getValue().get("path");
                 // 将相对路径转换为绝对路径
-                Path resolvedPath = agentsRootDir.resolve(subagentPath);
+                Path resolvedPath = agentsRootDir == null ?
+                        Path.of(subagentPath)
+                        :
+                        agentsRootDir.resolve(subagentPath);
 
                 SubagentSpec subagent = SubagentSpec.builder()
                         .path(resolvedPath)
@@ -410,7 +415,7 @@ class AgentSpecLoader {
             URL resource = getClass().getClassLoader().getResource(resourcePath);
             if (resource != null) {
                 log.debug("Found default agent in classpath: {}", resourcePath);
-                return Paths.get("classpath:" + resourcePath);
+                return ResourceUtils.resolveFromClasspath(resourcePath);
             }
             throw new AgentSpecException("Default agent not found in classpath: " + resourcePath);
         }

@@ -1,6 +1,7 @@
 package io.leavesfly.jimi.skill;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.leavesfly.jimi.util.ResourceUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -17,10 +18,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
-import java.util.jar.JarEntry;
-import java.util.jar.JarFile;
-import java.util.Enumeration;
 
 /**
  * Skill加载器
@@ -130,7 +127,7 @@ public class SkillLoader {
                         if (skill != null) {
                             skill.setScope(scope);
                             // 使用虚拟路径标识
-                            skill.setSkillFilePath(Paths.get("classpath:" + resourcePath));
+                            skill.setSkillFilePath(ResourceUtils.resolveFromClasspath(resourcePath));
                             
                             skills.add(skill);
                             log.debug("Loaded skill from classpath: {} ({})", skill.getName(), resourcePath);
