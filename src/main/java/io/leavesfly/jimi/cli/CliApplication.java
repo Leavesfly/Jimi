@@ -73,7 +73,7 @@ public class CliApplication implements CommandLineRunner, Runnable {
     private boolean yolo = false;
 
     @Option(names = {"--agent-file"}, description = "Custom agent specification file")
-    private Path agentFile;
+    private Path agentFile=Paths.get("classpath:agents/default/agent.yaml");
 
     @Option(names = {"--mcp-config-file"}, description = "MCP configuration file (can be specified multiple times)")
     private List<Path> mcpConfigFiles = new ArrayList<>();

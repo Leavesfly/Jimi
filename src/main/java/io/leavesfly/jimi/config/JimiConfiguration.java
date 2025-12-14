@@ -10,7 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-
+import java.nio.file.Paths;
 /**
  * Jimi 应用配置类
  * 统一管理核心 Bean 的创建和配置
@@ -63,7 +63,7 @@ public class JimiConfiguration {
     @Bean
     @Autowired
     public JimiConfig jimiConfig(ConfigLoader configLoader) {
-        return configLoader.loadConfig(null);
+        return configLoader.loadConfig(Paths.get("classpath:.jimi/config.json"));
     }
 
     /**
