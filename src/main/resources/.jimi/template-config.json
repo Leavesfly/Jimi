@@ -12,6 +12,16 @@
         "sleep_ms": 3000
       }
     },
+    "kimi": {
+      "type": "kimi",
+      "base_url": "https://api.moonshot.cn/v1",
+      "api_key": "YOUR_API_KEY_HERE",
+      "rate_limit": {
+        "window_ms": 4000,
+        "max_requests": 4,
+        "sleep_ms": 3000
+      }
+    },
     "ollama": {
       "type": "ollama",
       "base_url": "http://localhost:11434/v1",
@@ -69,6 +79,21 @@
       "provider": "ollama",
       "model": "qwen3:4b-thinking-2507-q8_0",
       "max_context_size": 100000
+    },
+    "kimi-k2-turbo-preview": {
+      "provider": "kimi",
+      "model": "kimi-k2-turbo-preview",
+      "max_context_size": 200000
+    },
+    "kimi-k2-thinking": {
+      "provider": "kimi",
+      "model": "kimi-k2-thinking",
+      "max_context_size": 200000
+    },
+    "kimi-k2-thinking-turbo": {
+      "provider": "kimi",
+      "model": "kimi-k2-thinking-turbo",
+      "max_context_size": 200000
     }
   },
   "loop_control": {
@@ -98,7 +123,9 @@
     "storage_path": ".jimi/code_graph",
     "auto_load": true,
     "auto_save": true,
-    "include_patterns": ["**/*.java"],
+    "include_patterns": [
+      "**/*.java"
+    ],
     "exclude_patterns": [
       "**/test/**",
       "**/tests/**",
