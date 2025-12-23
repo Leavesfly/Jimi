@@ -203,6 +203,10 @@ public class LLMFactory {
                 return new CursorChatProvider(
                         model, config, objectMapper);
 
+            case GLM:
+                return new OpenAICompatibleChatProvider(
+                        model, config, objectMapper, "GLM");
+
             default:
                 throw new ConfigException("Unsupported provider type: " + type);
         }

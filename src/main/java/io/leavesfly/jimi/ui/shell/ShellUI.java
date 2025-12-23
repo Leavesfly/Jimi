@@ -1330,14 +1330,14 @@ public class ShellUI implements AutoCloseable {
      */
     private String getHintForType(String hintType) {
         switch (hintType) {
-            case "welcome":
-                return "💡 快捷键: /help (帮助) | /status (状态) | /history (历史) | Ctrl+C (中断) | Ctrl+D (退出)";
-            
-            case "input":
-                return "💡 提示: 输入 /help 查看所有命令 | Tab 键自动补全 | ↑↓ 箭头浏览历史";
-            
-            case "thinking":
-                return "💡 提示: 按 Ctrl+C 可中断当前操作";
+//            case "welcome":
+//                return "💡 快捷键: /help (帮助) | /status (状态) | /history (历史) | Ctrl+C (中断) | Ctrl+D (退出)";
+//
+//            case "input":
+//                return "💡 提示: 输入 /help 查看所有命令 | Tab 键自动补全 | ↑↓ 箭头浏览历史";
+//
+//            case "thinking":
+//                return "💡 提示: 按 Ctrl+C 可中断当前操作";
             
             case "error":
                 return "💡 提示: /reset 清空上下文 | /status 查看状态 | /history 查看历史";

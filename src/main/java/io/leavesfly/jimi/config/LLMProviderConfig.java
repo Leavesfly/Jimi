@@ -92,7 +92,9 @@ public class LLMProviderConfig {
 
         @JsonProperty("claude") CLAUDE,
 
-        @JsonProperty("cursor") CURSOR
+        @JsonProperty("cursor") CURSOR,
+
+        @JsonProperty("glm") GLM
 
     }
 }

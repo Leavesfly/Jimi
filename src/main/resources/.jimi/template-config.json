@@ -17,6 +17,28 @@
       "base_url": "http://localhost:11434/v1",
       "api_key": "",
       "custom_headers": {}
+    },
+    "kimi": {
+      "type": "kimi",
+      "base_url": "https://api.moonshot.cn/v1",
+      "api_key": "YOUR_API_KEY_HERE",
+      "custom_headers": {},
+      "rate_limit": {
+        "window_ms": 60000,
+        "max_requests": 10,
+        "sleep_ms": 1000
+      }
+    },
+    "glm": {
+      "type": "glm",
+      "base_url": "https://open.bigmodel.cn/api/paas/v4",
+      "api_key": "YOUR_API_KEY_HERE",
+      "custom_headers": {},
+      "rate_limit": {
+        "window_ms": 60000,
+        "max_requests": 20,
+        "sleep_ms": 1000
+      }
     }
   },
   "models": {
@@ -55,10 +77,30 @@
       "model": "deepseek-v3.2-exp",
       "max_context_size": 200000
     },
-    "Moonshot-Kimi-K2-Instruct": {
-      "provider": "qwen",
-      "model": "Moonshot-Kimi-K2-Instruct",
+    "kimi-k2-thinking-turbo": {
+      "provider": "kimi",
+      "model": "kimi-k2-thinking-turbo",
       "max_context_size": 200000
+    },
+    "kimi-k2-instruct": {
+      "provider": "kimi",
+      "model": "kimi-k2-instruct",
+      "max_context_size": 200000
+    },
+    "glm-4.7": {
+      "provider": "glm",
+      "model": "glm-4.7",
+      "max_context_size": 200000
+    },
+    "glm-4-flash": {
+      "provider": "glm",
+      "model": "glm-4-flash",
+      "max_context_size": 128000
+    },
+    "glm-4-plus": {
+      "provider": "glm",
+      "model": "glm-4-plus",
+      "max_context_size": 128000
     },
     "qwen3:4b-instruct-2507-q8_0": {
       "provider": "ollama",

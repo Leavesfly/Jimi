@@ -9,7 +9,7 @@ system_prompt: system_prompt.md
 system_prompt_args: { }
 
 # 指定模型（可选，如果不指定则使用全局默认模型）
-model: qwen3-max
+#model: qwen3-max
 #model: cursor-opus
 #model: composer
 #model: cursor-auto
@@ -28,6 +28,7 @@ model: qwen3-max
 
 #model: qwen3:4b-thinking-2507-q8_0
 #model: qwen3:4b-instruct-2507-q8_0
+model: glm-4.7
 
 
 # 可用工具列表
