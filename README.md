@@ -1,5 +1,8 @@
 # Jimi：打造Java程序员专属的开源ClaudeCode
 
+[![Run in Smithery](https://smithery.ai/badge/skills/leavesfly)](https://smithery.ai/skills?ns=leavesfly&utm_source=github&utm_medium=badge)
+
+
 > 一个完全用Java实现的AI驱动CLI智能代理系统，为Java开发者带来可深度定制的类ClaudeCode开源。
 
 [![Java](https://img.shields.io/badge/Java-17+-orange.svg)](https://www.oracle.com/java/)
