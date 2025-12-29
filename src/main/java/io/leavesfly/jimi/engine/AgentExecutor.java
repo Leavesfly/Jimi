@@ -20,8 +20,10 @@ import io.leavesfly.jimi.engine.runtime.Runtime;
 import io.leavesfly.jimi.engine.toolcall.ToolCallFilter;
 import io.leavesfly.jimi.engine.toolcall.ToolCallValidator;
 import io.leavesfly.jimi.engine.toolcall.ToolErrorTracker;
+import io.leavesfly.jimi.memory.ErrorPattern;
 import io.leavesfly.jimi.memory.MemoryExtractor;
 import io.leavesfly.jimi.memory.MemoryInjector;
+import io.leavesfly.jimi.memory.SessionSummary;
 import io.leavesfly.jimi.memory.TaskHistory;
 import io.leavesfly.jimi.retrieval.RetrievalPipeline;
 import io.leavesfly.jimi.skill.SkillMatcher;
@@ -93,6 +95,13 @@ public class AgentExecutor {
     private List<String> toolsUsedInTask = new ArrayList<>();
     private int stepsInTask = 0;
     private int tokensInTask = 0;
+    
+    // 会话跟踪（用于记录会话摘要）
+    private Instant sessionStartTime;
+    private List<String> filesModified = new ArrayList<>();
+    private List<String> keyDecisions = new ArrayList<>();
+    private List<String> lessonsLearned = new ArrayList<>();
+    private int tasksCompletedInSession = 0;
     
     // ReCAP 记忆优化：父级上下文栈
     private final Deque<ParentContext> parentStack = new LinkedList<>();
@@ -218,11 +227,14 @@ public class AgentExecutor {
                         log.info("Agent execution completed");
                         // 记录任务历史
                         recordTaskHistory("success").subscribe();
+                        tasksCompletedInSession++;
                     })
                     .doOnError(e -> {
                         log.error("Agent execution failed", e);
                         // 记录失败的任务
                         recordTaskHistory("failed").subscribe();
+                        // 记录错误模式
+                        recordErrorPattern(e, "agent_execution", currentUserQuery).subscribe();
                     });
         });
     }
@@ -894,6 +906,8 @@ public class AgentExecutor {
                     log.error("Tool execution failed: {}", toolName, e);
                     ToolResult errorResult = ToolResult.error("Tool execution error: " + e.getMessage(), "Execution failed");
                     wire.send(new ToolResultMessage(toolCallId, errorResult));
+                    // 记录工具执行错误模式
+                    recordErrorPattern(e, toolName, arguments).subscribe();
                     return Mono.just(Message.tool(toolCallId, "Tool execution error: " + e.getMessage()));
                 });
     }
@@ -1252,5 +1266,138 @@ public class AgentExecutor {
         }
         
         return "任务已完成";
+    }
+    
+    // ==================== 会话摘要记录 ====================
+    
+    /**
+     * 记录会话摘要到持久化存储
+     * 
+     * @param status 会话状态（completed/interrupted/error）
+     * @return 完成的 Mono
+     */
+    public Mono<Void> recordSessionSummary(String status) {
+        if (memoryExtractor == null || memoryExtractor.getMemoryManager() == null) {
+            return Mono.empty();
+        }
+        
+        if (sessionStartTime == null) {
+            // 初始化会话开始时间
+            sessionStartTime = taskStartTime;
+        }
+        
+        return Mono.defer(() -> {
+            Instant endTime = Instant.now();
+            
+            // 生成会话ID
+            String sessionId = "session_" + sessionStartTime.toString().replaceAll("[^0-9]", "").substring(0, 14);
+            
+            // 构建会话摘要
+            SessionSummary session = SessionSummary.builder()
+                    .sessionId(sessionId)
+                    .startTime(sessionStartTime)
+                    .endTime(endTime)
+                    .goal(currentUserQuery)
+                    .outcome(extractTaskSummary())
+                    .keyDecisions(new ArrayList<>(keyDecisions))
+                    .filesModified(new ArrayList<>(filesModified))
+                    .tasksCompleted(tasksCompletedInSession)
+                    .totalSteps(stepsInTask)
+                    .totalTokens(tokensInTask)
+                    .status(status)
+                    .lessonsLearned(new ArrayList<>(lessonsLearned))
+                    .build();
+            
+            // 保存到 MemoryManager
+            return memoryExtractor.getMemoryManager().addSessionSummary(session)
+                    .doOnSuccess(v -> log.info("会话摘要已记录: {} ({})", sessionId, status))
+                    .doOnError(e -> log.error("记录会话摘要失败", e))
+                    .onErrorResume(e -> Mono.empty());
+        });
+    }
+    
+    /**
+     * 记录修改的文件
+     */
+    public void recordFileModified(String filePath) {
+        if (filePath != null && !filePath.isEmpty() && !filesModified.contains(filePath)) {
+            filesModified.add(filePath);
+        }
+    }
+    
+    /**
+     * 记录关键决策
+     */
+    public void recordKeyDecision(String decision) {
+        if (decision != null && !decision.isEmpty() && !keyDecisions.contains(decision)) {
+            keyDecisions.add(decision);
+        }
+    }
+    
+    // ==================== 错误模式记录 ====================
+    
+    /**
+     * 记录错误模式到持久化存储
+     * 
+     * @param e 异常
+     * @param toolName 工具/场景名称
+     * @param context 上下文
+     * @return 完成的 Mono
+     */
+    private Mono<Void> recordErrorPattern(Throwable e, String toolName, String context) {
+        if (memoryExtractor == null || memoryExtractor.getMemoryManager() == null) {
+            return Mono.empty();
+        }
+        
+        return Mono.defer(() -> {
+            // 提取错误类型
+            String errorType = e.getClass().getSimpleName();
+            
+            // 提取错误消息（截取前200字符）
+            String errorMessage = e.getMessage();
+            if (errorMessage != null && errorMessage.length() > 200) {
+                errorMessage = errorMessage.substring(0, 200) + "...";
+            }
+            
+            // 提取上下文（截取前100字符）
+            String contextStr = context;
+            if (contextStr != null && contextStr.length() > 100) {
+                contextStr = contextStr.substring(0, 100) + "...";
+            }
+            
+            // 生成ID
+            String patternId = "err_" + Instant.now().toString().replaceAll("[^0-9]", "").substring(0, 14);
+            
+            // 构建错误模式
+            ErrorPattern pattern = ErrorPattern.builder()
+                    .id(patternId)
+                    .errorType(errorType)
+                    .errorMessage(errorMessage != null ? errorMessage : "Unknown error")
+                    .context(contextStr)
+                    .toolName(toolName)
+                    .firstSeen(Instant.now())
+                    .lastSeen(Instant.now())
+                    .severity(classifyErrorSeverity(e))
+                    .build();
+            
+            // 保存到 MemoryManager
+            return memoryExtractor.getMemoryManager().addOrUpdateErrorPattern(pattern)
+                    .doOnSuccess(v -> log.debug("错误模式已记录: {} - {}", errorType, toolName))
+                    .doOnError(err -> log.error("记录错误模式失败", err))
+                    .onErrorResume(err -> Mono.empty());
+        });
+    }
+    
+    /**
+     * 分类错误严重程度
+     */
+    private String classifyErrorSeverity(Throwable e) {
+        if (e instanceof OutOfMemoryError || e instanceof StackOverflowError) {
+            return "high";
+        }
+        if (e instanceof RuntimeException) {
+            return "medium";
+        }
+        return "low";
     }
 }

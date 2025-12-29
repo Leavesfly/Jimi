@@ -132,33 +132,41 @@ public class MemoryInjector {
     
     /**
      * 注入项目知识到上下文
+     * 优先使用语义检索（如果启用），否则回退到关键词
      */
     private Mono<Void> injectProjectInsights(Context context, String userQuery) {
-        // 1. 提取关键词（简单分词）
-        List<String> keywords = extractKeywords(userQuery);
+        // 如果启用了语义检索，直接使用完整查询语句
+        if (memoryManager.isSemanticSearchEnabled()) {
+            return memoryManager.queryInsights(userQuery, 3)  // 语义检索用完整查询
+                    .flatMap(insights -> injectInsightsToContext(context, insights, userQuery));
+        }
         
+        // 关键词检索模式：提取关键词
+        List<String> keywords = extractKeywords(userQuery);
         if (keywords.isEmpty()) {
             return Mono.empty();
         }
         
-        // 2. 使用第一个关键词查询相关知识
         String primaryKeyword = keywords.get(0);
-        
         return memoryManager.queryInsights(primaryKeyword, 3)
-                .flatMap(insights -> {
-                    if (insights.isEmpty()) {
-                        log.debug("未找到与 [{}] 相关的知识", primaryKeyword);
-                        return Mono.empty();
-                    }
-                    
-                    // 3. 构建注入消息
-                    String memoryPrompt = buildMemoryPrompt(insights);
-                    Message memoryMsg = Message.user(List.of(TextPart.of(memoryPrompt)));
-                    
-                    // 4. 注入到上下文
-                    log.info("注入 {} 条相关知识到上下文", insights.size());
-                    return context.appendMessage(memoryMsg);
-                });
+                .flatMap(insights -> injectInsightsToContext(context, insights, primaryKeyword));
+    }
+    
+    /**
+     * 将知识注入到上下文
+     */
+    private Mono<Void> injectInsightsToContext(Context context, List<ProjectInsight> insights, String query) {
+        if (insights.isEmpty()) {
+            log.debug("未找到与 [{}] 相关的知识", query);
+            return Mono.empty();
+        }
+        
+        String memoryPrompt = buildMemoryPrompt(insights);
+        Message memoryMsg = Message.user(List.of(TextPart.of(memoryPrompt)));
+        
+        log.info("注入 {} 条相关知识到上下文{}", insights.size(),
+                memoryManager.isSemanticSearchEnabled() ? " (语义检索)" : "");
+        return context.appendMessage(memoryMsg);
     }
     
     /**
