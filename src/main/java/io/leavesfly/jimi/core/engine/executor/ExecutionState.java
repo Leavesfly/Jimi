@@ -1,14 +1,12 @@
 package io.leavesfly.jimi.core.engine.executor;
 
-import io.leavesfly.jimi.core.engine.runtime.ParentContext;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Deque;
-import java.util.LinkedList;
+
 import java.util.List;
 
 /**
@@ -26,51 +24,65 @@ import java.util.List;
 public class ExecutionState {
 
     // ==================== 任务执行跟踪 ====================
-    
-    /** 任务开始时间 */
+
+    /**
+     * 任务开始时间
+     */
     private Instant taskStartTime;
-    
-    /** 当前用户查询 */
+
+    /**
+     * 当前用户查询
+     */
     private String currentUserQuery;
-    
-    /** 任务中使用的工具列表 */
+
+    /**
+     * 任务中使用的工具列表
+     */
     private final List<String> toolsUsedInTask = new ArrayList<>();
-    
-    /** 任务中的步数 */
+
+    /**
+     * 任务中的步数
+     */
     private int stepsInTask = 0;
-    
-    /** 任务中使用的Token数 */
+
+    /**
+     * 任务中使用的Token数
+     */
     private int tokensInTask = 0;
 
     // ==================== 会话跟踪 ====================
-    
-    /** 会话开始时间 */
+
+    /**
+     * 会话开始时间
+     */
     private Instant sessionStartTime;
-    
-    /** 修改的文件列表 */
+
+    /**
+     * 修改的文件列表
+     */
     private final List<String> filesModified = new ArrayList<>();
-    
-    /** 关键决策列表 */
+
+    /**
+     * 关键决策列表
+     */
     private final List<String> keyDecisions = new ArrayList<>();
-    
-    /** 经验教训列表 */
+
+    /**
+     * 经验教训列表
+     */
     private final List<String> lessonsLearned = new ArrayList<>();
-    
-    /** 会话中完成的任务数 */
+
+    /**
+     * 会话中完成的任务数
+     */
     private int tasksCompletedInSession = 0;
 
     // ==================== 思考步数跟踪 ====================
-    
-    /** 连续无工具调用步数 */
-    private int consecutiveNoToolCallSteps = 0;
 
-    // ==================== ReCAP 相关 ====================
-    
-    /** 父级上下文栈（用于 Subagent 恢复） */
-    private final Deque<ParentContext> parentStack = new LinkedList<>();
-    
-    /** 当前递归深度 */
-    private int currentDepth = 0;
+    /**
+     * 连续无工具调用步数
+     */
+    private int consecutiveNoToolCallSteps = 0;
 
     /**
      * 初始化任务状态（在每个新任务开始时调用）
@@ -81,7 +93,7 @@ public class ExecutionState {
         stepsInTask = 0;
         tokensInTask = 0;
         consecutiveNoToolCallSteps = 0;
-        
+
         log.debug("任务状态已初始化: startTime={}", taskStartTime);
     }
 
@@ -94,7 +106,7 @@ public class ExecutionState {
         keyDecisions.clear();
         lessonsLearned.clear();
         tasksCompletedInSession = 0;
-        
+
         log.debug("会话状态已初始化: startTime={}", sessionStartTime);
     }
 
@@ -136,12 +148,12 @@ public class ExecutionState {
      */
     public boolean shouldForceComplete(int maxThinkingSteps) {
         consecutiveNoToolCallSteps++;
-        
+
         if (consecutiveNoToolCallSteps >= maxThinkingSteps) {
             log.warn("连续思考 {} 步未调用工具，强制完成", consecutiveNoToolCallSteps);
             return true;
         }
-        
+
         log.debug("连续思考步数: {}/{}", consecutiveNoToolCallSteps, maxThinkingSteps);
         return false;
     }
@@ -224,42 +236,6 @@ public class ExecutionState {
         return Instant.now().toEpochMilli() - sessionStartTime.toEpochMilli();
     }
 
-    /**
-     * Push 父级上下文到栈
-     *
-     * @param parent 父级上下文
-     */
-    public void pushParentContext(ParentContext parent) {
-        parentStack.push(parent);
-        currentDepth++;
-        log.debug("Push 父级上下文: depth {} -> {}", parent.getDepth(), currentDepth);
-    }
-
-    /**
-     * Pop 父级上下文
-     *
-     * @return 弹出的父级上下文，如果栈为空返回 null
-     */
-    public ParentContext popParentContext() {
-        if (parentStack.isEmpty()) {
-            log.warn("父级上下文栈为空，无法 pop");
-            return null;
-        }
-        
-        ParentContext parent = parentStack.pop();
-        currentDepth = parent.getDepth();
-        log.debug("Pop 父级上下文: depth -> {}", currentDepth);
-        return parent;
-    }
-
-    /**
-     * 检查父级上下文栈是否为空
-     *
-     * @return true 如果栈为空
-     */
-    public boolean isParentStackEmpty() {
-        return parentStack.isEmpty();
-    }
 
     /**
      * 重置所有状态（用于测试或完全重置）
@@ -267,9 +243,6 @@ public class ExecutionState {
     public void reset() {
         initializeTask();
         initializeSession();
-        parentStack.clear();
-        currentDepth = 0;
-        
         log.debug("执行状态已完全重置");
     }
 }

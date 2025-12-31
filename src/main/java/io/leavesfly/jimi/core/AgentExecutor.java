@@ -1,20 +1,15 @@
 package io.leavesfly.jimi.core;
 
-import io.leavesfly.jimi.config.info.MemoryConfig;
 import io.leavesfly.jimi.core.agent.Agent;
 import io.leavesfly.jimi.core.compaction.Compaction;
-
-import io.leavesfly.jimi.core.engine.context.ActivePromptBuilder;
 import io.leavesfly.jimi.core.engine.context.Context;
 import io.leavesfly.jimi.core.engine.executor.*;
-import io.leavesfly.jimi.core.engine.runtime.ParentContext;
 import io.leavesfly.jimi.core.engine.runtime.Runtime;
 import io.leavesfly.jimi.exception.MaxStepsReachedException;
 
 import io.leavesfly.jimi.llm.LLM;
 import io.leavesfly.jimi.llm.message.ContentPart;
 import io.leavesfly.jimi.llm.message.Message;
-import io.leavesfly.jimi.llm.message.TextPart;
 import io.leavesfly.jimi.tool.ToolRegistry;
 
 import io.leavesfly.jimi.util.SpringContextUtils;
@@ -61,9 +56,6 @@ public class AgentExecutor {
     // ==================== 可选配置 ====================
     private final boolean isSubagent;
 
-    private final ActivePromptBuilder promptBuilder;
-    private final MemoryConfig memoryConfig;
-
 
     /**
      * 私有构造函数，通过 Builder 创建实例
@@ -80,7 +72,6 @@ public class AgentExecutor {
         // 可选参数
         this.isSubagent = builder.isSubagent;
         this.agentName = agent.getName();
-        this.promptBuilder = builder.promptBuilder;
 
         // 初始化拆分组件（通过 SpringContextUtils 从容器获取原型 Bean）
         this.executionState = new ExecutionState();
@@ -90,12 +81,7 @@ public class AgentExecutor {
         this.responseProcessor = SpringContextUtils.getBean(ResponseProcessor.class);
         this.contextManager = SpringContextUtils.getBean(ContextManager.class);
 
-        this.memoryConfig = SpringContextUtils.getBean(MemoryConfig.class);
 
-        // 订阅 Subagent 事件（ReCAP 记忆优化）
-        if (memoryConfig != null && memoryConfig.isEnableRecap()) {
-            subscribeToSubagentEvents();
-        }
     }
 
     /**
@@ -134,7 +120,6 @@ public class AgentExecutor {
 
         // 可选参数
         private boolean isSubagent = false;
-        private ActivePromptBuilder promptBuilder;
 
         private Builder() {
         }
@@ -178,14 +163,6 @@ public class AgentExecutor {
             return this;
         }
 
-
-        /**
-         * 设置 ReCAP 提示构建器
-         */
-        public Builder promptBuilder(ActivePromptBuilder promptBuilder) {
-            this.promptBuilder = promptBuilder;
-            return this;
-        }
 
         /**
          * 构建 AgentExecutor 实例
@@ -313,102 +290,14 @@ public class AgentExecutor {
 
             String systemPrompt = agent.getSystemPrompt();
 
-            if (promptBuilder != null) {
-                boolean recapEnabled = memoryConfig != null && memoryConfig.isEnableRecap();
-                systemPrompt = promptBuilder.buildEnhancedPrompt(
-                        agent.getSystemPrompt(),
-                        context.getHighLevelIntent(),
-                        context.getRecentInsights(memoryConfig != null ? memoryConfig.getInsightsWindowSize() : 5),
-                        0,
-                        recapEnabled
-                );
-            }
-
             return llm.getChatProvider()
                     .generateStream(systemPrompt, context.getHistory(), toolSchemas)
                     .contextWrite(ctx -> ctx.put("workDir", runtime.getWorkDir()))
                     .reduce(new ResponseProcessor.StreamAccumulator(), responseProcessor::processStreamChunk)
-                    .flatMap(acc -> responseProcessor.handleStreamCompletion(acc, context, executionState,toolRegistry))
+                    .flatMap(acc -> responseProcessor.handleStreamCompletion(acc, context, executionState, toolRegistry))
                     .onErrorResume(responseProcessor::handleLLMError);
         });
     }
 
-    // ==================== ReCAP 相关方法 ====================
-
-    private void subscribeToSubagentEvents() {
-        wire.asFlux()
-                .ofType(SubagentStarting.class)
-                .subscribe(event -> {
-                    log.debug("收到 SubagentStarting 事件: {}", event.getSubagentName());
-                    pushCurrentContext(event.getPrompt()).subscribe();
-                });
-
-        wire.asFlux()
-                .ofType(SubagentCompleted.class)
-                .subscribe(event -> {
-                    log.debug("收到 SubagentCompleted 事件");
-                    restoreParentContext(event.getSummary()).subscribe();
-                });
-    }
-
-    public Mono<Void> pushCurrentContext(String subGoalDesc) {
-        if (memoryConfig == null || !memoryConfig.isEnableRecap()) {
-            return Mono.empty();
-        }
-
-        return Mono.defer(() -> {
-            if (executionState.getCurrentDepth() >= memoryConfig.getMaxRecursionDepth()) {
-                log.warn("达到最大递归深度 {}, 不再入栈", memoryConfig.getMaxRecursionDepth());
-                return Mono.empty();
-            }
-
-            return context.checkpoint(false)
-                    .map(checkpointId -> {
-                        String latestThought = memoryRecorder.extractLatestThought(context);
-
-                        ParentContext parent = new ParentContext(
-                                checkpointId,
-                                latestThought,
-                                executionState.getCurrentDepth(),
-                                subGoalDesc
-                        );
-
-                        executionState.pushParentContext(parent);
-
-                        log.info("Push 父级上下文 (depth: {} -> {}, checkpoint: {})",
-                                parent.getDepth(), executionState.getCurrentDepth(), checkpointId);
-
-                        return parent;
-                    })
-                    .then();
-        });
-    }
-
-    public Mono<Void> restoreParentContext(String childSummary) {
-        if (memoryConfig == null || !memoryConfig.isEnableRecap() || executionState.isParentStackEmpty()) {
-            return Mono.empty();
-        }
-
-        return Mono.defer(() -> {
-            ParentContext parent = executionState.popParentContext();
-            if (parent == null) {
-                return Mono.empty();
-            }
-
-            log.info("Restore 父级上下文 (depth: {} <- {}, checkpoint: {})",
-                    executionState.getCurrentDepth(), executionState.getCurrentDepth() + 1,
-                    parent.getCheckpointId());
-
-            return context.revertTo(parent.getCheckpointId())
-                    .then(Mono.defer(() -> {
-                        String injectionMsg = parent.formatForInjection()
-                                + "\n## 子目标完成摘要\n"
-                                + (childSummary != null ? childSummary : "(无)");
-
-                        return context.appendMessage(Message.user(List.of(TextPart.of(injectionMsg))));
-                    }))
-                    .doOnSuccess(v -> log.debug("结构化注入完成"));
-        });
-    }
 
 }

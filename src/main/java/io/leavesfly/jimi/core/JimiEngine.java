@@ -4,7 +4,7 @@ import io.leavesfly.jimi.core.agent.Agent;
 import io.leavesfly.jimi.core.compaction.Compaction;
 
 import io.leavesfly.jimi.core.engine.EngineConstants;
-import io.leavesfly.jimi.core.engine.context.ActivePromptBuilder;
+
 import io.leavesfly.jimi.core.engine.context.Context;
 
 import io.leavesfly.jimi.core.engine.runtime.Runtime;
@@ -54,7 +54,6 @@ public class JimiEngine implements Engine {
     // ==================== 可选配置 ====================
     private final boolean isSubagent;
 
-    private final ActivePromptBuilder promptBuilder;
 
     // ==================== 内部组件 ====================
     private final AgentExecutor executor;
@@ -74,13 +73,11 @@ public class JimiEngine implements Engine {
 
         // 可选配置
         this.isSubagent = builder.isSubagent;
-        this.promptBuilder = builder.promptBuilder;
 
 
         // 创建执行器（使用 Builder 模式）
         this.executor = AgentExecutor.builder().agent(agent).runtime(runtime).context(context).wire(wire)
-                .toolRegistry(toolRegistry).compaction(compaction).isSubagent(isSubagent).promptBuilder(promptBuilder)
-                .build();
+                .toolRegistry(toolRegistry).compaction(compaction).isSubagent(isSubagent).build();
 
         // 设置 Approval 事件转发（仅主 Agent 订阅）
         if (!isSubagent) {
@@ -132,8 +129,6 @@ public class JimiEngine implements Engine {
 
         // 可选配置
         private boolean isSubagent = false;
-        private ActivePromptBuilder promptBuilder;
-
 
         private Builder() {
         }
@@ -177,12 +172,6 @@ public class JimiEngine implements Engine {
             this.isSubagent = isSubagent;
             return this;
         }
-        
-        public Builder promptBuilder(ActivePromptBuilder promptBuilder) {
-            this.promptBuilder = promptBuilder;
-            return this;
-        }
-
 
 
         /**

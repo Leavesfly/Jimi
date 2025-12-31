@@ -15,7 +15,7 @@ providers:
     type: qwen
     base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
     api_key: YOUR_API_KEY_HERE  # 请替换为您的 API Key
-    custom_headers: {}
+    custom_headers: { }
     rate_limit:
       window_ms: 4000      # 时间窗口（毫秒）
       max_requests: 4      # 窗口内最大请求数
@@ -26,14 +26,14 @@ providers:
     type: ollama
     base_url: http://localhost:11434/v1
     api_key: ""  # Ollama 通常不需要 API Key
-    custom_headers: {}
+    custom_headers: { }
   
   # Kimi (Moonshot) 配置
   kimi:
     type: kimi
     base_url: https://api.moonshot.cn/v1
     api_key: YOUR_API_KEY_HERE
-    custom_headers: {}
+    custom_headers: { }
     rate_limit:
       window_ms: 60000
       max_requests: 10
@@ -44,7 +44,7 @@ providers:
     type: glm
     base_url: https://open.bigmodel.cn/api/paas/v4
     api_key: YOUR_API_KEY_HERE
-    custom_headers: {}
+    custom_headers: { }
     rate_limit:
       window_ms: 60000
       max_requests: 20
@@ -55,7 +55,7 @@ providers:
     type: minimax
     base_url: https://api.minimaxi.com/v1
     api_key: YOUR_API_KEY_HERE
-    custom_headers: {}
+    custom_headers: { }
     rate_limit:
       window_ms: 60000
       max_requests: 30
@@ -165,7 +165,7 @@ loop_control:
 web_search:
   base_url: https://api.bochaai.com/v1/web-search
   api_key: YOUR_API_KEY_HERE
-  custom_headers: {}
+  custom_headers: { }
 
 # ==================== 向量索引配置 ====================
 
@@ -252,12 +252,7 @@ skill:
 # ==================== 记忆模块配置 ====================
 
 memory:
-  # ReCAP 优化配置
-  active_prompt_max_tokens: 4000  # 有界提示最大 Token 数
-  insights_window_size: 5         # 关键发现窗口大小（最近 N 条）
-  enable_recap: false             # 是否启用 ReCAP 优化
-  max_recursion_depth: 5          # 最大递归深度
-  
+
   # 长期记忆配置
   long_term_enabled: true         # 是否启用长期记忆
   auto_extract: true              # 是否自动从工具结果提取知识
