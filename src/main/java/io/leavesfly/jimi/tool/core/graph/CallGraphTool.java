@@ -1,8 +1,7 @@
 package io.leavesfly.jimi.tool.core.graph;
 
 import com.fasterxml.jackson.annotation.JsonPropertyDescription;
-import io.leavesfly.jimi.knowledge.graph.navigator.GraphNavigator;
-import io.leavesfly.jimi.knowledge.graph.visualization.GraphVisualizer;
+import io.leavesfly.jimi.knowledge.spi.GraphService;
 import io.leavesfly.jimi.tool.AbstractTool;
 import io.leavesfly.jimi.tool.ToolResult;
 import lombok.AllArgsConstructor;
@@ -12,6 +11,8 @@ import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Mono;
 
+import java.util.List;
+
 /**
  * 调用图查询工具
  * <p>
@@ -20,17 +21,15 @@ import reactor.core.publisher.Mono;
 @Slf4j
 public class CallGraphTool extends AbstractTool<CallGraphTool.Params> {
     
-    private final GraphNavigator navigator;
-    private final GraphVisualizer visualizer;
+    private final GraphService graphService;
     
-    public CallGraphTool(GraphNavigator navigator, GraphVisualizer visualizer) {
+    public CallGraphTool(GraphService graphService) {
         super(
             "CallGraphTool",
             "查询方法调用图。可查找调用链、调用者、被调用者,并支持 Mermaid 可视化。",
             Params.class
         );
-        this.navigator = navigator;
-        this.visualizer = visualizer;
+        this.graphService = graphService;
     }
     
     @Override
@@ -38,113 +37,91 @@ public class CallGraphTool extends AbstractTool<CallGraphTool.Params> {
         log.info("CallGraph tool called: methodId='{}', queryType={}, maxDepth={}", 
                 params.getMethodEntityId(), params.getQueryType(), params.getMaxDepth());
         
-        try {
-            String output;
-            
-            switch (params.getQueryType()) {
-                case "callers":
-                    output = findCallers(params);
-                    break;
-                    
-                case "callees":
-                    output = findCallees(params);
-                    break;
-                    
-                case "callchain":
-                    output = findCallChain(params);
-                    break;
-                    
-                case "visualize":
-                default:
-                    output = visualizeCallGraph(params);
-                    break;
-            }
-            
-            return Mono.just(ToolResult.ok(output, "Call graph query completed"));
-            
-        } catch (Exception e) {
-            log.error("Call graph query failed: {}", e.getMessage(), e);
-            return Mono.just(ToolResult.error(
-                "Call graph query failed: " + e.getMessage(),
-                "Execution error"
-            ));
+        switch (params.getQueryType()) {
+            case "callers":
+                return findCallers(params);
+            case "callees":
+                return findCallees(params);
+            case "callchain":
+                return findCallChain(params);
+            case "visualize":
+            default:
+                return visualizeCallGraph(params);
         }
     }
     
-    private String findCallers(Params params) {
-        var callers = navigator.findCallers(params.getMethodEntityId(), params.getMaxDepth()).block();
-        
-        StringBuilder sb = new StringBuilder();
-        sb.append("# 调用者列表\n\n");
-        sb.append(String.format("找到 %d 个调用者:\n\n", callers != null ? callers.size() : 0));
-        
-        if (callers != null) {
-            callers.forEach(caller -> 
-                sb.append(String.format("- `%s` (%s:%d)\n", 
-                    caller.getName(), 
-                    caller.getFilePath(),
-                    caller.getStartLine()))
-            );
-        }
-        
-        return sb.toString();
+    private Mono<ToolResult> findCallers(Params params) {
+        return graphService.findCallers(params.getMethodEntityId(), params.getMaxDepth())
+                .map(callers -> {
+                    StringBuilder sb = new StringBuilder();
+                    sb.append("# 调用者列表\n\n");
+                    sb.append(String.format("找到 %d 个调用者:\n\n", callers.size()));
+                    
+                    for (GraphService.EntityInfo caller : callers) {
+                        sb.append(String.format("- `%s` (%s:%d)\n", 
+                            caller.getName(), 
+                            caller.getFilePath(),
+                            caller.getStartLine()));
+                    }
+                    
+                    return ToolResult.ok(sb.toString(), "Call graph query completed");
+                })
+                .onErrorResume(e -> Mono.just(ToolResult.error(
+                    "Call graph query failed: " + e.getMessage(), "Execution error")));
     }
     
-    private String findCallees(Params params) {
-        var callees = navigator.findCallees(params.getMethodEntityId(), params.getMaxDepth()).block();
-        
-        StringBuilder sb = new StringBuilder();
-        sb.append("# 被调用方法列表\n\n");
-        sb.append(String.format("找到 %d 个被调用方法:\n\n", callees != null ? callees.size() : 0));
-        
-        if (callees != null) {
-            callees.forEach(callee -> 
-                sb.append(String.format("- `%s` (%s:%d)\n", 
-                    callee.getName(), 
-                    callee.getFilePath(),
-                    callee.getStartLine()))
-            );
-        }
-        
-        return sb.toString();
+    private Mono<ToolResult> findCallees(Params params) {
+        return graphService.findCallees(params.getMethodEntityId(), params.getMaxDepth())
+                .map(callees -> {
+                    StringBuilder sb = new StringBuilder();
+                    sb.append("# 被调用方法列表\n\n");
+                    sb.append(String.format("找到 %d 个被调用方法:\n\n", callees.size()));
+                    
+                    for (GraphService.EntityInfo callee : callees) {
+                        sb.append(String.format("- `%s` (%s:%d)\n", 
+                            callee.getName(), 
+                            callee.getFilePath(),
+                            callee.getStartLine()));
+                    }
+                    
+                    return ToolResult.ok(sb.toString(), "Call graph query completed");
+                })
+                .onErrorResume(e -> Mono.just(ToolResult.error(
+                    "Call graph query failed: " + e.getMessage(), "Execution error")));
     }
     
-    private String findCallChain(Params params) {
+    private Mono<ToolResult> findCallChain(Params params) {
         if (params.getTargetMethodId() == null) {
-            return "错误: targetMethodId 参数为空";
+            return Mono.just(ToolResult.error("错误: targetMethodId 参数为空", "Missing parameter"));
         }
         
-        var chains = navigator.findCallChains(
-            params.getMethodEntityId(),
-            params.getTargetMethodId(),
-            params.getMaxDepth()
-        ).block();
-        
-        StringBuilder sb = new StringBuilder();
-        sb.append("# 调用链\n\n");
-        sb.append(String.format("找到 %d 条调用链:\n\n", chains != null ? chains.size() : 0));
-        
-        if (chains != null) {
-            int index = 1;
-            for (var chain : chains) {
-                sb.append(String.format("%d. %s (深度: %d)\n", index++, chain.getPathString(), chain.getDepth()));
-            }
-        }
-        
-        return sb.toString();
+        return graphService.findCallChains(params.getMethodEntityId(), params.getTargetMethodId(), params.getMaxDepth())
+                .map(chains -> {
+                    StringBuilder sb = new StringBuilder();
+                    sb.append("# 调用链\n\n");
+                    sb.append(String.format("找到 %d 条调用链:\n\n", chains.size()));
+                    
+                    int index = 1;
+                    for (GraphService.CallChainInfo chain : chains) {
+                        sb.append(String.format("%d. %s (深度: %d)\n", index++, chain.getPathString(), chain.getDepth()));
+                    }
+                    
+                    return ToolResult.ok(sb.toString(), "Call graph query completed");
+                })
+                .onErrorResume(e -> Mono.just(ToolResult.error(
+                    "Call graph query failed: " + e.getMessage(), "Execution error")));
     }
     
-    private String visualizeCallGraph(Params params) {
-        String mermaid = visualizer.exportCallGraphToMermaid(
-            params.getMethodEntityId(),
-            params.getMaxDepth()
-        ).block();
-        
-        StringBuilder sb = new StringBuilder();
-        sb.append("# 调用图可视化\n\n");
-        sb.append(mermaid != null ? mermaid : "生成失败");
-        
-        return sb.toString();
+    private Mono<ToolResult> visualizeCallGraph(Params params) {
+        return graphService.exportCallGraphToMermaid(params.getMethodEntityId(), params.getMaxDepth())
+                .map(mermaid -> {
+                    StringBuilder sb = new StringBuilder();
+                    sb.append("# 调用图可视化\n\n");
+                    sb.append(mermaid != null && !mermaid.isEmpty() ? mermaid : "生成失败");
+                    return ToolResult.ok(sb.toString(), "Call graph query completed");
+                })
+                .onErrorResume(e -> Mono.just(ToolResult.error(
+                    "Call graph query failed: " + e.getMessage(), "Execution error")));
     }
     
     @Data

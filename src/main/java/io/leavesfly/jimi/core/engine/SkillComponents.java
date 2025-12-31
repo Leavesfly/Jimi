@@ -1,22 +1,22 @@
 package io.leavesfly.jimi.core.engine;
 
 import io.leavesfly.jimi.tool.skill.SkillMatcher;
-import io.leavesfly.jimi.tool.skill.SkillProvider;
+import io.leavesfly.jimi.tool.skill.SkillInjector;
 import lombok.Getter;
 
 /**
  * Skill 组件封装
  * <p>
- * 将 SkillMatcher 和 SkillProvider 合并为一个组件，
+ * 将 SkillMatcher 和 SkillInjector 合并为一个组件，
  * 简化 AgentExecutor 的构造参数。
  */
 @Getter
 public class SkillComponents {
 
     private final SkillMatcher matcher;
-    private final SkillProvider provider;
+    private final SkillInjector provider;
 
-    public SkillComponents(SkillMatcher matcher, SkillProvider provider) {
+    public SkillComponents(SkillMatcher matcher, SkillInjector provider) {
         this.matcher = matcher;
         this.provider = provider;
     }
@@ -31,7 +31,7 @@ public class SkillComponents {
     /**
      * 静态工厂方法
      */
-    public static SkillComponents of(SkillMatcher matcher, SkillProvider provider) {
+    public static SkillComponents of(SkillMatcher matcher, SkillInjector provider) {
         return new SkillComponents(matcher, provider);
     }
 }

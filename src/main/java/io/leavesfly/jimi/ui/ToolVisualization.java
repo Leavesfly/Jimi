@@ -223,6 +223,7 @@ public class ToolVisualization {
             case "FetchURL" -> extractJsonField(arguments, "url");
             case "Task" -> extractJsonField(arguments, "description");
             case "Think" -> extractJsonField(arguments, "thought");
+            case "Glob" -> extractJsonField(arguments, "pattern");
             default -> null;
         };
     }

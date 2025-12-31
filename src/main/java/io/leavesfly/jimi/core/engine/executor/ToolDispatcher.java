@@ -1,14 +1,15 @@
 package io.leavesfly.jimi.core.engine.executor;
 
-import io.leavesfly.jimi.config.info.MemoryConfig;
+
 import io.leavesfly.jimi.core.engine.context.Context;
 import io.leavesfly.jimi.core.engine.toolcall.ToolCallValidator;
 import io.leavesfly.jimi.core.engine.toolcall.ToolErrorTracker;
-import io.leavesfly.jimi.knowledge.memory.MemoryExtractor;
+
 import io.leavesfly.jimi.llm.message.Message;
 import io.leavesfly.jimi.llm.message.ToolCall;
 import io.leavesfly.jimi.tool.ToolRegistry;
 import io.leavesfly.jimi.tool.ToolResult;
+import io.leavesfly.jimi.util.SpringContextUtils;
 import io.leavesfly.jimi.wire.Wire;
 import io.leavesfly.jimi.wire.message.ToolCallMessage;
 import io.leavesfly.jimi.wire.message.ToolResultMessage;
@@ -34,40 +35,19 @@ public class ToolDispatcher {
     private final Wire wire;
     private final ToolCallValidator toolCallValidator;
     private final ToolErrorTracker toolErrorTracker;
-    
-    // 可选组件
-    private final MemoryConfig memoryConfig;
-    private final MemoryExtractor memoryExtractor;
-    private final MemoryRecorder memoryRecorder;
-    private final ExecutionState executionState;
+
 
     /**
      * 基础构造函数
      */
-    public ToolDispatcher(ToolRegistry toolRegistry, Wire wire) {
-        this(toolRegistry, wire, null, null, null, null);
+    public ToolDispatcher(ToolRegistry toolRegistry) {
+
+        this.toolRegistry = toolRegistry;
+        wire = SpringContextUtils.getBean(Wire.class);
+        toolCallValidator = SpringContextUtils.getBean(ToolCallValidator.class);
+        toolErrorTracker = SpringContextUtils.getBean(ToolErrorTracker.class);
     }
 
-    /**
-     * 完整构造函数
-     */
-    public ToolDispatcher(
-            ToolRegistry toolRegistry,
-            Wire wire,
-            MemoryConfig memoryConfig,
-            MemoryExtractor memoryExtractor,
-            MemoryRecorder memoryRecorder,
-            ExecutionState executionState
-    ) {
-        this.toolRegistry = toolRegistry;
-        this.wire = wire;
-        this.toolCallValidator = new ToolCallValidator();
-        this.toolErrorTracker = new ToolErrorTracker();
-        this.memoryConfig = memoryConfig;
-        this.memoryExtractor = memoryExtractor;
-        this.memoryRecorder = memoryRecorder;
-        this.executionState = executionState;
-    }
 
     /**
      * 执行工具调用列表（串行执行）
@@ -79,29 +59,18 @@ public class ToolDispatcher {
     public Mono<Void> executeToolCalls(List<ToolCall> toolCalls, Context context) {
         log.info("Starting sequential execution of {} tool calls", toolCalls.size());
 
-        return Flux.fromIterable(toolCalls)
-                .index()
-                .concatMap(tuple -> {
-                    long toolIndex = tuple.getT1();
-                    ToolCall toolCall = tuple.getT2();
+        return Flux.fromIterable(toolCalls).index().concatMap(tuple -> {
+            long toolIndex = tuple.getT1();
+            ToolCall toolCall = tuple.getT2();
 
-                    log.info("Executing tool call #{}/{}", toolIndex + 1, toolCalls.size());
+            log.info("Executing tool call #{}/{}", toolIndex + 1, toolCalls.size());
 
-                    return executeToolCall(toolCall, context)
-                            .doOnError(e -> log.error("Tool call #{} failed", toolIndex, e))
-                            .onErrorResume(e -> {
-                                log.error("Caught error in tool call #{}, returning error message", toolIndex, e);
-                                String toolCallId = (toolCall != null && toolCall.getId() != null)
-                                        ? toolCall.getId() : "unknown_" + toolIndex;
-                                return Mono.just(Message.tool(toolCallId,
-                                        "Tool execution failed: " + e.getMessage()));
-                            });
-                })
-                .collectList()
-                .doOnNext(results -> log.info("Collected {} tool results after sequential execution", results.size()))
-                .flatMap(results -> context.appendMessage(results)
-                        .doOnSuccess(v -> log.info("Successfully appended {} tool results to context", results.size()))
-                        .doOnError(e -> log.error("Failed to append tool results to context", e)));
+            return executeToolCall(toolCall, context).doOnError(e -> log.error("Tool call #{} failed", toolIndex, e)).onErrorResume(e -> {
+                log.error("Caught error in tool call #{}, returning error message", toolIndex, e);
+                String toolCallId = (toolCall != null && toolCall.getId() != null) ? toolCall.getId() : "unknown_" + toolIndex;
+                return Mono.just(Message.tool(toolCallId, "Tool execution failed: " + e.getMessage()));
+            });
+        }).collectList().doOnNext(results -> log.info("Collected {} tool results after sequential execution", results.size())).flatMap(results -> context.appendMessage(results).doOnSuccess(v -> log.info("Successfully appended {} tool results to context", results.size())).doOnError(e -> log.error("Failed to append tool results to context", e)));
     }
 
     /**
@@ -133,12 +102,10 @@ public class ToolDispatcher {
                 return executeValidToolCall(toolName, rawArgs, toolCallId, toolSignature, context);
             } catch (Exception e) {
                 log.error("Unexpected error in executeToolCall", e);
-                String errorToolCallId = (toolCall != null && toolCall.getId() != null)
-                        ? toolCall.getId() : "unknown";
+                String errorToolCallId = (toolCall != null && toolCall.getId() != null) ? toolCall.getId() : "unknown";
                 ToolResult errorResult = ToolResult.error("Internal error: " + e.getMessage(), "Execution error");
                 wire.send(new ToolResultMessage(errorToolCallId, errorResult));
-                return Mono.just(Message.tool(errorToolCallId,
-                        "Internal error executing tool: " + e.getMessage()));
+                return Mono.just(Message.tool(errorToolCallId, "Internal error executing tool: " + e.getMessage()));
             }
         });
     }
@@ -146,66 +113,32 @@ public class ToolDispatcher {
     /**
      * 执行已验证的工具调用
      */
-    private Mono<Message> executeValidToolCall(
-            String toolName,
-            String arguments,
-            String toolCallId,
-            String toolSignature,
-            Context context
-    ) {
-        // 记录工具使用
-        if (executionState != null) {
-            executionState.recordToolUsed(toolName);
-        }
+    private Mono<Message> executeValidToolCall(String toolName, String arguments, String toolCallId, String toolSignature, Context context) {
 
-        return toolRegistry.execute(toolName, arguments)
-                .doOnNext(result -> {
-                    // 发送工具执行结果消息到 Wire
-                    wire.send(new ToolResultMessage(toolCallId, result));
-                })
-                .map(result -> convertToolResultToMessage(result, toolCallId, toolSignature, context))
-                .onErrorResume(e -> {
-                    log.error("Tool execution failed: {}", toolName, e);
-                    ToolResult errorResult = ToolResult.error("Tool execution error: " + e.getMessage(), "Execution failed");
-                    wire.send(new ToolResultMessage(toolCallId, errorResult));
-                    
-                    // 记录工具执行错误模式
-                    if (memoryRecorder != null) {
-                        memoryRecorder.recordErrorPattern(e, toolName, arguments).subscribe();
-                    }
-                    
-                    return Mono.just(Message.tool(toolCallId, "Tool execution error: " + e.getMessage()));
-                });
+        return toolRegistry.execute(toolName, arguments).doOnNext(result -> {
+            // 发送工具执行结果消息到 Wire
+            wire.send(new ToolResultMessage(toolCallId, result));
+        }).map(result -> convertToolResultToMessage(result, toolCallId, toolSignature, context)).onErrorResume(e -> {
+            log.error("Tool execution failed: {}", toolName, e);
+            ToolResult errorResult = ToolResult.error("Tool execution error: " + e.getMessage(), "Execution failed");
+            wire.send(new ToolResultMessage(toolCallId, errorResult));
+
+
+            return Mono.just(Message.tool(toolCallId, "Tool execution error: " + e.getMessage()));
+        });
     }
 
     /**
      * 将工具结果转换为消息
      */
-    private Message convertToolResultToMessage(
-            ToolResult result,
-            String toolCallId,
-            String toolSignature,
-            Context context
-    ) {
+    private Message convertToolResultToMessage(ToolResult result, String toolCallId, String toolSignature, Context context) {
+
         String content;
 
         if (result.isOk()) {
             toolErrorTracker.clearErrors();
             content = formatToolResult(result);
 
-            // 提取关键发现（如果启用 ReCAP）
-            if (memoryConfig != null && memoryConfig.isEnableRecap() && memoryRecorder != null) {
-                String insight = memoryRecorder.extractInsightFromToolResult(result, toolSignature);
-                if (insight != null) {
-                    context.addKeyInsight(insight).subscribe();
-                }
-            }
-
-            // 提取长期记忆（如果启用）
-            if (memoryRecorder != null) {
-                String toolName = toolSignature.split(":")[0];
-                memoryRecorder.extractFromToolResult(result, toolName).subscribe();
-            }
         } else if (result.isError()) {
             toolErrorTracker.trackError(toolSignature);
             content = toolErrorTracker.buildErrorContent(result.getMessage(), result.getOutput(), toolSignature);

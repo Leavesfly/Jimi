@@ -3,24 +3,21 @@ package io.leavesfly.jimi.core;
 import io.leavesfly.jimi.config.info.MemoryConfig;
 import io.leavesfly.jimi.core.agent.Agent;
 import io.leavesfly.jimi.core.compaction.Compaction;
-import io.leavesfly.jimi.core.engine.MemoryComponents;
-import io.leavesfly.jimi.core.engine.SkillComponents;
+
 import io.leavesfly.jimi.core.engine.context.ActivePromptBuilder;
 import io.leavesfly.jimi.core.engine.context.Context;
 import io.leavesfly.jimi.core.engine.executor.*;
 import io.leavesfly.jimi.core.engine.runtime.ParentContext;
 import io.leavesfly.jimi.core.engine.runtime.Runtime;
 import io.leavesfly.jimi.exception.MaxStepsReachedException;
-import io.leavesfly.jimi.knowledge.memory.MemoryExtractor;
-import io.leavesfly.jimi.knowledge.memory.MemoryInjector;
-import io.leavesfly.jimi.knowledge.retrieval.RetrievalPipeline;
+
 import io.leavesfly.jimi.llm.LLM;
 import io.leavesfly.jimi.llm.message.ContentPart;
 import io.leavesfly.jimi.llm.message.Message;
 import io.leavesfly.jimi.llm.message.TextPart;
 import io.leavesfly.jimi.tool.ToolRegistry;
-import io.leavesfly.jimi.tool.skill.SkillMatcher;
-import io.leavesfly.jimi.tool.skill.SkillProvider;
+
+import io.leavesfly.jimi.util.SpringContextUtils;
 import io.leavesfly.jimi.wire.Wire;
 import io.leavesfly.jimi.wire.message.*;
 import lombok.extern.slf4j.Slf4j;
@@ -28,6 +25,7 @@ import reactor.core.publisher.Mono;
 
 import java.util.ArrayList;
 import java.util.List;
+
 import java.util.Objects;
 
 /**
@@ -68,6 +66,7 @@ public class AgentExecutor {
     private final ActivePromptBuilder promptBuilder;
     private final MemoryConfig memoryConfig;
 
+
     /**
      * 私有构造函数，通过 Builder 创建实例
      */
@@ -85,24 +84,16 @@ public class AgentExecutor {
         this.agentName = agent.getName();
         this.promptBuilder = builder.promptBuilder;
 
-        // 从组件中提取配置
-        MemoryComponents memoryComponents = builder.memoryComponents;
-        SkillComponents skillComponents = builder.skillComponents;
-
-        this.memoryConfig = memoryComponents != null ? memoryComponents.getConfig() : null;
-        MemoryExtractor memoryExtractor = memoryComponents != null ? memoryComponents.getExtractor() : null;
-        MemoryInjector memoryInjector = memoryComponents != null ? memoryComponents.getInjector() : null;
-        SkillMatcher skillMatcher = skillComponents != null ? skillComponents.getMatcher() : null;
-        SkillProvider skillProvider = skillComponents != null ? skillComponents.getProvider() : null;
-
-        // 初始化拆分组件
+        // 初始化拆分组件（通过 SpringContextUtils 从容器获取原型 Bean）
         this.executionState = new ExecutionState();
-        this.memoryRecorder = new MemoryRecorder(memoryExtractor);
-        this.responseProcessor = new ResponseProcessor(wire);
-        this.toolDispatcher = new ToolDispatcher(
-                toolRegistry, wire, memoryConfig, memoryExtractor, memoryRecorder, executionState);
-        this.contextManager = new ContextManager(
-                wire, builder.retrievalPipeline, skillMatcher, skillProvider, memoryInjector);
+
+        // 从 Spring 容器获取原型 Bean，然后设置依赖参数
+        this.memoryRecorder = SpringContextUtils.getBean(MemoryRecorder.class);
+        this.responseProcessor = SpringContextUtils.getBean(ResponseProcessor.class);
+        this.contextManager = SpringContextUtils.getBean(ContextManager.class);
+        this.toolDispatcher = new ToolDispatcher(toolRegistry);
+
+        this.memoryConfig = SpringContextUtils.getBean(MemoryConfig.class);
 
         // 订阅 Subagent 事件（ReCAP 记忆优化）
         if (memoryConfig != null && memoryConfig.isEnableRecap()) {
@@ -146,9 +137,6 @@ public class AgentExecutor {
 
         // 可选参数
         private boolean isSubagent = false;
-        private SkillComponents skillComponents;
-        private MemoryComponents memoryComponents;
-        private RetrievalPipeline retrievalPipeline;
         private ActivePromptBuilder promptBuilder;
 
         private Builder() {
@@ -193,29 +181,6 @@ public class AgentExecutor {
             return this;
         }
 
-        /**
-         * 设置 Skill 组件（合并了 SkillMatcher 和 SkillProvider）
-         */
-        public Builder skillComponents(SkillComponents skillComponents) {
-            this.skillComponents = skillComponents;
-            return this;
-        }
-
-        /**
-         * 设置 Memory 组件（合并了 MemoryConfig、MemoryInjector、MemoryExtractor）
-         */
-        public Builder memoryComponents(MemoryComponents memoryComponents) {
-            this.memoryComponents = memoryComponents;
-            return this;
-        }
-
-        /**
-         * 设置 RAG 检索管线
-         */
-        public Builder retrievalPipeline(RetrievalPipeline retrievalPipeline) {
-            this.retrievalPipeline = retrievalPipeline;
-            return this;
-        }
 
         /**
          * 设置 ReCAP 提示构建器
@@ -233,24 +198,6 @@ public class AgentExecutor {
         }
     }
 
-    // 复制构造函数（从另一个 AgentExecutor 复制）
-    private AgentExecutor(AgentExecutor other) {
-        this.agent = other.agent;
-        this.runtime = other.runtime;
-        this.context = other.context;
-        this.wire = other.wire;
-        this.toolRegistry = other.toolRegistry;
-        this.compaction = other.compaction;
-        this.isSubagent = other.isSubagent;
-        this.agentName = other.agentName;
-        this.promptBuilder = other.promptBuilder;
-        this.memoryConfig = other.memoryConfig;
-        this.executionState = other.executionState;
-        this.memoryRecorder = other.memoryRecorder;
-        this.responseProcessor = other.responseProcessor;
-        this.toolDispatcher = other.toolDispatcher;
-        this.contextManager = other.contextManager;
-    }
 
     // ==================== 执行方法 ====================
 
@@ -262,18 +209,12 @@ public class AgentExecutor {
      */
     public Mono<Void> execute(List<ContentPart> userInput) {
         return Mono.defer(() -> {
+
             // 初始化任务跟踪
             executionState.initializeTask();
 
             // 创建用户消息
             Message userMessage = Message.user(userInput);
-
-            // 提取高层意图（首条用户消息，ReCAP 优化）
-            if (memoryConfig != null && memoryConfig.isEnableRecap() && context.getHistory().isEmpty()) {
-                String intent = memoryRecorder.extractHighLevelIntent(userInput);
-                context.setHighLevelIntent(intent);
-                log.info("提取高层意图: {}", intent);
-            }
 
             // 估算用户输入的 Token 数
             int userInputTokens = responseProcessor.estimateTokensFromMessage(userMessage);
@@ -284,15 +225,14 @@ public class AgentExecutor {
             String userQuery = memoryRecorder.extractHighLevelIntent(userInput);
             executionState.setCurrentUserQuery(userQuery);
 
-            // 创建检查点 0，添加用户消息，并更新 Token 计数
+            // 创建检查点 0，添加用户消息（Context 内部自动提取高层意图），并更新 Token 计数
             return context.checkpoint(false)
                     .then(context.appendMessage(userMessage))
                     .then(context.updateTokenCount(newTokenCount))
-                    .doOnSuccess(v -> log.debug("Added user input: {} tokens (total: {})",
-                            userInputTokens, newTokenCount))
-                    // 注入长期记忆
-                    .then(contextManager.injectLongTermMemories(context, userQuery))
+                    .doOnSuccess(v -> log.debug("Added user input: {} tokens (total: {})", userInputTokens, newTokenCount))
+                    // Agent 主循环
                     .then(agentLoop())
+
                     .doOnSuccess(v -> {
                         log.info("Agent execution completed");
                         memoryRecorder.recordTaskHistory(executionState, context, "success").subscribe();
@@ -301,8 +241,6 @@ public class AgentExecutor {
                     .doOnError(e -> {
                         log.error("Agent execution failed", e);
                         memoryRecorder.recordTaskHistory(executionState, context, "failed").subscribe();
-                        memoryRecorder.recordErrorPattern(e, "agent_execution",
-                                executionState.getCurrentUserQuery()).subscribe();
                     });
         });
     }
@@ -340,11 +278,15 @@ public class AgentExecutor {
             // 检查上下文是否超限，触发压缩
             return contextManager.checkAndCompact(context, runtime.getLlm(), compaction)
                     .then(context.checkpoint(false))
-                    // RAG：检索并注入相关代码片段
-                    .then(contextManager.retrieveAndInject(context, runtime, stepNo))
-                    // 匹配和注入 Skills
+
+                    // 注入Skills
                     .then(contextManager.matchAndInjectSkills(context, stepNo))
+                    // 注入知识
+                    .then(contextManager.matchAndInjectKnowlwdge(context, stepNo))
+
+                    //执行单步
                     .then(step())
+
                     .flatMap(finished -> {
                         if (finished) {
                             log.info("Agent '{}' loop finished at local step {}, global step {}",
@@ -372,17 +314,17 @@ public class AgentExecutor {
             LLM llm = runtime.getLlm();
             List<Object> toolSchemas = new ArrayList<>(toolRegistry.getToolSchemas(agent.getTools()));
 
-            // 构建增强的系统提示（如果启用 ReCAP）
             String systemPrompt = agent.getSystemPrompt();
-            if (memoryConfig != null && memoryConfig.isEnableRecap() && promptBuilder != null) {
+
+            if (promptBuilder != null) {
+                boolean recapEnabled = memoryConfig != null && memoryConfig.isEnableRecap();
                 systemPrompt = promptBuilder.buildEnhancedPrompt(
                         agent.getSystemPrompt(),
                         context.getHighLevelIntent(),
-                        context.getRecentInsights(memoryConfig.getInsightsWindowSize()),
-                        0
+                        context.getRecentInsights(memoryConfig != null ? memoryConfig.getInsightsWindowSize() : 5),
+                        0,
+                        recapEnabled
                 );
-                int estimatedTokens = systemPrompt.length() / 4;
-                log.debug("使用 ReCAP 增强提示 (Token 估算: {} tokens)", estimatedTokens);
             }
 
             return llm.getChatProvider()
@@ -390,6 +332,7 @@ public class AgentExecutor {
                     .contextWrite(ctx -> ctx.put("workDir", runtime.getWorkDir()))
                     .reduce(new ResponseProcessor.StreamAccumulator(), responseProcessor::processStreamChunk)
                     .flatMap(acc -> responseProcessor.handleStreamCompletion(acc, context))
+                    //处理 assistant 消息
                     .flatMap(this::processAssistantMessage)
                     .onErrorResume(responseProcessor::handleLLMError);
         });
@@ -503,17 +446,4 @@ public class AgentExecutor {
         });
     }
 
-    // ==================== 公共辅助方法 ====================
-
-    public Mono<Void> recordSessionSummary(String status) {
-        return memoryRecorder.recordSessionSummary(executionState, context, status);
-    }
-
-    public void recordFileModified(String filePath) {
-        executionState.recordFileModified(filePath);
-    }
-
-    public void recordKeyDecision(String decision) {
-        executionState.recordKeyDecision(decision);
-    }
 }

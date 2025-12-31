@@ -17,13 +17,14 @@ import io.leavesfly.jimi.llm.message.MessageRole;
 import io.leavesfly.jimi.llm.message.TextPart;
 import io.leavesfly.jimi.core.engine.runtime.Runtime;
 import io.leavesfly.jimi.tool.AbstractTool;
-import io.leavesfly.jimi.tool.Tool;
+
 import io.leavesfly.jimi.tool.ToolProvider;
 import io.leavesfly.jimi.tool.ToolResult;
 import io.leavesfly.jimi.tool.ToolRegistry;
 import io.leavesfly.jimi.tool.ToolRegistryFactory;
 import io.leavesfly.jimi.wire.WireAware;
 import io.leavesfly.jimi.wire.Wire;
+import io.leavesfly.jimi.wire.WireImpl;
 import io.leavesfly.jimi.wire.message.SubagentCompleted;
 import io.leavesfly.jimi.wire.message.SubagentStarting;
 import lombok.AllArgsConstructor;
@@ -91,10 +92,20 @@ public class Task extends AbstractTool<Task.Params> implements WireAware {
     private Session session;
     private AgentSpec agentSpec;
     private String taskDescription;
-    private Wire parentWire;  // 主 Agent 的 Wire，用于转发子Agent的审批请求
+
+    @Autowired
+    private Wire parentWire;
+
+    @Autowired
     private final ObjectMapper objectMapper;
+
+    @Autowired
     private final AgentRegistry agentRegistry;
+
+    @Autowired
     private final ToolRegistryFactory toolRegistryFactory;
+
+    @Autowired
     private final List<ToolProvider> toolProviders;
     private final Map<String, Agent> subagents;
     private Map<String, SubagentSpec> subagentSpecs;
@@ -136,8 +147,7 @@ public class Task extends AbstractTool<Task.Params> implements WireAware {
     }
 
     @Autowired
-    public Task(ObjectMapper objectMapper, AgentRegistry agentRegistry, 
-                ToolRegistryFactory toolRegistryFactory, List<ToolProvider> toolProviders) {
+    public Task(ObjectMapper objectMapper, AgentRegistry agentRegistry, ToolRegistryFactory toolRegistryFactory, List<ToolProvider> toolProviders) {
         super("Task", "Task tool (description will be set when initialized)", Params.class);
 
         this.objectMapper = objectMapper;
@@ -172,24 +182,24 @@ public class Task extends AbstractTool<Task.Params> implements WireAware {
     public void setRuntimeParams(AgentSpec agentSpec, Runtime runtime) {
         setRuntimeParams(agentSpec, runtime, null);
     }
-    
+
     /**
      * 设置 Wire（实现 WireAware 接口）
      * 用于转发子Agent的审批请求到主 Agent
-     * 
+     *
      * @param wire 主 Agent 的 Wire 消息总线
      */
     @Override
     public void setWire(Wire wire) {
         this.parentWire = wire;
     }
-    
+
     /**
      * 设置运行时参数并初始化工具（包括主 Wire）
      * 使用懒加载模式，不在 Setter 中执行 I/O 操作
-     * 
-     * @param agentSpec Agent 规范
-     * @param runtime 运行时上下文
+     *
+     * @param agentSpec  Agent 规范
+     * @param runtime    运行时上下文
      * @param parentWire 主 Agent 的 Wire（可选）
      */
     public void setRuntimeParams(AgentSpec agentSpec, Runtime runtime, Wire parentWire) {
@@ -227,8 +237,7 @@ public class Task extends AbstractTool<Task.Params> implements WireAware {
 
         sb.append("**可用的子代理：**\n\n");
         for (Map.Entry<String, SubagentSpec> entry : agentSpec.getSubagents().entrySet()) {
-            sb.append("- `").append(entry.getKey()).append("`: ")
-                    .append(entry.getValue().getDescription()).append("\n");
+            sb.append("- `").append(entry.getKey()).append("`: ").append(entry.getValue().getDescription()).append("\n");
         }
 
         return sb.toString();
@@ -243,8 +252,7 @@ public class Task extends AbstractTool<Task.Params> implements WireAware {
         if (!subagentsLoaded) {
             synchronized (this) {
                 if (!subagentsLoaded) {
-                    return loadSubagents()
-                            .doOnSuccess(v -> subagentsLoaded = true);
+                    return loadSubagents().doOnSuccess(v -> subagentsLoaded = true);
                 }
             }
         }
@@ -256,32 +264,25 @@ public class Task extends AbstractTool<Task.Params> implements WireAware {
      * 返回 Mono 以支持响应式编程
      */
     private Mono<Void> loadSubagents() {
-        return Flux.fromIterable(subagentSpecs.entrySet())
-                .flatMap(entry -> {
-                    String name = entry.getKey();
-                    SubagentSpec spec = entry.getValue();
+        return Flux.fromIterable(subagentSpecs.entrySet()).flatMap(entry -> {
+            String name = entry.getKey();
+            SubagentSpec spec = entry.getValue();
 
-                    log.debug("Loading subagent: {}", name);
+            log.debug("Loading subagent: {}", name);
 
-                    // 使用注入的 AgentRegistry 加载子 Agent（响应式）
-                    return agentRegistry.loadSubagent(spec, runtime)
-                            .doOnSuccess(agent -> {
-                                if (agent != null) {
-                                    subagents.put(name, agent);
-                                    log.info("Loaded subagent: {} -> {}", name, agent.getName());
-                                }
-                            })
-                            .doOnError(e -> log.error("Failed to load subagent: {}", name, e))
-                            .onErrorResume(e -> Mono.empty()); // 忽略单个加载失败
-                })
-                .then();
+            // 使用注入的 AgentRegistry 加载子 Agent（响应式）
+            return agentRegistry.loadSubagent(spec, runtime).doOnSuccess(agent -> {
+                if (agent != null) {
+                    subagents.put(name, agent);
+                    log.info("Loaded subagent: {} -> {}", name, agent.getName());
+                }
+            }).doOnError(e -> log.error("Failed to load subagent: {}", name, e)).onErrorResume(e -> Mono.empty()); // 忽略单个加载失败
+        }).then();
     }
 
     @Override
     public Mono<ToolResult> execute(Params params) {
-        log.info("Task tool called: {} -> {}", 
-                 params != null ? params.getDescription() : null, 
-                 params != null ? params.getSubagentName() : null);
+        log.info("Task tool called: {} -> {}", params != null ? params.getDescription() : null, params != null ? params.getSubagentName() : null);
 
         // 参数校验
         if (params == null) {
@@ -295,27 +296,19 @@ public class Task extends AbstractTool<Task.Params> implements WireAware {
         }
 
         // 懒加载 subagents（首次调用时，响应式方式）
-        return ensureSubagentsLoaded()
-                .then(Mono.defer(() -> {
-                    // 检查子 Agent 是否存在
-                    if (!subagents.containsKey(params.getSubagentName())) {
-                        return Mono.just(ToolResult.error(
-                                "Subagent not found: " + params.getSubagentName(),
-                                "Subagent not found"
-                        ));
-                    }
+        return ensureSubagentsLoaded().then(Mono.defer(() -> {
+            // 检查子 Agent 是否存在
+            if (!subagents.containsKey(params.getSubagentName())) {
+                return Mono.just(ToolResult.error("Subagent not found: " + params.getSubagentName(), "Subagent not found"));
+            }
 
-                    Agent subagent = subagents.get(params.getSubagentName());
+            Agent subagent = subagents.get(params.getSubagentName());
 
-                    return runSubagent(subagent, params.getPrompt())
-                            .onErrorResume(e -> {
-                                log.error("Failed to run subagent", e);
-                                return Mono.just(ToolResult.error(
-                                        "Failed to run subagent: " + e.getMessage(),
-                                        "Failed to run subagent"
-                                ));
-                            });
-                }));
+            return runSubagent(subagent, params.getPrompt()).onErrorResume(e -> {
+                log.error("Failed to run subagent", e);
+                return Mono.just(ToolResult.error("Failed to run subagent: " + e.getMessage(), "Failed to run subagent"));
+            });
+        }));
     }
 
     /**
@@ -328,7 +321,7 @@ public class Task extends AbstractTool<Task.Params> implements WireAware {
                 if (parentWire != null) {
                     parentWire.send(new SubagentStarting(agent.getName(), prompt));
                 }
-                
+
                 // 2. 子历史文件（基于子 Agent 名称）
                 Path subHistoryFile = getSubagentHistoryFile(agent.getName());
 
@@ -341,31 +334,25 @@ public class Task extends AbstractTool<Task.Params> implements WireAware {
                 // 5. 子 JimiEngine
                 JimiEngine subSoul = createSubSoul(agent, subContext, subToolRegistry);
 
-                // 6. 事件桥接（仅审批请求），返回订阅以便释放
-                Disposable subscription = bridgeWireEvents(subSoul.getWire());
+//                // 6. 事件桥接（仅审批请求），返回订阅以便释放
+//                Disposable subscription = bridgeWireEvents(subSoul.getWire());
 
                 // 7. 运行并后处理
-                return subSoul.run(prompt)
-                        .then(Mono.defer(() -> extractFinalResponse(subContext, subSoul, prompt)))
-                        .doOnSuccess(result -> {
-                            // 8. 发送 Subagent 完成事件（附带摘要，ReCAP 阶段 2）
-                            if (parentWire != null) {
-                                String summary = result.getOutput();
-                                parentWire.send(new SubagentCompleted(summary));
-                            }
-                        })
-                        .doFinally(signalType -> {
-                            if (subscription != null && !subscription.isDisposed()) {
-                                subscription.dispose();
-                            }
-                        });
+                return subSoul.run(prompt).then(Mono.defer(() -> extractFinalResponse(subContext, subSoul, prompt))).doOnSuccess(result -> {
+                    // 8. 发送 Subagent 完成事件（附带摘要，ReCAP 阶段 2）
+                    if (parentWire != null) {
+                        String summary = result.getOutput();
+                        parentWire.send(new SubagentCompleted(summary));
+                    }
+                }).doFinally(signalType -> {
+//                    if (subscription != null && !subscription.isDisposed()) {
+//                        subscription.dispose();
+//                    }
+                });
 
             } catch (Exception e) {
                 log.error("Error running subagent", e);
-                return Mono.just(ToolResult.error(
-                        e.getMessage(),
-                        "Failed to run subagent"
-                ));
+                return Mono.just(ToolResult.error(e.getMessage(), "Failed to run subagent"));
             }
         });
     }
@@ -383,70 +370,41 @@ public class Task extends AbstractTool<Task.Params> implements WireAware {
      */
     private ToolRegistry createSubToolRegistry(Agent subagent) {
         // 创建基础工具注册表
-        ToolRegistry registry = toolRegistryFactory.createStandardRegistry(
-                runtime.getBuiltinArgs(),
-                runtime.getApproval()
-        );
-        
-        // 应用 ToolProvider SPI（如 HumanInteractionToolProvider）
-        // 为 subagent 创建一个基础的 AgentSpec（用于 ToolProvider 的 supports 检查）
-        AgentSpec subAgentSpec = AgentSpec.builder()
-                .name(subagent.getName())
-                .build();
-        toolProviders.stream()
-                .sorted(java.util.Comparator.comparingInt(ToolProvider::getOrder))
-                .filter(provider -> {
-                    // 跳过 TaskToolProvider，避免无限嵌套
-                    if (provider.getClass().getSimpleName().equals("TaskToolProvider")) {
-                        return false;
-                    }
-                    return provider.supports(subAgentSpec, runtime);
-                })
-                .forEach(provider -> {
-                    log.debug("Applying tool provider for subagent: {} (order={})", 
-                            provider.getName(), provider.getOrder());
-                    List<Tool<?>> tools = provider.createTools(subAgentSpec, runtime);
-                    tools.forEach(registry::register);
-                });
-        
+        ToolRegistry registry = toolRegistryFactory.create(
+                runtime.getBuiltinArgs(), runtime.getApproval(), agentSpec, runtime, null);
+
         return registry;
     }
 
     /**
-     * 创建子 JimiEngine
+     * 创建子 JimiEngine（使用 Builder 模式）
      */
     private JimiEngine createSubSoul(Agent agent, Context subContext, ToolRegistry subToolRegistry) {
-        // 使用完整构造函数，传入isSubagent=true标记，Skill组件传null
-        return new JimiEngine(
-                agent,
-                runtime,
-                subContext,
-                subToolRegistry,
-                objectMapper,
-                new io.leavesfly.jimi.wire.WireImpl(),
-                new SimpleCompaction(),
-                true,  // 标记为子Agent
-                null,  // SkillMatcher（子Agent不需要）
-                null   // SkillProvider（子Agent不需要）
-        );
+        return JimiEngine.builder()
+                .agent(agent)
+                .runtime(runtime)
+                .context(subContext)
+                .toolRegistry(subToolRegistry)
+                .wire(parentWire != null ? parentWire : new WireImpl())
+                .compaction(new SimpleCompaction())
+                .isSubagent(true)
+                .build();
     }
 
-    /**
-     * 桥接子 Wire 到父 Wire，转发所有消息以实现子Agent执行过程可视化
-     * 返回订阅对象以便在运行结束时释放
-     */
-    private Disposable bridgeWireEvents(Wire subWire) {
-        if (parentWire != null) {
-            return subWire.asFlux().subscribe(msg -> {
-                // 转发所有 Wire 消息到主 Wire，实现子Agent执行过程可视化
-//                log.debug("Forwarding subagent wire message: {}", msg.getClass().getSimpleName());
-                parentWire.send(msg);
-            });
-        } else {
-            log.debug("Parent wire not available, subagent messages will not be forwarded");
-            return null;
-        }
-    }
+//    /**
+//     * 桥接子 Wire 到父 Wire，转发所有消息以实现子Agent执行过程可视化
+//     * 返回订阅对象以便在运行结束时释放
+//     */
+//    private Disposable bridgeWireEvents(Wire subWire) {
+//        if (parentWire != null) {
+//            return subWire.asFlux().subscribe(msg -> {
+//                parentWire.send(msg);
+//            });
+//        } else {
+//            log.debug("Parent wire not available, subagent messages will not be forwarded");
+//            return null;
+//        }
+//    }
 
     /**
      * 提取子 Agent 的最终响应
@@ -456,10 +414,7 @@ public class Task extends AbstractTool<Task.Params> implements WireAware {
 
         // 检查上下文是否有效
         if (history.isEmpty()) {
-            return Mono.just(ToolResult.error(
-                    "The subagent seemed not to run properly. Maybe you have to do the task yourself.",
-                    "Failed to run subagent"
-            ));
+            return Mono.just(ToolResult.error("The subagent seemed not to run properly. Maybe you have to do the task yourself.", "Failed to run subagent"));
         }
 
         // 获取最后一条消息
@@ -467,10 +422,7 @@ public class Task extends AbstractTool<Task.Params> implements WireAware {
 
         // 检查是否是助手响应
         if (lastMessage.getRole() != MessageRole.ASSISTANT) {
-            return Mono.just(ToolResult.error(
-                    "The subagent seemed not to run properly. Maybe you have to do the task yourself.",
-                    "Failed to run subagent"
-            ));
+            return Mono.just(ToolResult.error("The subagent seemed not to run properly. Maybe you have to do the task yourself.", "Failed to run subagent"));
         }
 
         // 提取文本内容
@@ -480,19 +432,18 @@ public class Task extends AbstractTool<Task.Params> implements WireAware {
         if (response.length() < minResponseLength) {
             log.debug("Subagent response too brief ({}), requesting continuation", response.length());
 
-            return subSoul.run(continuePrompt)
-                    .then(Mono.defer(() -> {
-                        List<Message> updatedHistory = subContext.getHistory();
-                        if (!updatedHistory.isEmpty()) {
-                            Message continueMsg = updatedHistory.get(updatedHistory.size() - 1);
-                            if (continueMsg.getRole() == MessageRole.ASSISTANT) {
-                                String extendedResponse = extractText(continueMsg);
-                                return Mono.just(ToolResult.ok(extendedResponse, "Subagent task completed"));
-                            }
-                        }
-                        // 如果继续失败，返回原始响应
-                        return Mono.just(ToolResult.ok(response, "Subagent task completed"));
-                    }));
+            return subSoul.run(continuePrompt).then(Mono.defer(() -> {
+                List<Message> updatedHistory = subContext.getHistory();
+                if (!updatedHistory.isEmpty()) {
+                    Message continueMsg = updatedHistory.get(updatedHistory.size() - 1);
+                    if (continueMsg.getRole() == MessageRole.ASSISTANT) {
+                        String extendedResponse = extractText(continueMsg);
+                        return Mono.just(ToolResult.ok(extendedResponse, "Subagent task completed"));
+                    }
+                }
+                // 如果继续失败，返回原始响应
+                return Mono.just(ToolResult.ok(response, "Subagent task completed"));
+            }));
         }
 
         return Mono.just(ToolResult.ok(response, "Subagent task completed"));
@@ -502,17 +453,13 @@ public class Task extends AbstractTool<Task.Params> implements WireAware {
      * 从消息中提取文本内容
      */
     private String extractText(Message message) {
-        return message.getContentParts().stream()
-                .filter(part -> part instanceof TextPart)
-                .map(part -> ((TextPart) part).getText())
-                .filter(text -> text != null && !text.isEmpty())
-                .collect(Collectors.joining("\n"));
+        return message.getContentParts().stream().filter(part -> part instanceof TextPart).map(part -> ((TextPart) part).getText()).filter(text -> text != null && !text.isEmpty()).collect(Collectors.joining("\n"));
     }
 
     /**
      * 生成子 Agent 历史文件路径
      * 基于子 Agent 名称生成固定的历史文件名，确保同一个子 Agent 复用相同的历史记录
-     * 
+     *
      * @param subagentName 子 Agent 名称
      * @return 子 Agent 历史文件路径
      * @throws IOException 如果无法创建文件
@@ -520,12 +467,12 @@ public class Task extends AbstractTool<Task.Params> implements WireAware {
     private Path getSubagentHistoryFile(String subagentName) throws IOException {
         Path mainHistoryFile = session.getHistoryFile();
         String baseName = mainHistoryFile.getFileName().toString();
-        
+
         // 安全解析文件名和扩展名
         int dotIndex = baseName.lastIndexOf('.');
         String nameWithoutExt;
         String ext;
-        
+
         if (dotIndex > 0) {
             // 文件有扩展名
             nameWithoutExt = baseName.substring(0, dotIndex);
@@ -537,11 +484,11 @@ public class Task extends AbstractTool<Task.Params> implements WireAware {
         }
 
         Path parent = mainHistoryFile.getParent();
-        
+
         // 基于子 Agent 名称生成固定的历史文件名
         // 例如：history_sub_code.json, history_sub_test.json
         Path subHistoryFile = parent.resolve(nameWithoutExt + "_sub_" + subagentName + ext);
-        
+
         // 如果文件不存在则创建
         if (!Files.exists(subHistoryFile)) {
             Files.createFile(subHistoryFile);
@@ -549,7 +496,7 @@ public class Task extends AbstractTool<Task.Params> implements WireAware {
         } else {
             log.debug("Reusing existing subagent history file: {}", subHistoryFile);
         }
-        
+
         return subHistoryFile;
     }
 }

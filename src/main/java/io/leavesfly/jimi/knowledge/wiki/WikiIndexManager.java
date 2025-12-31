@@ -1,8 +1,8 @@
 package io.leavesfly.jimi.knowledge.wiki;
 
-import io.leavesfly.jimi.knowledge.retrieval.CodeChunk;
-import io.leavesfly.jimi.knowledge.retrieval.EmbeddingProvider;
-import io.leavesfly.jimi.knowledge.retrieval.VectorStore;
+import io.leavesfly.jimi.knowledge.rag.CodeChunk;
+import io.leavesfly.jimi.knowledge.rag.EmbeddingProvider;
+import io.leavesfly.jimi.knowledge.rag.VectorStore;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -47,7 +47,7 @@ public class WikiIndexManager {
      */
     public List<CodeChunk> retrieveRelevantCode(String docSection, int topK) {
         if (!isAvailable()) {
-            log.debug("VectorStore or EmbeddingProvider not available, skipping retrieval");
+            log.debug("VectorStore or EmbeddingProvider not available, skipping rag");
             return new ArrayList<>();
         }
         

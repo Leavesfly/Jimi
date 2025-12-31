@@ -4,9 +4,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.leavesfly.jimi.core.agent.AgentRegistry;
 import io.leavesfly.jimi.core.agent.AgentSpec;
 import io.leavesfly.jimi.config.JimiConfig;
-import io.leavesfly.jimi.core.engine.provider.MemoryComponentsProvider;
-import io.leavesfly.jimi.core.engine.provider.PromptComponentsProvider;
-import io.leavesfly.jimi.core.engine.provider.SkillComponentsProvider;
+import io.leavesfly.jimi.core.compaction.Compaction;
+
+import io.leavesfly.jimi.knowledge.KnowledgeService;
 import io.leavesfly.jimi.llm.LLM;
 import io.leavesfly.jimi.llm.LLMFactory;
 import io.leavesfly.jimi.core.session.Session;
@@ -14,20 +14,18 @@ import io.leavesfly.jimi.core.session.SessionManager;
 import io.leavesfly.jimi.core.agent.Agent;
 import io.leavesfly.jimi.core.interaction.approval.Approval;
 import io.leavesfly.jimi.core.engine.context.Context;
-import io.leavesfly.jimi.core.engine.runtime.BuiltinSystemPromptArgs;
 import io.leavesfly.jimi.core.engine.runtime.Runtime;
 import io.leavesfly.jimi.tool.ToolRegistry;
 import io.leavesfly.jimi.tool.ToolRegistryFactory;
-import io.leavesfly.jimi.wire.WireImpl;
+import io.leavesfly.jimi.wire.Wire;
+
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.ZonedDateTime;
-import java.time.format.DateTimeFormatter;
+
 import java.util.List;
 
 /**
@@ -51,18 +49,18 @@ public class JimiFactory {
     private LLMFactory llmFactory;
     @Autowired
     private SessionManager sessionManager;
-    
+    @Autowired
+    private Wire wire;  // 注入 Wire Bean，避免 new 创建
+    @Autowired
+    private Compaction compaction;  // 注入 Compaction Bean
+
     // ==================== 组件提供者（封装可选依赖） ====================
     @Autowired
-    private MemoryComponentsProvider memoryProvider;
-    @Autowired
-    private SkillComponentsProvider skillProvider;
-    @Autowired
-    private PromptComponentsProvider promptProvider;
+    private KnowledgeService knowledgeService;
 
 
     // ==================== Builder 模式 API ====================
-    
+
     /**
      * 创建 Engine 构建器
      * <p>
@@ -80,26 +78,26 @@ public class JimiFactory {
     public EngineBuilder createEngine() {
         return new EngineBuilder(this);
     }
-    
+
     /**
      * Engine 构建器
      */
     public static class EngineBuilder {
         private final JimiFactory factory;
-        
+
         // 必需参数
         private Session session;
-        
+
         // 可选参数（有默认值）
         private Path agentSpecPath;
         private String modelName;
         private boolean yolo = false;
         private List<Path> mcpConfigFiles;
-        
+
         private EngineBuilder(JimiFactory factory) {
             this.factory = factory;
         }
-        
+
         /**
          * 设置会话（必需）
          */
@@ -107,7 +105,7 @@ public class JimiFactory {
             this.session = session;
             return this;
         }
-        
+
         /**
          * 设置 Agent 规范文件路径（可选，默认使用默认 Agent）
          */
@@ -115,7 +113,7 @@ public class JimiFactory {
             this.agentSpecPath = agentSpecPath;
             return this;
         }
-        
+
         /**
          * 设置模型名称（可选，优先级：此参数 > Agent配置 > 全局默认）
          */
@@ -123,7 +121,7 @@ public class JimiFactory {
             this.modelName = modelName;
             return this;
         }
-        
+
         /**
          * 设置 YOLO 模式（可选，默认 false）
          * <p>YOLO 模式会自动批准所有操作</p>
@@ -132,7 +130,7 @@ public class JimiFactory {
             this.yolo = yolo;
             return this;
         }
-        
+
         /**
          * 设置 MCP 配置文件列表（可选）
          */
@@ -140,7 +138,7 @@ public class JimiFactory {
             this.mcpConfigFiles = mcpConfigFiles;
             return this;
         }
-        
+
         /**
          * 构建 JimiEngine 实例
          */
@@ -151,9 +149,9 @@ public class JimiFactory {
             return factory.doCreateEngine(session, agentSpecPath, modelName, yolo, mcpConfigFiles);
         }
     }
-    
+
     // ==================== 内部实现 ====================
-    
+
     /**
      * 内部方法：创建 JimiEngine 实例
      */
@@ -181,17 +179,15 @@ public class JimiFactory {
                 // 3. 获取或创建 LLM（使用工厂，带缓存）
                 LLM llm = llmFactory.getOrCreateLLM(effectiveModelName);
 
-                // 4. 创建 Runtime 依赖
+                // 4. 创建 Runtime（自动构建 builtinArgs）
                 Approval approval = new Approval(yolo);
-
-                BuiltinSystemPromptArgs builtinArgs = createBuiltinArgs(session);
 
                 Runtime runtime = Runtime.builder()
                         .config(config)
                         .llm(llm)
                         .session(session)
                         .approval(approval)
-                        .builtinArgs(builtinArgs)
+                        .sessionManager(sessionManager)  // 用于构建 builtinArgs
                         .build();
 
                 // 5. 使用 AgentRegistry 单例加载 Agent（包含系统提示词处理）
@@ -199,7 +195,10 @@ public class JimiFactory {
                         ? agentRegistry.loadAgent(agentSpecPath, runtime).block()
                         : agentRegistry.loadDefaultAgent(runtime).block();
                 if (agent == null) {
-                    throw new RuntimeException("Failed to load agent");
+                    String msg = agentSpecPath != null
+                            ? "Failed to load agent from: " + agentSpecPath
+                            : "Failed to load default agent";
+                    throw new RuntimeException(msg);
                 }
 
                 // 6. 创建 Context 并恢复历史
@@ -208,23 +207,18 @@ public class JimiFactory {
 
                 // 7. 创建 ToolRegistry（委托给 ToolRegistryFactory）
                 ToolRegistry toolRegistry = toolRegistryFactory.create(
-                        builtinArgs, approval, agentSpec, runtime, mcpConfigFiles);
-                
-                // 7.5. 初始化长期记忆管理器（如果启用）
-                memoryProvider.initializeIfEnabled(runtime);
+                        runtime.getBuiltinArgs(), approval, agentSpec, runtime, mcpConfigFiles);
 
-                // 8. 创建 JimiEngine（使用 Builder 模式，Compaction 使用默认值）
+                knowledgeService.initialize(runtime);
+
+                // 8. 创建 JimiEngine（使用 Builder 模式）
                 JimiEngine soul = JimiEngine.builder()
                         .agent(agent)
                         .runtime(runtime)
                         .context(context)
                         .toolRegistry(toolRegistry)
-                        .objectMapper(objectMapper)
-                        .wire(new WireImpl())
-                        .skillComponents(skillProvider.getComponents())
-                        .memoryComponents(memoryProvider.getComponents())
-                        .retrievalPipeline(promptProvider.getRetrievalPipeline())
-                        .promptBuilder(promptProvider.getPromptBuilder())
+                        .wire(wire)  // 使用注入的 Wire Bean
+                        .compaction(compaction)  // 使用注入的 Compaction Bean
                         .build();
 
                 // 9. 恢复上下文历史
@@ -239,9 +233,8 @@ public class JimiFactory {
         });
     }
 
-
     // ==================== 兼容旧 API（过渡期保留） ====================
-    
+
     /**
      * @deprecated 使用 {@link #createEngine()} Builder 模式代替
      */
@@ -253,34 +246,5 @@ public class JimiFactory {
             boolean yolo,
             List<Path> mcpConfigFiles) {
         return doCreateEngine(session, agentSpecPath, modelName, yolo, mcpConfigFiles);
-    }
-    
-    // ==================== 工具方法 ====================
-
-    private BuiltinSystemPromptArgs createBuiltinArgs(Session session) {
-        String now = ZonedDateTime.now().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
-        Path workDir = session.getWorkDir().toAbsolutePath();
-
-        // 列出工作目录文件列表（非递归）
-        StringBuilder lsBuilder = new StringBuilder();
-        try {
-            Files.list(workDir).forEach(p -> {
-                String type = java.nio.file.Files.isDirectory(p) ? "dir" : "file";
-                lsBuilder.append(type).append("  ").append(p.getFileName().toString()).append("\n");
-            });
-        } catch (Exception e) {
-            log.warn("Failed to list work dir: {}", workDir, e);
-        }
-        String workDirLs = lsBuilder.toString().trim();
-
-        // 从 SessionManager 缓存加载 AGENTS.md（避免重复 I/O）
-        String agentsMd = sessionManager.loadAgentsMd(workDir);
-
-        return BuiltinSystemPromptArgs.builder()
-                .jimiNow(now)
-                .jimiWorkDir(workDir)
-                .jimiWorkDirLs(workDirLs)
-                .jimiAgentsMd(agentsMd)
-                .build();
     }
 }

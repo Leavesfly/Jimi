@@ -1,16 +1,15 @@
 package io.leavesfly.jimi.core.engine.executor;
 
 import io.leavesfly.jimi.core.engine.context.Context;
-import io.leavesfly.jimi.knowledge.memory.ErrorPattern;
-import io.leavesfly.jimi.knowledge.memory.MemoryExtractor;
-import io.leavesfly.jimi.knowledge.memory.SessionSummary;
-import io.leavesfly.jimi.knowledge.memory.TaskHistory;
+import io.leavesfly.jimi.knowledge.memory.*;
 import io.leavesfly.jimi.llm.message.ContentPart;
 import io.leavesfly.jimi.llm.message.Message;
 import io.leavesfly.jimi.llm.message.MessageRole;
 import io.leavesfly.jimi.llm.message.TextPart;
 import io.leavesfly.jimi.tool.ToolResult;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
 import java.time.Instant;
@@ -28,11 +27,23 @@ import java.util.stream.Collectors;
  * - 提取高层意图和关键发现
  */
 @Slf4j
+@Component
 public class MemoryRecorder {
 
-    private final MemoryExtractor memoryExtractor;
+    @Autowired
+    private ToolsMemoryExtractor memoryExtractor;
 
-    public MemoryRecorder(MemoryExtractor memoryExtractor) {
+    @Autowired
+    private MemoryManager memoryManager;
+
+    public MemoryRecorder(ToolsMemoryExtractor memoryExtractor) {
+        this.memoryExtractor = memoryExtractor;
+    }
+
+    /**
+     * 设置 ToolsMemoryExtractor（用于 Spring Bean 注入后设置依赖）
+     */
+    public void setMemoryExtractor(ToolsMemoryExtractor memoryExtractor) {
         this.memoryExtractor = memoryExtractor;
     }
 
@@ -45,7 +56,7 @@ public class MemoryRecorder {
      * @return 完成的 Mono
      */
     public Mono<Void> recordTaskHistory(ExecutionState state, Context context, String status) {
-        // 如果没有启用长期记忆或 MemoryExtractor 未初始化，直接返回
+        // 如果没有启用长期记忆或 ToolsMemoryExtractor 未初始化，直接返回
         if (memoryExtractor == null || memoryExtractor.getMemoryManager() == null) {
             return Mono.empty();
         }
@@ -83,9 +94,9 @@ public class MemoryRecorder {
             addTaskTags(task, state.getCurrentUserQuery(), state.getToolsUsedInTask());
 
             // 保存到 MemoryManager
-            return memoryExtractor.getMemoryManager().addTaskHistory(task)
+            return memoryManager.addTaskHistory(task)
                     .doOnSuccess(v -> log.info("任务历史已记录: {} (用时{}ms, {}steps, {}tokens)",
-                            state.getCurrentUserQuery(), durationMs, 
+                            state.getCurrentUserQuery(), durationMs,
                             state.getStepsInTask(), state.getTokensInTask()))
                     .doOnError(e -> log.error("记录任务历史失败", e))
                     .onErrorResume(e -> Mono.empty()); // 失败不影响主流程
@@ -153,7 +164,7 @@ public class MemoryRecorder {
             if (startTime == null) {
                 startTime = state.getTaskStartTime();
             }
-            
+
             if (startTime == null) {
                 log.warn("会话开始时间未设置，跳过记录");
                 return Mono.empty();
@@ -256,7 +267,7 @@ public class MemoryRecorder {
     }
 
     /**
-     * 提取高层意图（简化版：取用户输入的前 200 字符）
+     * 提取高层意图（简化版：取用户输入的前 500 字符）
      *
      * @param userInput 用户输入
      * @return 高层意图
@@ -267,8 +278,8 @@ public class MemoryRecorder {
                 .map(part -> ((TextPart) part).getText())
                 .collect(Collectors.joining(" "));
 
-        return fullText.length() > 200
-                ? fullText.substring(0, 200) + "..."
+        return fullText.length() > 500
+                ? fullText.substring(0, 500) + "..."
                 : fullText;
     }
 
@@ -318,7 +329,7 @@ public class MemoryRecorder {
     }
 
     /**
-     * 从工具结果中提取长期记忆（委托给 MemoryExtractor）
+     * 从工具结果中提取长期记忆（委托给 ToolsMemoryExtractor）
      *
      * @param result   工具结果
      * @param toolName 工具名称
@@ -328,7 +339,7 @@ public class MemoryRecorder {
         if (memoryExtractor == null) {
             return Mono.empty();
         }
-        
+
         return memoryExtractor.extractFromToolResult(result, toolName)
                 .onErrorResume(e -> {
                     log.warn("从工具结果提取记忆失败: {}", e.getMessage());

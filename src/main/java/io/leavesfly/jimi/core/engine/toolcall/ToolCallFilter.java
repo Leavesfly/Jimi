@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.leavesfly.jimi.llm.message.FunctionCall;
 import io.leavesfly.jimi.llm.message.ToolCall;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -20,9 +22,11 @@ import java.util.Set;
  * - 确保 arguments 为有效 JSON 格式
  */
 @Slf4j
+@Component
 public class ToolCallFilter {
 
-    private static final ObjectMapper objectMapper = new ObjectMapper();
+    @Autowired
+    private ObjectMapper objectMapper;
 
     /**
      * 过滤有效的工具调用
@@ -89,21 +93,21 @@ public class ToolCallFilter {
      */
     private ToolCall normalizeArguments(ToolCall tc, int index) {
         String arguments = tc.getFunction().getArguments();
-        
+
         // 处理 null 或空字符串
         if (arguments == null || arguments.trim().isEmpty()) {
             log.warn("工具调用#{} (id={}, name={}) 的 arguments 为空，设置为空 JSON 对象",
                     index, tc.getId(), tc.getFunction().getName());
             return rebuildWithArguments(tc, "{}");
         }
-        
+
         // 验证 JSON 格式
         if (!isValidJson(arguments)) {
             log.error("工具调用#{} (id={}, name={}) 的 arguments 不是有效 JSON: {}，跳过此工具调用",
                     index, tc.getId(), tc.getFunction().getName(), arguments);
             return null;
         }
-        
+
         return tc;
     }
 

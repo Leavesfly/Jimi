@@ -13,6 +13,8 @@ import io.leavesfly.jimi.wire.message.ContentPartMessage;
 import io.leavesfly.jimi.wire.message.TokenUsageMessage;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.core.publisher.Mono;
 
@@ -29,14 +31,21 @@ import java.util.List;
  * - 处理 Token 统计
  */
 @Slf4j
+@Component
 public class ResponseProcessor {
 
-    private final Wire wire;
-    private final ToolCallFilter toolCallFilter;
+    @Autowired
+    private Wire wire;
 
-    public ResponseProcessor(Wire wire) {
+    @Autowired
+    private ToolCallFilter toolCallFilter;
+
+
+    /**
+     * 设置 Wire（用于 Spring Bean 注入后设置依赖）
+     */
+    public void setWire(Wire wire) {
         this.wire = wire;
-        this.toolCallFilter = new ToolCallFilter();
     }
 
     /**

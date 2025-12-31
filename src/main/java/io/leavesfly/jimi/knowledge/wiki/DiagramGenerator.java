@@ -155,7 +155,7 @@ public class DiagramGenerator {
             
             for (String pkg : topLevelPackages) {
                 if (pkg.contains("llm") || pkg.contains("tool") || 
-                    pkg.contains("retrieval") || pkg.contains("mcp")) {
+                    pkg.contains("rag") || pkg.contains("mcp")) {
                     diagram.append(String.format("        %s[%s]\n", 
                         sanitizeNodeName(pkg), pkg));
                 }

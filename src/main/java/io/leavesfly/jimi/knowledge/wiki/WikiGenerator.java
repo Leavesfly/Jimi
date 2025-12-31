@@ -1,7 +1,7 @@
 package io.leavesfly.jimi.knowledge.wiki;
 
-import io.leavesfly.jimi.core.Engine;
-import io.leavesfly.jimi.knowledge.retrieval.CodeChunk;
+import io.leavesfly.jimi.knowledge.rag.CodeChunk;
+import io.leavesfly.jimi.llm.LLM;
 import lombok.Builder;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
@@ -53,10 +53,10 @@ public class WikiGenerator {
      *
      * @param wikiPath Wiki 目录路径
      * @param workDir  工作目录
-     * @param engine   执行引擎
+     * @param llm      LLM 实例
      * @return 生成任务的 Future
      */
-    public CompletableFuture<GenerationResult> generateWiki(Path wikiPath, String workDir, Engine engine) {
+    public CompletableFuture<GenerationResult> generateWiki(Path wikiPath, String workDir, LLM llm) {
         return CompletableFuture.supplyAsync(() -> {
             GenerationResult result = new GenerationResult();
             result.startTime = System.currentTimeMillis();
@@ -64,8 +64,8 @@ public class WikiGenerator {
             try {
                 log.info("Starting wiki generation: {}", wikiPath);
                 
-                // Stage 1: 智能规划 - 让 LLM 决定生成哪些文档
-                WikiPlan plan = planWikiStructure(workDir, engine);
+                // Stage 1: 智能规划 - 分析项目结构决定生成哪些文档
+                WikiPlan plan = planWikiStructure(workDir);
                 
                 if (plan == null || plan.documents.isEmpty()) {
                     log.warn("Failed to generate wiki plan, using fallback");
@@ -74,7 +74,7 @@ public class WikiGenerator {
                     log.info("Wiki plan generated: {} documents", plan.documents.size());
                     
                     // Stage 2: 根据规划生成文档
-                    generateFromPlan(wikiPath, workDir, engine, plan, result);
+                    generateFromPlan(wikiPath, workDir, llm, plan, result);
                 }
                 
                 result.endTime = System.currentTimeMillis();
@@ -115,7 +115,7 @@ public class WikiGenerator {
      * <p>
      * 基于项目代码分析，动态决定生成哪些文档
      */
-    private WikiPlan planWikiStructure(String workDir, Engine engine) {
+    private WikiPlan planWikiStructure(String workDir) {
         log.info("Planning wiki structure based on project analysis");
         
         try {
@@ -238,7 +238,7 @@ public class WikiGenerator {
     /**
      * 根据规划生成文档
      */
-    private void generateFromPlan(Path wikiPath, String workDir, Engine engine, 
+    private void generateFromPlan(Path wikiPath, String workDir, LLM llm, 
                                   WikiPlan plan, GenerationResult result) {
         log.info("Generating {} documents from plan", plan.documents.size());
         
@@ -253,7 +253,7 @@ public class WikiGenerator {
         for (WikiPlan.DocumentSpec doc : sortedDocs) {
             CompletableFuture<Void> task = CompletableFuture.runAsync(() -> {
                 try {
-                    generateDocument(wikiPath, workDir, engine, doc, result);
+                    generateDocument(wikiPath, workDir, llm, doc, result);
                 } catch (Exception e) {
                     log.error("Failed to generate document: {}", doc.getPath(), e);
                 }
@@ -269,7 +269,7 @@ public class WikiGenerator {
     /**
      * 生成单个文档
      */
-    private void generateDocument(Path wikiPath, String workDir, Engine engine,
+    private void generateDocument(Path wikiPath, String workDir, LLM llm,
                                   WikiPlan.DocumentSpec docSpec, GenerationResult result) throws Exception {
         String docKey = docSpec.getPath();
         
@@ -290,10 +290,19 @@ public class WikiGenerator {
         String prompt = buildDocumentPrompt(workDir, docSpec);
         
         try {
-            // 调用 LLM 生成
-            engine.run(prompt).block();
-            result.generatedDocs++;
-            cacheDocument(docKey, "generated");
+            // 调用 LLM 生成文档内容
+            String content = llm.complete(prompt).block();
+            
+            if (content != null && !content.isEmpty()) {
+                // 直接写入文件
+                Files.writeString(docPath, content);
+                result.generatedDocs++;
+                cacheDocument(docKey, content);
+                log.info("Document generated: {}", docPath);
+            } else {
+                log.warn("LLM returned empty content for: {}", docSpec.getPath());
+                generatePlaceholder(docPath, docSpec.getTitle(), result);
+            }
             
         } catch (Exception e) {
             log.error("Failed to generate with LLM: {}", docSpec.getPath(), e);
@@ -310,12 +319,11 @@ public class WikiGenerator {
         String dateStr = now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
         
         StringBuilder prompt = new StringBuilder();
-        prompt.append(String.format("请生成 Wiki 文档：%s\n\n", docSpec.getTitle()));
+        prompt.append(String.format("请生成 Markdown 格式的 Wiki 文档：%s\n\n", docSpec.getTitle()));
         
         prompt.append("## 文档信息\n\n");
         prompt.append(String.format("- **标题**: %s\n", docSpec.getTitle()));
-        prompt.append(String.format("- **描述**: %s\n", docSpec.getDescription()));
-        prompt.append(String.format("- **路径**: %s\n\n", docSpec.getPath()));
+        prompt.append(String.format("- **描述**: %s\n\n", docSpec.getDescription()));
         
         // 集成检索增强
         if (wikiIndexManager != null && wikiIndexManager.isAvailable()) {
@@ -348,11 +356,10 @@ public class WikiGenerator {
         }
         
         prompt.append("## 输出要求\n\n");
-        prompt.append(String.format("1. 使用 WriteFile 工具创建文档，路径：`%s/%s`\n", 
-            workDir, docSpec.getPath()));
-        prompt.append(String.format("2. 中文撰写，生成时间：%s\n", dateStr));
+        prompt.append("1. 中文撰写，结构清晰\n");
+        prompt.append(String.format("2. 生成时间：%s\n", dateStr));
         prompt.append("3. 基于实际代码分析，内容准确详实\n");
-        prompt.append("4. 使用 Markdown 格式，结构清晰\n");
+        prompt.append("4. 直接输出 Markdown 内容，不要包含额外的说明\n");
         
         return prompt.toString();
     }

@@ -2,7 +2,7 @@ package io.leavesfly.jimi.command.handlers;
 
 import io.leavesfly.jimi.command.CommandContext;
 import io.leavesfly.jimi.command.CommandHandler;
-import io.leavesfly.jimi.knowledge.retrieval.CodeChunk;
+import io.leavesfly.jimi.knowledge.rag.CodeChunk;
 import io.leavesfly.jimi.ui.shell.output.OutputFormatter;
 import io.leavesfly.jimi.knowledge.wiki.ChangeDetector;
 
@@ -149,7 +149,7 @@ public class WikiCommandHandler implements CommandHandler {
 
                 // 异步生成
                 WikiGenerator.GenerationResult result = wikiGenerator
-                        .generateWiki(wikiPath, workDir, context.getSoul())
+                        .generateWiki(wikiPath, workDir, context.getSoul().getRuntime().getLlm())
                         .join();
 
                 long duration = System.currentTimeMillis() - startTime;

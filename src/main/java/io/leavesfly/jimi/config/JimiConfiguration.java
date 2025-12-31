@@ -11,15 +11,21 @@ import io.leavesfly.jimi.config.info.ShellUIConfig;
 import io.leavesfly.jimi.config.info.VectorIndexConfig;
 import io.leavesfly.jimi.core.compaction.Compaction;
 import io.leavesfly.jimi.core.compaction.SimpleCompaction;
+import io.leavesfly.jimi.core.engine.executor.ContextManager;
+import io.leavesfly.jimi.core.engine.executor.MemoryRecorder;
+import io.leavesfly.jimi.core.engine.executor.ResponseProcessor;
 import io.leavesfly.jimi.exception.ConfigException;
 import io.leavesfly.jimi.knowledge.graph.GraphManager;
-import io.leavesfly.jimi.knowledge.retrieval.*;
+import io.leavesfly.jimi.knowledge.rag.*;
+import io.leavesfly.jimi.wire.Wire;
+import io.leavesfly.jimi.wire.WireImpl;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
+import org.springframework.context.annotation.Scope;
 
 import java.io.IOException;
 import java.net.URL;
@@ -55,6 +61,26 @@ public class JimiConfiguration {
 
         return mapper;
     }
+    
+    /**
+     * Wire Bean - 消息总线
+     * 全局单例，用于 Engine 内部消息传递
+     * 使用 share() 确保所有订阅者共享同一个流，避免重复消息
+     */
+    @Bean
+    public Wire wire() {
+        return new WireImpl();
+    }
+    
+    /**
+     * Compaction Bean - 上下文压缩策略
+     * 全局单例，提供默认的 SimpleCompaction 实现
+     */
+    @Bean
+    public Compaction compaction() {
+        return new SimpleCompaction();
+    }
+    
 
     /**
      * YAML ObjectMapper Bean - YAML 序列化/反序列化
@@ -132,6 +158,16 @@ public class JimiConfiguration {
         return jimiConfig.getMemory();
     }
 
+    /**
+     * VectorIndexConfig Bean - 向量索引配置
+     * 从 JimiConfig 中获取
+     */
+    @Bean
+    @Autowired
+    public VectorIndexConfig vectorIndexConfig(JimiConfig jimiConfig) {
+        return jimiConfig.getVectorIndex();
+    }
+
     // ==================== 向量索引相关组件 ====================
 
     /**
@@ -142,20 +178,20 @@ public class JimiConfiguration {
     @Autowired
     public EmbeddingProvider embeddingProvider(JimiConfig jimiConfig, ObjectMapper objectMapper) {
         VectorIndexConfig config = jimiConfig.getVectorIndex();
-        
+
         // 如果未启用向量索引，返回 Mock 实现
         if (!config.isEnabled()) {
             log.debug("Vector index is disabled, returning mock embedding provider");
             return new MockEmbeddingProvider(1024, "disabled");
         }
-        
+
         String providerType = config.getEmbeddingProvider();
         String embeddingModel = config.getEmbeddingModel();
         int dimension = config.getEmbeddingDimension();
-        
-        log.info("Creating EmbeddingProvider: type={}, model={}, dimension={}", 
+
+        log.info("Creating EmbeddingProvider: type={}, model={}, dimension={}",
                 providerType, embeddingModel, dimension);
-        
+
         switch (providerType.toLowerCase()) {
             case "qwen":
                 // 获取qwen提供商配置
@@ -165,11 +201,11 @@ public class JimiConfiguration {
                     return new MockEmbeddingProvider(dimension, "qwen-fallback");
                 }
                 return new QwenEmbeddingProvider(embeddingModel, dimension, qwenConfig, objectMapper);
-                
+
             case "mock":
             case "local":
                 return new MockEmbeddingProvider(dimension, providerType);
-                
+
             default:
                 log.warn("Unknown embedding provider: {}, falling back to mock", providerType);
                 return new MockEmbeddingProvider(dimension, "mock");
@@ -184,20 +220,20 @@ public class JimiConfiguration {
     @Autowired
     public VectorStore vectorStore(JimiConfig jimiConfig, EmbeddingProvider embeddingProvider, ObjectMapper objectMapper) {
         VectorIndexConfig config = jimiConfig.getVectorIndex();
-        
+
         // 如果未启用向量索引，返回空实现
         if (!config.isEnabled()) {
             log.debug("Vector index is disabled, returning empty vector store");
             return new InMemoryVectorStore(objectMapper);
         }
-        
+
         String storageType = config.getStorageType();
         String indexPath = config.getIndexPath();
-        
+
         log.info("Creating VectorStore: type={}, path={}", storageType, indexPath);
-        
+
         VectorStore store;
-        
+
         // 目前只支持内存存储，后续可扩展
         switch (storageType.toLowerCase()) {
             case "memory":
@@ -213,11 +249,11 @@ public class JimiConfiguration {
                 fallbackStore.setConfiguredIndexPath(indexPath);
                 store = fallbackStore;
         }
-        
+
         // 注意: 自动加载需要在工作目录设置后进行
-        // 将在 GraphToolProvider 或 IndexCommandHandler 中设置 workDir 后触发
+        // 将在 CodeToolProvider 或 IndexCommandHandler 中设置 workDir 后触发
         log.debug("VectorStore created, auto-load will be triggered after workDir is set");
-        
+
         return store;
     }
 
@@ -229,74 +265,16 @@ public class JimiConfiguration {
     @Autowired
     public Chunker chunker(JimiConfig jimiConfig) {
         VectorIndexConfig config = jimiConfig.getVectorIndex();
-        
+
         if (!config.isEnabled()) {
             log.debug("Vector index is disabled, chunker will not be used");
         } else {
             log.info("Creating Chunker: SimpleChunker");
         }
-        
+
         return new SimpleChunker();
     }
 
-    /**
-     * 创建检索管线
-     * 根据 JimiConfig 中的 vector_index.enabled 配置条件性创建
-     */
-    @Bean
-    @Autowired
-    public RetrievalPipeline retrievalPipeline(JimiConfig jimiConfig, VectorStore vectorStore, 
-                                               EmbeddingProvider embeddingProvider) {
-        VectorIndexConfig config = jimiConfig.getVectorIndex();
-        
-        if (!config.isEnabled()) {
-            log.debug("Vector index is disabled, returning basic retrieval pipeline");
-            return new SimpleRetrievalPipeline(vectorStore, embeddingProvider, 5);
-        }
-        
-        int topK = config.getTopK();
-        
-        log.info("Creating RetrievalPipeline: topK={}", topK);
-        
-        return new SimpleRetrievalPipeline(vectorStore, embeddingProvider, topK);
-    }
-
-    /**
-     * 创建检索增强的压缩器
-     * 根据 JimiConfig 中的 vector_index.enabled 配置条件性创建
-     * 如果启用向量索引，覆盖默认的 SimpleCompaction
-     */
-    @Bean
-    @Primary
-    @Autowired
-    public Compaction compaction(JimiConfig jimiConfig, VectorStore vectorStore,
-                                EmbeddingProvider embeddingProvider) {
-        VectorIndexConfig config = jimiConfig.getVectorIndex();
-        
-        // 基础压缩器
-        Compaction baseCompaction = new SimpleCompaction();
-        
-        // 如果未启用向量索引，只返回基础压缩器
-        if (!config.isEnabled()) {
-            log.debug("Vector index is disabled, using simple compaction");
-            return baseCompaction;
-        }
-        
-        // 检索增强压缩（可通过配置关闭）
-        boolean enableRetrievalInCompaction = true; // TODO: 添加到配置
-        int compactionTopK = Math.min(config.getTopK(), 3); // 压缩时用较少的片段
-        
-        log.info("Creating RetrievalAwareCompaction: enabled={}, topK={}", 
-                enableRetrievalInCompaction, compactionTopK);
-        
-        return new RetrievalAwareCompaction(
-                baseCompaction,
-                vectorStore,
-                embeddingProvider,
-                compactionTopK,
-                enableRetrievalInCompaction
-        );
-    }
 
     // ==================== 配置加载内部工具类 ====================
 
@@ -365,7 +343,7 @@ public class JimiConfiguration {
                 yamlMapper.registerModule(new JavaTimeModule());
                 yamlMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
                 yamlMapper.writerWithDefaultPrettyPrinter()
-                    .writeValue(Files.newOutputStream(configFile), config);
+                        .writeValue(Files.newOutputStream(configFile), config);
 
                 log.info("Config saved to: {}", configFile);
             } catch (IOException e) {

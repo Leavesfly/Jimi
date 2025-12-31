@@ -1,7 +1,7 @@
 package io.leavesfly.jimi.tool.core.graph;
 
 import com.fasterxml.jackson.annotation.JsonPropertyDescription;
-import io.leavesfly.jimi.knowledge.graph.navigator.ImpactAnalyzer;
+import io.leavesfly.jimi.knowledge.spi.GraphService;
 import io.leavesfly.jimi.tool.AbstractTool;
 import io.leavesfly.jimi.tool.ToolResult;
 import lombok.AllArgsConstructor;
@@ -19,15 +19,15 @@ import reactor.core.publisher.Mono;
 @Slf4j
 public class ImpactAnalysisTool extends AbstractTool<ImpactAnalysisTool.Params> {
     
-    private final ImpactAnalyzer impactAnalyzer;
+    private final GraphService graphService;
     
-    public ImpactAnalysisTool(ImpactAnalyzer impactAnalyzer) {
+    public ImpactAnalysisTool(GraphService graphService) {
         super(
             "ImpactAnalysisTool",
             "分析代码变更的影响范围。可分析修改某个类、方法、文件后会影响哪些代码。",
             Params.class
         );
-        this.impactAnalyzer = impactAnalyzer;
+        this.graphService = graphService;
     }
     
     @Override
@@ -35,47 +35,38 @@ public class ImpactAnalysisTool extends AbstractTool<ImpactAnalysisTool.Params> 
         log.info("ImpactAnalysis tool called: entityId='{}', analysisType={}, maxDepth={}", 
                 params.getEntityId(), params.getAnalysisType(), params.getMaxDepth());
         
-        try {
-            ImpactAnalyzer.AnalysisType type = ImpactAnalyzer.AnalysisType.valueOf(
-                params.getAnalysisType().toUpperCase()
-            );
-            
-            ImpactAnalyzer.ImpactAnalysisResult result = impactAnalyzer.analyzeImpact(
-                params.getEntityId(),
-                type,
-                params.getMaxDepth()
-            ).block();
-            
-            if (result == null || !result.getSuccess()) {
-                return Mono.just(ToolResult.error(
-                    result != null ? result.getErrorMessage() : "Analysis failed",
-                    "Analysis failed"
-                ));
-            }
-            
-            String output = formatAnalysisResult(result);
-            return Mono.just(ToolResult.ok(output, "Impact analysis completed"));
-            
-        } catch (Exception e) {
-            log.error("Impact analysis failed: {}", e.getMessage(), e);
-            return Mono.just(ToolResult.error(
-                "Impact analysis failed: " + e.getMessage(),
-                "Execution error"
-            ));
-        }
+        return graphService.analyzeImpact(params.getEntityId(), params.getAnalysisType(), params.getMaxDepth())
+                .map(result -> {
+                    if (!result.isSuccess()) {
+                        return ToolResult.error(
+                            result.getErrorMessage() != null ? result.getErrorMessage() : "Analysis failed",
+                            "Analysis failed"
+                        );
+                    }
+                    
+                    String output = formatAnalysisResult(result);
+                    return ToolResult.ok(output, "Impact analysis completed");
+                })
+                .onErrorResume(e -> {
+                    log.error("Impact analysis failed: {}", e.getMessage(), e);
+                    return Mono.just(ToolResult.error(
+                        "Impact analysis failed: " + e.getMessage(),
+                        "Execution error"
+                    ));
+                });
     }
     
-    private String formatAnalysisResult(ImpactAnalyzer.ImpactAnalysisResult result) {
+    private String formatAnalysisResult(GraphService.ImpactAnalysisResult result) {
         StringBuilder sb = new StringBuilder();
         
         sb.append("# 影响分析结果\n\n");
-        sb.append(String.format("**目标**: %s\n", result.getTargetEntity() != null ? 
-                result.getTargetEntity().getName() : result.getTargetEntityId()));
+        sb.append(String.format("**目标**: %s\n", result.getTargetEntityName() != null ? 
+                result.getTargetEntityName() : result.getTargetEntityId()));
         sb.append(String.format("**分析类型**: %s\n", result.getAnalysisType()));
         sb.append(String.format("**最大深度**: %d\n\n", result.getMaxDepth()));
         
-        if (result.getAnalysisType() == ImpactAnalyzer.AnalysisType.DOWNSTREAM ||
-            result.getAnalysisType() == ImpactAnalyzer.AnalysisType.BOTH) {
+        String analysisType = result.getAnalysisType();
+        if ("DOWNSTREAM".equals(analysisType) || "BOTH".equals(analysisType)) {
             sb.append(String.format("## 下游影响 (%d个实体)\n\n", 
                     result.getDownstreamEntities().size()));
             
@@ -85,8 +76,7 @@ public class ImpactAnalysisTool extends AbstractTool<ImpactAnalysisTool.Params> 
             sb.append("\n");
         }
         
-        if (result.getAnalysisType() == ImpactAnalyzer.AnalysisType.UPSTREAM ||
-            result.getAnalysisType() == ImpactAnalyzer.AnalysisType.BOTH) {
+        if ("UPSTREAM".equals(analysisType) || "BOTH".equals(analysisType)) {
             sb.append(String.format("## 上游依赖 (%d个实体)\n\n", 
                     result.getUpstreamEntities().size()));
             

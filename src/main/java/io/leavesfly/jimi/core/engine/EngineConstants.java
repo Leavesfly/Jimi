@@ -17,7 +17,7 @@ public final class EngineConstants {
      * 说明：预留足够的Token空间确保即使在压缩触发前，
      * LLM仍有足够空间生成完整的输出和工具调用，避免因上下文满载导致的调用失败
      */
-    public static final int RESERVED_TOKENS = 50_000;
+    public static final int RESERVED_TOKENS = 20_000;
 
     /**
      * 私有构造函数，防止实例化

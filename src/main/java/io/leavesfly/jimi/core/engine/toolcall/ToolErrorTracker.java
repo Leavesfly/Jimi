@@ -1,6 +1,7 @@
 package io.leavesfly.jimi.core.engine.toolcall;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -15,13 +16,14 @@ import java.util.List;
  * - 在连续失败超过阈值时标记应终止循环
  */
 @Slf4j
+@Component
 public class ToolErrorTracker {
 
     private static final int MAX_REPEATED_ERRORS = 3; // 最大重复错误次数
 
     // 用于跟踪连续的工具调用错误
     private final List<String> recentToolErrors = new ArrayList<>();
-    
+
     // 标记是否应终止循环（因为连续重复错误）
     private boolean shouldTerminate = false;
 
@@ -35,7 +37,7 @@ public class ToolErrorTracker {
         if (recentToolErrors.size() > MAX_REPEATED_ERRORS) {
             recentToolErrors.remove(0);
         }
-        
+
         // 检查是否达到终止条件
         if (isRepeatedError(toolSignature)) {
             shouldTerminate = true;
@@ -50,10 +52,10 @@ public class ToolErrorTracker {
         recentToolErrors.clear();
         shouldTerminate = false;
     }
-    
+
     /**
      * 检查是否应终止循环
-     * 
+     *
      * @return true 表示应终止循环
      */
     public boolean shouldTerminateLoop() {

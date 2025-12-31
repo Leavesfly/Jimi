@@ -1,6 +1,7 @@
 package io.leavesfly.jimi.core.engine.context;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.leavesfly.jimi.llm.message.ContentPart;
 import io.leavesfly.jimi.llm.message.Message;
 import io.leavesfly.jimi.llm.message.MessageRole;
 import io.leavesfly.jimi.llm.message.TextPart;
@@ -12,6 +13,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * 上下文管理器
@@ -136,6 +138,11 @@ public class Context {
                 messageList = (List<Message>) messages;
             } else {
                 throw new IllegalArgumentException("Messages must be Message or List<Message>");
+            }
+            
+            // 首条用户消息自动提取高层意图（ReCAP 优化）
+            if (history.isEmpty() && isUserMessage(messageList)) {
+                autoExtractHighLevelIntent(messageList.get(0));
             }
             
             // 添加到内存
@@ -355,5 +362,60 @@ public class Context {
      */
     public String getHighLevelIntent() {
         return highLevelIntent;
+    }
+    
+    // ==================== 内部辅助方法 ====================
+    
+    /**
+     * 判断消息列表是否为用户消息
+     */
+    private boolean isUserMessage(List<Message> messages) {
+        return !messages.isEmpty() && messages.get(0).getRole() == MessageRole.USER;
+    }
+    
+    /**
+     * 自动提取首条用户消息的高层意图
+     * 用于 ReCAP 记忆优化，只在首次添加用户消息时执行
+     */
+    private void autoExtractHighLevelIntent(Message userMessage) {
+        if (highLevelIntent != null) {
+            return;  // 已设置则跳过
+        }
+        
+        String intent = extractIntentFromMessage(userMessage);
+        this.highLevelIntent = intent;
+        log.debug("自动提取高层意图: {}", intent);
+    }
+    
+    /**
+     * 从用户消息中提取意图（简化版：取前 200 字符）
+     */
+    private String extractIntentFromMessage(Message message) {
+        Object content = message.getContent();
+        if (content == null) {
+            return "(无)";
+        }
+        
+        // 如果是 List<ContentPart>，提取所有文本内容
+        if (content instanceof List) {
+            @SuppressWarnings("unchecked")
+            List<ContentPart> parts = (List<ContentPart>) content;
+            
+            String fullText = parts.stream()
+                    .filter(part -> part instanceof TextPart)
+                    .map(part -> ((TextPart) part).getText())
+                    .collect(Collectors.joining(" "));
+            
+            // 截取前 200 字符作为高层意图
+            return fullText.length() > 200 
+                    ? fullText.substring(0, 200) + "..." 
+                    : fullText;
+        }
+        
+        // 如果是 String，直接使用
+        String text = content.toString();
+        return text.length() > 200 
+                ? text.substring(0, 200) + "..." 
+                : text;
     }
 }

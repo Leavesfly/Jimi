@@ -2,6 +2,7 @@ package io.leavesfly.jimi.core.engine.toolcall;
 
 import io.leavesfly.jimi.llm.message.ToolCall;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
 
 /**
  * 工具调用验证器
@@ -12,6 +13,7 @@ import lombok.extern.slf4j.Slf4j;
  * - 提供验证结果封装
  */
 @Slf4j
+@Component
 public class ToolCallValidator {
 
     /**
