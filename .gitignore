@@ -10,6 +10,7 @@ dependency-reduced-pom.xml
 *.iml
 *.ipr
 *.class
+.jimi
 
 ### Eclipse ###
 .apt_generated
@@ -36,6 +37,7 @@ build/
 .vscode/
 .qoder/
 **/.jimi/config.yml
+.jimi
 
 ### Mac OS ###
 .DS_Store
