@@ -6,6 +6,7 @@ import io.leavesfly.jimi.config.JimiConfig;
 import io.leavesfly.jimi.core.JimiEngine;
 import io.leavesfly.jimi.core.session.Session;
 import io.leavesfly.jimi.core.session.SessionManager;
+import io.leavesfly.jimi.mcp.server.McpServer;
 import io.leavesfly.jimi.ui.shell.ShellUI;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -79,6 +80,9 @@ public class CliApplication implements CommandLineRunner, Runnable {
 
     @Option(names = {"-c", "--command"}, description = "User query to the agent")
     private String command;
+    
+    @Option(names = {"--mcp-server"}, description = "Start as MCP server (StdIO mode for IDE integration)")
+    private boolean mcpServer = false;
 
     @Override
     public void run(String... args) throws Exception {
@@ -102,6 +106,14 @@ public class CliApplication implements CommandLineRunner, Runnable {
 
     private void executeMain() {
         try {
+            // MCP Server模式
+            if (mcpServer) {
+                log.info("Starting Jimi in MCP Server mode...");
+                McpServer server = new McpServer(jimiFactory);
+                server.start();
+                return;
+            }
+            
             // 配置已由 Spring 管理，直接使用注入的 JimiConfig
             if (verbose) {
                 System.out.println("Loaded config: " + jimiConfig);

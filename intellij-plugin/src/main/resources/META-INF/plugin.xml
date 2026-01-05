@@ -1,0 +1,35 @@
+<idea-plugin>
+    <id>io.leavesfly.jimi-intellij-plugin</id>
+    <name>Jimi AI Assistant</name>
+    <version>0.1.0</version>
+    <vendor email="support@leavesfly.io">Leavesfly</vendor>
+
+    <description><![CDATA[
+    Jimi AI Assistant - 基于MCP协议的AI编程助手
+    <br/>
+    <ul>
+        <li>自然语言代码生成和重构</li>
+        <li>智能代码分析</li>
+        <li>与Jimi CLI无缝集成</li>
+    </ul>
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <toolWindow 
+            id="Jimi" 
+            anchor="right" 
+            factoryClass="io.leavesfly.jimi.plugin.ui.JimiToolWindowFactory"/>
+    </extensions>
+
+    <actions>
+        <action 
+            id="Jimi.AskJimi" 
+            class="io.leavesfly.jimi.plugin.actions.AskJimiAction"
+            text="Ask Jimi"
+            description="Ask Jimi AI">
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+        </action>
+    </actions>
+</idea-plugin>

@@ -20,6 +20,8 @@ dependency-reduced-pom.xml
 .springBeans
 .sts4-cache
 
+**/.gradle/
+
 ### NetBeans ###
 /nbproject/private/
 /nbbuild/
