@@ -1,12 +1,13 @@
 package io.leavesfly.jimi.ui;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.leavesfly.jimi.command.CommandRegistry;
 import io.leavesfly.jimi.core.JimiFactory;
 import io.leavesfly.jimi.config.JimiConfig;
 import io.leavesfly.jimi.core.JimiEngine;
 import io.leavesfly.jimi.core.session.Session;
 import io.leavesfly.jimi.core.session.SessionManager;
-import io.leavesfly.jimi.mcp.server.McpServer;
+import io.leavesfly.jimi.mcp.server.SimpleJimiServer;
 import io.leavesfly.jimi.ui.shell.ShellUI;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -42,16 +43,18 @@ public class CliApplication implements CommandLineRunner, Runnable {
     private final ObjectMapper objectMapper;
     private final ApplicationContext applicationContext;
     private final JimiFactory jimiFactory;
+    private final CommandRegistry commandRegistry;
 
     @Autowired
     public CliApplication(JimiConfig jimiConfig, SessionManager sessionManager,
                           ObjectMapper objectMapper, ApplicationContext applicationContext,
-                          JimiFactory jimiFactory) {
+                          JimiFactory jimiFactory, CommandRegistry commandRegistry) {
         this.jimiConfig = jimiConfig;
         this.sessionManager = sessionManager;
         this.objectMapper = objectMapper;
         this.applicationContext = applicationContext;
         this.jimiFactory = jimiFactory;
+        this.commandRegistry = commandRegistry;
     }
 
     @Option(names = {"--verbose"}, description = "Print verbose information")
@@ -81,8 +84,8 @@ public class CliApplication implements CommandLineRunner, Runnable {
     @Option(names = {"-c", "--command"}, description = "User query to the agent")
     private String command;
     
-    @Option(names = {"--mcp-server"}, description = "Start as MCP server (StdIO mode for IDE integration)")
-    private boolean mcpServer = false;
+    @Option(names = {"--simple-server", "--mcp-server"}, description = "Start as simple server (StdIO mode for IDE integration)")
+    private boolean simpleServer = false;
 
     @Override
     public void run(String... args) throws Exception {
@@ -106,10 +109,10 @@ public class CliApplication implements CommandLineRunner, Runnable {
 
     private void executeMain() {
         try {
-            // MCP Server模式
-            if (mcpServer) {
-                log.info("Starting Jimi in MCP Server mode...");
-                McpServer server = new McpServer(jimiFactory);
+            // Simple Server 模式（IDE集成）
+            if (simpleServer) {
+                log.info("Starting Jimi in Simple Server mode...");
+                SimpleJimiServer server = new SimpleJimiServer(jimiFactory);
                 server.start();
                 return;
             }

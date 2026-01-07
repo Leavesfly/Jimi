@@ -20,7 +20,10 @@
         <toolWindow 
             id="Jimi" 
             anchor="right" 
+            icon="AllIcons.Actions.Lightning"
             factoryClass="io.leavesfly.jimi.plugin.ui.JimiToolWindowFactory"/>
+        <projectService 
+            serviceImplementation="io.leavesfly.jimi.plugin.JimiPluginService"/>
     </extensions>
 
     <actions>

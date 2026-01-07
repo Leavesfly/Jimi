@@ -22,6 +22,7 @@ dependency-reduced-pom.xml
 .sts4-cache
 
 **/.gradle/
+**/gradle/
 
 ### NetBeans ###
 /nbproject/private/
