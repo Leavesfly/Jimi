@@ -185,6 +185,13 @@ public class SkillLoader {
                                     skill.setResourcesPath(resourcesDir);
                                 }
                                 
+                                // 检查是否有scripts目录（兼容Claude Code Skills）
+                                Path scriptsDir = skillDir.resolve("scripts");
+                                if (Files.exists(scriptsDir) && Files.isDirectory(scriptsDir)) {
+                                    skill.setScriptsPath(scriptsDir);
+                                    log.debug("Found scripts directory for skill: {}", skill.getName());
+                                }
+                                
                                 skills.add(skill);
                                 log.debug("Loaded skill: {} from {}", skill.getName(), skillFile);
                             }
@@ -319,8 +326,19 @@ public class SkillLoader {
                     if (metadata.containsKey("category")) {
                         builder.category((String) metadata.get("category"));
                     }
+                    if (metadata.containsKey("license")) {
+                        builder.license((String) metadata.get("license"));
+                    }
                     if (metadata.containsKey("triggers")) {
                         builder.triggers((List<String>) metadata.get("triggers"));
+                    }
+                    
+                    // 忽略 Claude Code 特有字段（记录日志但不报错）
+                    List<String> ignoredFields = List.of("hooks", "allowed-tools", "model", "context", "agent", "user-invocable");
+                    for (String key : metadata.keySet()) {
+                        if (ignoredFields.contains(key)) {
+                            log.debug("Ignoring Claude Code specific field '{}' in skill '{}'", key, metadata.get("name"));
+                        }
                     }
                     if (metadata.containsKey("scriptPath")) {
                         builder.scriptPath((String) metadata.get("scriptPath"));

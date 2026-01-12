@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -156,6 +157,22 @@ public class SkillInjector {
             // Skill 内容
             if (skill.getContent() != null && !skill.getContent().isEmpty()) {
                 sb.append(skill.getContent()).append("\n\n");
+            }
+            
+            // 提示可用的 scripts 目录（兼容 Claude Code Skills）
+            if (skill.getScriptsPath() != null) {
+                try {
+                    long scriptCount = Files.list(skill.getScriptsPath()).count();
+                    if (scriptCount > 0) {
+                        sb.append("**可用脚本**: 此 Skill 包含 ")
+                          .append(scriptCount)
+                          .append(" 个实用脚本，位于 `")
+                          .append(skill.getScriptsPath().getFileName())
+                          .append("`，可通过 Bash 工具调用\n\n");
+                    }
+                } catch (Exception e) {
+                    log.debug("Failed to list scripts for skill: {}", skill.getName(), e);
+                }
             }
             
             // 分隔线（最后一个 Skill 不需要）

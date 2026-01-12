@@ -55,6 +55,12 @@ public class SkillSpec {
     private String category;
     
     /**
+     * 许可证信息（可选）
+     * 用于标识 Skill 的许可协议，兼容 Claude Code Skills
+     */
+    private String license;
+    
+    /**
      * 触发关键词列表
      * 用于智能匹配和激活Skill
      */
@@ -72,6 +78,12 @@ public class SkillSpec {
      * 可选字段，指向Skill目录下的resources文件夹
      */
     private Path resourcesPath;
+    
+    /**
+     * 脚本文件夹路径
+     * 可选字段，指向Skill目录下的scripts文件夹，兼容Claude Code Skills
+     */
+    private Path scriptsPath;
     
     /**
      * 作用域（全局或项目级）
