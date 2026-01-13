@@ -80,24 +80,9 @@ models:
     model: qwen3-next-80b-a3b-instruct
     max_context_size: 200000
 
-  qwen-max:
-    provider: qwen
-    model: qwen-max
-    max_context_size: 200000
-
   qwen3-coder-plus:
     provider: qwen
     model: qwen3-coder-plus
-    max_context_size: 200000
-
-  qwen3-coder-flash:
-    provider: qwen
-    model: qwen3-coder-flash
-    max_context_size: 200000
-
-  deepseek-v3.2-exp:
-    provider: qwen
-    model: deepseek-v3.2-exp
     max_context_size: 200000
 
   # Kimi 系列
