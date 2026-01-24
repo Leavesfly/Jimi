@@ -9,7 +9,11 @@ import reactor.core.publisher.Mono;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -32,6 +36,9 @@ public class SkillInjector {
     
     @Autowired(required = false)
     private SkillConfig skillConfig;
+    
+    @Autowired
+    private SkillRegistry skillRegistry;
     
     @Autowired(required = false)
     private SkillScriptExecutor scriptExecutor;
@@ -63,11 +70,14 @@ public class SkillInjector {
         
         long startTime = logPerformanceMetrics() ? System.currentTimeMillis() : 0;
         
+        // 展开依赖关系：支持组合/聚合型 Skill
+        List<SkillSpec> expandedSkills = expandDependencies(matchedSkills);
+        
         // 去重：如果某些 Skills 已经在上下文中，则跳过
-        List<SkillSpec> newSkills = filterNewSkills(context, matchedSkills);
+        List<SkillSpec> newSkills = filterNewSkills(context, expandedSkills);
         
         if (newSkills.isEmpty()) {
-            log.debug("All matched skills are already active in context");
+            log.debug("All matched skills (including dependencies) are already active in context");
             return Mono.empty();
         }
         
@@ -115,27 +125,60 @@ public class SkillInjector {
     }
     
     /**
-     * 格式化 Skills 为 Markdown 文本
-     * 
-     * 输出格式：
-     * ```
-     * <system>
-     * ## 🎯 激活的技能包
-     * 
-     * 以下技能包已根据当前任务自动激活，请在执行任务时遵循这些专业指南：
-     * 
-     * ### [Skill 1 名称]
-     * [Skill 1 描述]
-     * 
-     * [Skill 1 内容]
-     * 
-     * ---
-     * 
-     * ### [Skill 2 名称]
-     * ...
-     * </system>
-     * ```
+     * 展开 Skill 依赖关系
+     * 支持组合/聚合型 Skill 在注入前自动引入其依赖的 Skill
      */
+    private List<SkillSpec> expandDependencies(List<SkillSpec> skills) {
+        if (skills == null || skills.isEmpty()) {
+            return skills;
+        }
+        
+        Map<String, SkillSpec> accumulator = new LinkedHashMap<>();
+        Set<String> visiting = new HashSet<>();
+        
+        for (SkillSpec skill : skills) {
+            collectWithDependencies(skill, accumulator, visiting);
+        }
+        
+        return List.copyOf(accumulator.values());
+    }
+    
+    private void collectWithDependencies(SkillSpec skill,
+                                         Map<String, SkillSpec> accumulator,
+                                         Set<String> visiting) {
+        if (skill == null || skill.getName() == null) {
+            return;
+        }
+        String name = skill.getName();
+        if (accumulator.containsKey(name)) {
+            return;
+        }
+        if (!visiting.add(name)) {
+            log.warn("Detected circular skill dependency on '{}', skipping to avoid infinite loop", name);
+            return;
+        }
+        
+        // 先处理依赖的 Skill，保证依赖在前
+        List<String> dependencies = skill.getDependencies();
+        if (dependencies != null) {
+            for (String depName : dependencies) {
+                if (depName == null || depName.isEmpty()) {
+                    continue;
+                }
+                if (accumulator.containsKey(depName)) {
+                    continue;
+                }
+                skillRegistry.findByName(depName).ifPresentOrElse(
+                        depSkill -> collectWithDependencies(depSkill, accumulator, visiting),
+                        () -> log.warn("Skill '{}' declares dependency '{}', but it was not found in registry",
+                                name, depName)
+                );
+            }
+        }
+        
+        accumulator.put(name, skill);
+        visiting.remove(name);
+    }
     private String formatSkills(List<SkillSpec> skills) {
         StringBuilder sb = new StringBuilder();
         

@@ -38,6 +38,13 @@ public class SkillMatcher {
     private SkillConfig skillConfig;
     
     /**
+     * 可选的得分调整器列表
+     * 如果未注入任何实现，则不影响现有行为
+     */
+    @Autowired(required = false)
+    private List<SkillScoreAdjuster> scoreAdjusters;
+    
+    /**
      * 匹配结果缓存
      * Key: 输入文本的 hash
      * Value: 匹配的 Skills 列表
@@ -147,7 +154,7 @@ public class SkillMatcher {
         int maxSkills = getMaxMatchedSkills();
         
         List<ScoredSkill> scoredSkills = candidateSkills.stream()
-                .map(skill -> new ScoredSkill(skill, calculateScore(skill, keywords, inputText)))
+                .map(skill -> new ScoredSkill(skill, calculateScore(skill, keywords, inputText, null)))
                 .filter(scored -> scored.score >= scoreThreshold)
                 .sorted(Comparator.comparingInt(ScoredSkill::getScore).reversed())
                 .limit(maxSkills)
@@ -222,7 +229,7 @@ public class SkillMatcher {
         int maxSkills = getMaxMatchedSkills();
         
         return candidateSkills.stream()
-                .map(skill -> new ScoredSkill(skill, calculateScore(skill, keywords, fullText)))
+                .map(skill -> new ScoredSkill(skill, calculateScore(skill, keywords, fullText, null)))
                 .filter(scored -> scored.score >= contextThreshold)
                 .sorted(Comparator.comparingInt(ScoredSkill::getScore).reversed())
                 .limit(maxSkills)
@@ -333,7 +340,7 @@ public class SkillMatcher {
      * @param fullText 完整输入文本
      * @return 匹配得分（0-100）
      */
-    private int calculateScore(SkillSpec skill, Set<String> keywords, String fullText) {
+    private int calculateScore(SkillSpec skill, Set<String> keywords, String fullText, List<ContentPart> contentParts) {
         int score = 0;
         
         String fullTextLower = fullText.toLowerCase();
@@ -375,8 +382,26 @@ public class SkillMatcher {
             }
         }
         
-        // 限制最高分为100
-        return Math.min(score, 100);
+        int adjustedScore = score;
+        if (scoreAdjusters != null && !scoreAdjusters.isEmpty()) {
+            for (SkillScoreAdjuster adjuster : scoreAdjusters) {
+                try {
+                    adjustedScore = adjuster.adjustScore(skill, adjustedScore, keywords, fullText, contentParts);
+                } catch (Exception e) {
+                    log.warn("SkillScoreAdjuster {} failed, ignore it.", adjuster.getClass().getSimpleName(), e);
+                }
+            }
+        }
+        
+        // 限制分数在 0-100 之间
+        if (adjustedScore < 0) {
+            adjustedScore = 0;
+        }
+        if (adjustedScore > 100) {
+            adjustedScore = 100;
+        }
+        
+        return adjustedScore;
     }
     
     /**

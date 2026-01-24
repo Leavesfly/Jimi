@@ -68,6 +68,14 @@ public class SkillSpec {
     private List<String> triggers = new ArrayList<>();
     
     /**
+     * 依赖的其他 Skill 名称列表
+     * 用于组合/聚合型 Skill，通过名称引用其他 Skill
+     * 可选字段，未配置时视为无依赖
+     */
+    @Builder.Default
+    private List<String> dependencies = new ArrayList<>();
+    
+    /**
      * Skill指令内容（Markdown正文）
      * 必需字段，当Skill激活时注入到Agent上下文
      */

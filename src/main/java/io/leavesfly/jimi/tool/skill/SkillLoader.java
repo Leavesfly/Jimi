@@ -332,6 +332,13 @@ public class SkillLoader {
                     if (metadata.containsKey("triggers")) {
                         builder.triggers((List<String>) metadata.get("triggers"));
                     }
+                    if (metadata.containsKey("dependencies")) {
+                        builder.dependencies((List<String>) metadata.get("dependencies"));
+                    }
+                    if (metadata.containsKey("requires") && (builder.build().getDependencies() == null
+                            || builder.build().getDependencies().isEmpty())) {
+                        builder.dependencies((List<String>) metadata.get("requires"));
+                    }
                     
                     // 忽略 Claude Code 特有字段（记录日志但不报错）
                     List<String> ignoredFields = List.of("hooks", "allowed-tools", "model", "context", "agent", "user-invocable");
