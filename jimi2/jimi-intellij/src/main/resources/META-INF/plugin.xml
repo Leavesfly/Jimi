@@ -1,0 +1,92 @@
+<idea-plugin>
+    <id>io.leavesfly.jimi.intellij</id>
+    <name>Jimi AI Assistant</name>
+    <vendor email="support@leavesfly.io" url="https://github.com/leavesfly/jimi">Jimi Team</vendor>
+
+    <description><![CDATA[
+    <h2>Jimi AI 编程助手</h2>
+    <p>基于 Jimi ADK 的 IntelliJ IDEA 集成插件，提供：</p>
+    <ul>
+        <li>智能代码生成</li>
+        <li>代码分析与优化</li>
+        <li>自然语言交互</li>
+        <li>工具集成</li>
+    </ul>
+    ]]></description>
+
+    <change-notes><![CDATA[
+    <h3>2.0.0</h3>
+    <ul>
+        <li>基于全新的 Jimi ADK 架构</li>
+        <li>支持多种 LLM 提供商</li>
+        <li>工具扩展机制</li>
+    </ul>
+    ]]></change-notes>
+
+    <!-- 产品兼容性 -->
+    <depends>com.intellij.modules.platform</depends>
+    <depends>com.intellij.modules.lang</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <!-- 工具窗口 -->
+        <toolWindow id="Jimi Assistant"
+                    secondary="true"
+                    anchor="right"
+                    icon="/icons/jimi.svg"
+                    factoryClass="io.leavesfly.jimi.intellij.ui.JimiToolWindowFactory"/>
+        
+        <!-- 项目服务 -->
+        <projectService serviceImplementation="io.leavesfly.jimi.intellij.service.JimiProjectService"/>
+        
+        <!-- 应用服务 -->
+        <applicationService serviceImplementation="io.leavesfly.jimi.intellij.service.JimiApplicationService"/>
+        
+        <!-- 设置配置 -->
+        <applicationConfigurable parentId="tools"
+                                 instance="io.leavesfly.jimi.intellij.settings.JimiSettingsConfigurable"
+                                 id="io.leavesfly.jimi.intellij.settings"
+                                 displayName="Jimi AI Assistant"/>
+        
+        <!-- 状态持久化 -->
+        <applicationService serviceImplementation="io.leavesfly.jimi.intellij.settings.JimiSettings"/>
+    </extensions>
+
+    <actions>
+        <!-- 主菜单 -->
+        <group id="Jimi.MainMenu" text="Jimi" popup="true">
+            <add-to-group group-id="MainMenu" anchor="before" relative-to-action="HelpMenu"/>
+            
+            <action id="Jimi.OpenChat"
+                    class="io.leavesfly.jimi.intellij.action.OpenChatAction"
+                    text="打开对话"
+                    description="打开 Jimi AI 对话窗口"
+                    icon="/icons/chat.svg">
+                <keyboard-shortcut keymap="$default" first-keystroke="alt shift J"/>
+            </action>
+            
+            <separator/>
+            
+            <action id="Jimi.GenerateCode"
+                    class="io.leavesfly.jimi.intellij.action.GenerateCodeAction"
+                    text="生成代码"
+                    description="使用 AI 生成代码"/>
+            
+            <action id="Jimi.ExplainCode"
+                    class="io.leavesfly.jimi.intellij.action.ExplainCodeAction"
+                    text="解释代码"
+                    description="解释选中的代码"/>
+        </group>
+        
+        <!-- 编辑器右键菜单 -->
+        <group id="Jimi.EditorPopupMenu">
+            <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+            
+            <separator/>
+            
+            <action id="Jimi.AskAboutSelection"
+                    class="io.leavesfly.jimi.intellij.action.AskAboutSelectionAction"
+                    text="询问 Jimi"
+                    description="询问 Jimi 关于选中代码的问题"/>
+        </group>
+    </actions>
+</idea-plugin>
