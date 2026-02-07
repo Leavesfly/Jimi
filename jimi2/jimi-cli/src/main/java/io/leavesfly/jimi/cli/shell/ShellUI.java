@@ -4,6 +4,7 @@ import io.leavesfly.jimi.adk.api.agent.Agent;
 import io.leavesfly.jimi.adk.api.context.Context;
 import io.leavesfly.jimi.adk.api.engine.Engine;
 import io.leavesfly.jimi.adk.api.engine.ExecutionResult;
+import io.leavesfly.jimi.adk.api.llm.LLM;
 import io.leavesfly.jimi.adk.api.message.ContentPart;
 import io.leavesfly.jimi.adk.api.message.Message;
 import io.leavesfly.jimi.adk.api.message.Role;
@@ -17,6 +18,7 @@ import io.leavesfly.jimi.adk.api.engine.Runtime;
 import io.leavesfly.jimi.adk.core.tool.DefaultToolRegistry;
 import io.leavesfly.jimi.adk.core.wire.DefaultWire;
 import io.leavesfly.jimi.adk.core.wire.messages.*;
+import io.leavesfly.jimi.cli.config.CliConfig;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jline.reader.LineReader;
 import org.jline.reader.LineReaderBuilder;
@@ -55,6 +57,12 @@ public class ShellUI {
     /** 工作目录 */
     private final Path workDir;
     
+    /** LLM 实例 */
+    private final LLM llm;
+    
+    /** CLI 配置 */
+    private final CliConfig cliConfig;
+    
     /** 执行引擎 */
     private Engine engine;
     
@@ -88,12 +96,16 @@ public class ShellUI {
     /**
      * 构造函数
      *
-     * @param agent   要运行的 Agent
-     * @param workDir 工作目录
+     * @param agent     要运行的 Agent
+     * @param workDir   工作目录
+     * @param llm       LLM 实例
+     * @param cliConfig CLI 配置
      */
-    public ShellUI(Agent agent, Path workDir) {
+    public ShellUI(Agent agent, Path workDir, LLM llm, CliConfig cliConfig) {
         this.agent = agent;
         this.workDir = workDir;
+        this.llm = llm;
+        this.cliConfig = cliConfig;
         this.wire = new DefaultWire();
         this.context = new DefaultContext();
         this.objectMapper = new ObjectMapper();
@@ -152,9 +164,12 @@ public class ShellUI {
             agent.getTools().forEach(toolRegistry::register);
         }
         
-        // 创建运行时
+        // 创建运行时（注入 LLM）
         Runtime runtime = Runtime.builder()
                 .workDir(workDir)
+                .llm(llm)
+                .yoloMode(cliConfig.isYoloMode())
+                .maxContextTokens(cliConfig.getMaxContextTokens())
                 .build();
         
         // 创建引擎
@@ -183,6 +198,7 @@ public class ShellUI {
         if (agentDesc != null && !agentDesc.isEmpty()) {
             println("描述: " + agentDesc);
         }
+        printColored("LLM: " + llm.getProvider() + "/" + llm.getModel(), AttributedStyle.GREEN);
         println("");
         printColored("输入 /help 查看可用命令，输入 /exit 退出", AttributedStyle.YELLOW);
         println("");

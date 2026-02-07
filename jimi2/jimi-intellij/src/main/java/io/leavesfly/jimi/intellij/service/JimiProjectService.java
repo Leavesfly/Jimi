@@ -3,10 +3,14 @@ package io.leavesfly.jimi.intellij.service;
 import com.intellij.openapi.components.Service;
 import com.intellij.openapi.project.Project;
 import io.leavesfly.jimi.adk.api.agent.Agent;
+import io.leavesfly.jimi.adk.api.agent.AgentSpec;
 import io.leavesfly.jimi.adk.api.context.Context;
 import io.leavesfly.jimi.adk.api.engine.Engine;
 import io.leavesfly.jimi.adk.api.engine.ExecutionResult;
 import io.leavesfly.jimi.adk.api.engine.Runtime;
+import io.leavesfly.jimi.adk.api.llm.LLM;
+import io.leavesfly.jimi.adk.api.tool.Tool;
+import io.leavesfly.jimi.adk.api.tool.ToolProvider;
 import io.leavesfly.jimi.adk.api.tool.ToolRegistry;
 import io.leavesfly.jimi.adk.api.wire.Wire;
 import io.leavesfly.jimi.adk.core.context.DefaultContext;
@@ -20,6 +24,9 @@ import reactor.core.publisher.Mono;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.ServiceLoader;
 
 /**
  * Jimi 项目服务
@@ -66,6 +73,7 @@ public final class JimiProjectService {
         this.toolRegistry = new DefaultToolRegistry(objectMapper);
         
         initAgent();
+        registerTools();
         initEngine();
         
         log.info("Jimi 项目服务已初始化: {}", project.getName());
@@ -74,7 +82,29 @@ public final class JimiProjectService {
     /**
      * 初始化 Agent
      */
+    @SuppressWarnings("unchecked")
     private void initAgent() {
+        // 通过 SPI 发现工具，收集工具名称
+        AgentSpec agentSpec = AgentSpec.builder()
+                .name("jimi-intellij")
+                .description("Jimi IntelliJ IDEA 助手")
+                .version("2.0.0")
+                .build();
+
+        Runtime toolRuntime = Runtime.builder().workDir(getProjectPath()).build();
+        List<String> toolNames = new ArrayList<>();
+
+        for (ToolProvider provider : ServiceLoader.load(ToolProvider.class)) {
+            if (provider.supports(agentSpec, toolRuntime)) {
+                for (Tool<?> t : provider.createTools(agentSpec, toolRuntime)) {
+                    toolNames.add(t.getName());
+                    spiTools.add((Tool) t);
+                }
+            }
+        }
+
+        log.info("SPI 发现工具: {}", toolNames);
+
         this.agent = Agent.builder()
                 .name("jimi-intellij")
                 .description("Jimi IntelliJ IDEA 助手")
@@ -85,18 +115,41 @@ public final class JimiProjectService {
                         "3. 查找和修复 Bug\n" +
                         "4. 重构代码结构\n" +
                         "请简洁、专业地回答问题。")
+                .toolNames(toolNames)
                 .maxSteps(50)
                 .build();
     }
     
+    /** SPI 加载的工具列表 */
+    @SuppressWarnings("rawtypes")
+    private final List<Tool> spiTools = new ArrayList<>();
+
+    /**
+     * 注册 SPI 工具到 ToolRegistry
+     */
+    @SuppressWarnings("unchecked")
+    private void registerTools() {
+        for (Tool tool : spiTools) {
+            toolRegistry.register(tool);
+        }
+        log.info("已注册 {} 个工具", spiTools.size());
+    }
+
     /**
      * 初始化引擎
      */
     private void initEngine() {
         Path workDir = getProjectPath();
-        
+
+        // 从应用级服务获取 LLM
+        LLM llm = JimiApplicationService.getInstance().getOrCreateLLM();
+        if (llm == null) {
+            log.warn("LLM 未初始化（API Key 未配置），引擎将无法正常工作");
+        }
+
         Runtime runtime = Runtime.builder()
                 .workDir(workDir)
+                .llm(llm)
                 .build();
         
         this.engine = DefaultEngine.builder()

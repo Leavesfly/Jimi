@@ -34,6 +34,16 @@
             <groupId>io.leavesfly.jimi</groupId>
             <artifactId>adk-tools</artifactId>
         </dependency>
+        <dependency>
+            <groupId>io.leavesfly.jimi</groupId>
+            <artifactId>adk-llm</artifactId>
+        </dependency>
+
+        <!-- SnakeYAML for config parsing -->
+        <dependency>
+            <groupId>org.yaml</groupId>
+            <artifactId>snakeyaml</artifactId>
+        </dependency>
 
         <!-- JLine for CLI -->
         <dependency>

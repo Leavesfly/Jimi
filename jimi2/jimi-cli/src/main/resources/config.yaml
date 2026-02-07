@@ -1,0 +1,27 @@
+# Jimi CLI 默认配置
+# 将此文件复制到 ~/.jimi/config.yaml 或项目目录下 .jimi/config.yaml
+
+# LLM 配置
+llm:
+  # 提供商: openai, deepseek, qwen, kimi, ollama
+  provider: openai
+  # 模型名称
+  model: gpt-4o
+  # API Key（推荐使用环境变量，如 OPENAI_API_KEY）
+  # apiKey: sk-xxx
+  # API 基础 URL（可选，自定义端点时使用）
+  # baseUrl: https://api.openai.com/v1
+  # 温度参数 (0-2)
+  temperature: 0.7
+  # 最大输出 Token 数
+  maxTokens: 4096
+  # 连接超时（秒）
+  connectTimeout: 30
+  # 读取超时（秒）
+  readTimeout: 120
+
+# YOLO 模式（跳过审批确认）
+yoloMode: false
+
+# 最大上下文 Token 数
+maxContextTokens: 100000

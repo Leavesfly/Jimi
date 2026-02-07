@@ -31,6 +31,9 @@ public class AgentLoader {
     /** Agent 规范目录 */
     private final Path agentsDir;
     
+    /** 工作目录 */
+    private final Path workDir;
+    
     /** YAML 解析器 */
     private final ObjectMapper yamlMapper;
     
@@ -41,9 +44,11 @@ public class AgentLoader {
      * 构造函数
      *
      * @param agentsDir Agent 规范目录
+     * @param workDir   工作目录
      */
-    public AgentLoader(Path agentsDir) {
+    public AgentLoader(Path agentsDir, Path workDir) {
         this.agentsDir = agentsDir;
+        this.workDir = workDir;
         this.yamlMapper = new ObjectMapper(new YAMLFactory());
         this.yamlMapper.findAndRegisterModules();
     }
@@ -140,7 +145,7 @@ public class AgentLoader {
         
         // 创建运行时环境（用于工具创建）
         Runtime runtime = Runtime.builder()
-                .workDir(agentsDir.getParent())
+                .workDir(workDir)
                 .build();
         
         List<Tool> allTools = new ArrayList<>();
@@ -191,7 +196,13 @@ public class AgentLoader {
                 .name("jimi")
                 .description("Jimi 默认助手，一个强大的 AI 编程助手")
                 .version("2.0.0")
-                .systemPrompt("你是 Jimi，一个强大的 AI 编程助手。你可以帮助用户完成各种编程任务，包括代码编写、调试、重构等。")
+                .systemPrompt("你是 Jimi，一个强大的 AI 编程助手。你可以帮助用户完成各种编程任务，包括代码编写、调试、重构等。\n"
+                        + "你有以下工具可用：\n"
+                        + "- read_file: 读取文件内容\n"
+                        + "- write_file: 写入文件内容\n"
+                        + "- list_dir: 列出目录内容\n"
+                        + "- bash: 执行 Shell 命令\n"
+                        + "请始终使用清晰、专业的语言，并在执行危险操作前确认。")
                 .build();
         
         return Agent.builder()

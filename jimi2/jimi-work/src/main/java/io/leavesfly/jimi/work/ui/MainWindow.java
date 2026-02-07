@@ -1,14 +1,16 @@
 package io.leavesfly.jimi.work.ui;
 
 import io.leavesfly.jimi.adk.api.agent.Agent;
+import io.leavesfly.jimi.adk.api.agent.AgentSpec;
 import io.leavesfly.jimi.adk.api.context.Context;
 import io.leavesfly.jimi.adk.api.engine.Engine;
 import io.leavesfly.jimi.adk.api.engine.ExecutionResult;
 import io.leavesfly.jimi.adk.api.engine.Runtime;
 import io.leavesfly.jimi.adk.api.llm.LLM;
-import io.leavesfly.jimi.adk.api.llm.LLMConfig;
 import io.leavesfly.jimi.adk.api.message.Message;
 import io.leavesfly.jimi.adk.api.message.Role;
+import io.leavesfly.jimi.adk.api.tool.Tool;
+import io.leavesfly.jimi.adk.api.tool.ToolProvider;
 import io.leavesfly.jimi.adk.api.tool.ToolRegistry;
 import io.leavesfly.jimi.adk.api.wire.Wire;
 import io.leavesfly.jimi.adk.api.wire.WireMessage;
@@ -17,7 +19,7 @@ import io.leavesfly.jimi.adk.core.engine.DefaultEngine;
 import io.leavesfly.jimi.adk.core.tool.DefaultToolRegistry;
 import io.leavesfly.jimi.adk.core.wire.DefaultWire;
 import io.leavesfly.jimi.adk.core.wire.messages.*;
-import io.leavesfly.jimi.adk.llm.LLMFactory;
+import io.leavesfly.jimi.work.config.WorkConfig;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
@@ -33,6 +35,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.ServiceLoader;
 
 /**
  * 主窗口
@@ -51,6 +56,12 @@ public class MainWindow {
     
     /** 工作目录 */
     private final Path workDir;
+    
+    /** LLM 实例 */
+    private final LLM llm;
+    
+    /** 配置 */
+    private final WorkConfig config;
     
     /** 消息总线 */
     private final Wire wire;
@@ -87,10 +98,14 @@ public class MainWindow {
      *
      * @param stage   主舞台
      * @param workDir 工作目录
+     * @param llm     LLM 实例
+     * @param config  配置
      */
-    public MainWindow(Stage stage, Path workDir) {
+    public MainWindow(Stage stage, Path workDir, LLM llm, WorkConfig config) {
         this.stage = stage;
         this.workDir = workDir;
+        this.llm = llm;
+        this.config = config;
         this.wire = new DefaultWire();
         this.context = new DefaultContext();
         
@@ -106,35 +121,60 @@ public class MainWindow {
     /**
      * 初始化 Agent
      */
+    @SuppressWarnings("unchecked")
     private void initAgent() {
-        // 创建默认 Agent
+        // 通过 SPI 加载工具
+        AgentSpec agentSpec = AgentSpec.builder()
+                .name("jimi")
+                .description("Jimi 桌面助手")
+                .version("2.0.0")
+                .build();
+        
+        Runtime toolRuntime = Runtime.builder().workDir(workDir).build();
+        List<Tool> tools = new ArrayList<>();
+        for (ToolProvider provider : ServiceLoader.load(ToolProvider.class)) {
+            if (provider.supports(agentSpec, toolRuntime)) {
+                for (Tool<?> t : provider.createTools(agentSpec, toolRuntime)) {
+                    tools.add((Tool) t);
+                }
+            }
+        }
+        
+        // 注册工具到 Registry
+        for (Tool tool : tools) {
+            toolRegistry.register(tool);
+        }
+        
+        // 构建工具描述
+        StringBuilder toolDesc = new StringBuilder();
+        for (Tool tool : tools) {
+            toolDesc.append("- ").append(tool.getName()).append(": ").append(tool.getDescription()).append("\n");
+        }
+        
         this.agent = Agent.builder()
                 .name("jimi")
                 .description("Jimi 桌面助手")
                 .version("2.0.0")
-                .systemPrompt("你是 Jimi，一个强大的 AI 编程助手。你可以帮助用户完成各种编程任务。")
+                .systemPrompt("你是 Jimi，一个强大的 AI 编程助手。\n"
+                        + "你有以下工具可用：\n" + toolDesc
+                        + "请始终使用清晰、专业的语言，并在执行危险操作前确认。")
+                .tools(tools)
                 .maxSteps(100)
                 .build();
+        
+        log.info("初始化 Agent，已加载 {} 个工具", tools.size());
     }
     
     /**
      * 初始化引擎
      */
     private void initEngine() {
-        // 创建 LLM 配置（默认使用 Kimi）
-        LLMConfig llmConfig = LLMConfig.builder()
-                .provider("kimi")
-                .model("moonshot-v1-8k")
-                .build();
-        
-        // 创建 LLM 实例
-        LLMFactory llmFactory = new LLMFactory();
-        LLM llm = llmFactory.create(llmConfig);
-        
-        // 创建运行时
+        // 创建运行时（注入外部 LLM）
         Runtime runtime = Runtime.builder()
                 .workDir(workDir)
                 .llm(llm)
+                .yoloMode(config.isYoloMode())
+                .maxContextTokens(config.getMaxContextTokens())
                 .build();
         
         this.engine = DefaultEngine.builder()
@@ -175,7 +215,7 @@ public class MainWindow {
         Scene scene = new Scene(root, 800, 600);
         
         // 配置舞台
-        stage.setTitle("Jimi Work - AI 编程助手");
+        stage.setTitle("Jimi Work - AI 编程助手 (" + llm.getProvider() + "/" + llm.getModel() + ")");
         stage.setScene(scene);
         stage.setMinWidth(600);
         stage.setMinHeight(400);
@@ -195,7 +235,8 @@ public class MainWindow {
         title.setFont(Font.font(18));
         title.setStyle("-fx-font-weight: bold;");
         
-        Label agentLabel = new Label(" - " + agent.getName());
+        Label agentLabel = new Label(" - " + agent.getName() 
+                + " [" + llm.getProvider() + "/" + llm.getModel() + "]");
         agentLabel.setStyle("-fx-text-fill: gray;");
         
         Region spacer = new Region();
@@ -406,7 +447,20 @@ public class MainWindow {
     private void clearChat() {
         chatArea.getChildren().clear();
         this.context = new DefaultContext();
-        initEngine();
+        // 重新初始化引擎（保留工具和 LLM）
+        Runtime runtime = Runtime.builder()
+                .workDir(workDir)
+                .llm(llm)
+                .yoloMode(config.isYoloMode())
+                .maxContextTokens(config.getMaxContextTokens())
+                .build();
+        this.engine = DefaultEngine.builder()
+                .agent(agent)
+                .runtime(runtime)
+                .context(context)
+                .toolRegistry(toolRegistry)
+                .wire(wire)
+                .build();
         currentAssistantFlow = null;
     }
     

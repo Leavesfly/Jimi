@@ -35,6 +35,12 @@
             <artifactId>adk-tools</artifactId>
         </dependency>
 
+        <!-- SnakeYAML for config parsing -->
+        <dependency>
+            <groupId>org.yaml</groupId>
+            <artifactId>snakeyaml</artifactId>
+        </dependency>
+
         <!-- JavaFX -->
         <dependency>
             <groupId>org.openjfx</groupId>

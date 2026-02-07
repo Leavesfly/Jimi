@@ -32,23 +32,16 @@
         <toolWindow id="Jimi Assistant"
                     secondary="true"
                     anchor="right"
-                    icon="/icons/jimi.svg"
                     factoryClass="io.leavesfly.jimi.intellij.ui.JimiToolWindowFactory"/>
         
         <!-- 项目服务 -->
         <projectService serviceImplementation="io.leavesfly.jimi.intellij.service.JimiProjectService"/>
-        
-        <!-- 应用服务 -->
-        <applicationService serviceImplementation="io.leavesfly.jimi.intellij.service.JimiApplicationService"/>
         
         <!-- 设置配置 -->
         <applicationConfigurable parentId="tools"
                                  instance="io.leavesfly.jimi.intellij.settings.JimiSettingsConfigurable"
                                  id="io.leavesfly.jimi.intellij.settings"
                                  displayName="Jimi AI Assistant"/>
-        
-        <!-- 状态持久化 -->
-        <applicationService serviceImplementation="io.leavesfly.jimi.intellij.settings.JimiSettings"/>
     </extensions>
 
     <actions>
@@ -59,8 +52,7 @@
             <action id="Jimi.OpenChat"
                     class="io.leavesfly.jimi.intellij.action.OpenChatAction"
                     text="打开对话"
-                    description="打开 Jimi AI 对话窗口"
-                    icon="/icons/chat.svg">
+                    description="打开 Jimi AI 对话窗口">
                 <keyboard-shortcut keymap="$default" first-keystroke="alt shift J"/>
             </action>
             

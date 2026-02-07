@@ -1,7 +1,13 @@
 package io.leavesfly.jimi.work;
 
+import io.leavesfly.jimi.adk.api.llm.LLM;
+import io.leavesfly.jimi.adk.api.llm.LLMConfig;
+import io.leavesfly.jimi.adk.llm.LLMFactory;
+import io.leavesfly.jimi.work.config.WorkConfig;
 import io.leavesfly.jimi.work.ui.MainWindow;
 import javafx.application.Application;
+import javafx.application.Platform;
+import javafx.scene.control.Alert;
 import javafx.stage.Stage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,13 +35,32 @@ public class WorkApplication extends Application {
         log.info("启动 Jimi Work 桌面应用");
         
         try {
-            // 创建主窗口
-            MainWindow mainWindow = new MainWindow(primaryStage, getWorkDir());
+            Path dir = getWorkDir();
+            
+            // 1. 加载配置
+            WorkConfig config = WorkConfig.load(dir);
+            
+            // 2. 创建 LLM
+            LLMConfig llmConfig = config.toLLMConfig();
+            if (llmConfig.getApiKey() == null || llmConfig.getApiKey().isEmpty()) {
+                showError("未配置 API Key",
+                        "请通过以下方式之一配置：\n"
+                        + "1. 设置环境变量: export OPENAI_API_KEY=sk-xxx\n"
+                        + "2. 编辑配置文件: ~/.jimi/config.yaml");
+                return;
+            }
+            
+            LLMFactory llmFactory = new LLMFactory();
+            LLM llm = llmFactory.create(llmConfig);
+            log.info("LLM 已初始化: provider={}, model={}", llmConfig.getProvider(), llmConfig.getModel());
+            
+            // 3. 创建主窗口
+            MainWindow mainWindow = new MainWindow(primaryStage, dir, llm, config);
             mainWindow.show();
             
         } catch (Exception e) {
             log.error("启动失败", e);
-            throw new RuntimeException("启动失败: " + e.getMessage(), e);
+            showError("启动失败", e.getMessage());
         }
     }
     
@@ -45,9 +70,19 @@ public class WorkApplication extends Application {
     }
     
     /**
+     * 显示错误对话框
+     */
+    private void showError(String title, String message) {
+        Alert alert = new Alert(Alert.AlertType.ERROR);
+        alert.setTitle("Jimi Work");
+        alert.setHeaderText(title);
+        alert.setContentText(message);
+        alert.showAndWait();
+        Platform.exit();
+    }
+    
+    /**
      * 获取工作目录
-     *
-     * @return 工作目录路径
      */
     private Path getWorkDir() {
         if (workDir != null) {
@@ -58,18 +93,13 @@ public class WorkApplication extends Application {
     
     /**
      * 主入口
-     *
-     * @param args 命令行参数
      */
     public static void main(String[] args) {
-        // 解析命令行参数
         for (int i = 0; i < args.length; i++) {
             if (("-d".equals(args[i]) || "--dir".equals(args[i])) && i + 1 < args.length) {
                 workDir = Paths.get(args[++i]);
             }
         }
-        
-        // 启动 JavaFX 应用
         launch(args);
     }
 }

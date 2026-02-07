@@ -1,14 +1,17 @@
 package io.leavesfly.jimi.cli;
 
+import io.leavesfly.jimi.cli.config.CliConfig;
 import io.leavesfly.jimi.cli.shell.ShellUI;
 import io.leavesfly.jimi.cli.agent.AgentLoader;
 import io.leavesfly.jimi.adk.api.agent.Agent;
+import io.leavesfly.jimi.adk.api.llm.LLM;
+import io.leavesfly.jimi.adk.api.llm.LLMConfig;
+import io.leavesfly.jimi.adk.llm.LLMFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -35,6 +38,12 @@ public class CliApplication {
     /** Agent 加载器 */
     private final AgentLoader agentLoader;
     
+    /** CLI 配置 */
+    private final CliConfig cliConfig;
+    
+    /** LLM 工厂 */
+    private final LLMFactory llmFactory;
+    
     /** 交互式 Shell */
     private ShellUI shellUI;
     
@@ -45,7 +54,9 @@ public class CliApplication {
      */
     public CliApplication(Path workDir) {
         this.workDir = workDir;
-        this.agentLoader = new AgentLoader(workDir.resolve(DEFAULT_AGENTS_DIR));
+        this.cliConfig = CliConfig.load(workDir);
+        this.llmFactory = new LLMFactory();
+        this.agentLoader = new AgentLoader(workDir.resolve(DEFAULT_AGENTS_DIR), workDir);
     }
     
     /**
@@ -57,11 +68,24 @@ public class CliApplication {
         log.info("启动 Jimi CLI，工作目录: {}", workDir);
         
         try {
-            // 加载所有可用的 Agent
+            // 1. 创建 LLM 实例
+            LLMConfig llmConfig = cliConfig.toLLMConfig();
+            if (llmConfig.getApiKey() == null || llmConfig.getApiKey().isEmpty()) {
+                System.err.println("错误: 未配置 API Key。");
+                System.err.println("请通过以下方式之一配置：");
+                System.err.println("  1. 设置环境变量: export OPENAI_API_KEY=sk-xxx");
+                System.err.println("  2. 编辑配置文件: ~/.jimi/config.yaml");
+                return;
+            }
+            
+            LLM llm = llmFactory.create(llmConfig);
+            log.info("LLM 已初始化: provider={}, model={}", llmConfig.getProvider(), llmConfig.getModel());
+            
+            // 2. 加载所有可用的 Agent
             List<Agent> agents = agentLoader.loadAll();
             log.info("已加载 {} 个 Agent", agents.size());
             
-            // 选择要运行的 Agent
+            // 3. 选择要运行的 Agent
             Agent selectedAgent = selectAgent(agents, agentName);
             if (selectedAgent == null) {
                 log.error("未找到可用的 Agent");
@@ -71,8 +95,8 @@ public class CliApplication {
             
             log.info("启动 Agent: {}", selectedAgent.getName());
             
-            // 初始化并启动 Shell
-            shellUI = new ShellUI(selectedAgent, workDir);
+            // 4. 初始化并启动 Shell
+            shellUI = new ShellUI(selectedAgent, workDir, llm, cliConfig);
             shellUI.run();
             
         } catch (Exception e) {

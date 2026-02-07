@@ -21,6 +21,13 @@ dependencies {
     // Reactor
     implementation("io.projectreactor:reactor-core:3.6.0")
     
+    // HTTP Client (adk-llm 运行时依赖)
+    implementation("org.springframework:spring-webflux:6.1.2")
+    implementation("io.projectreactor.netty:reactor-netty-http:1.1.14")
+    
+    // Cache (LLMFactory 依赖)
+    implementation("com.github.ben-manes.caffeine:caffeine:3.1.8")
+    
     // Jackson
     implementation("com.fasterxml.jackson.core:jackson-databind:2.16.0")
     implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.16.0")
