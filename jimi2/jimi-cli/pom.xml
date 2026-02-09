@@ -17,60 +17,23 @@
     <description>Command line interface for Jimi AI Agent</description>
 
     <dependencies>
-        <!-- Internal ADK -->
+        <!-- ADK All-in-One -->
         <dependency>
             <groupId>io.leavesfly.jimi</groupId>
-            <artifactId>adk-api</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.leavesfly.jimi</groupId>
-            <artifactId>adk-core</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.leavesfly.jimi</groupId>
-            <artifactId>adk-llm</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.leavesfly.jimi</groupId>
-            <artifactId>adk-tools</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.leavesfly.jimi</groupId>
-            <artifactId>adk-llm</artifactId>
+            <artifactId>adk-bom</artifactId>
+            <type>pom</type>
         </dependency>
 
-        <!-- SnakeYAML for config parsing -->
+        <!-- Lombok (provided scope, not transitive from BOM) -->
         <dependency>
-            <groupId>org.yaml</groupId>
-            <artifactId>snakeyaml</artifactId>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
         </dependency>
 
         <!-- JLine for CLI -->
         <dependency>
             <groupId>org.jline</groupId>
             <artifactId>jline</artifactId>
-        </dependency>
-
-        <!-- Jackson YAML for Agent spec parsing -->
-        <dependency>
-            <groupId>com.fasterxml.jackson.dataformat</groupId>
-            <artifactId>jackson-dataformat-yaml</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.fasterxml.jackson.core</groupId>
-            <artifactId>jackson-databind</artifactId>
-        </dependency>
-
-        <!-- Lombok -->
-        <dependency>
-            <groupId>org.projectlombok</groupId>
-            <artifactId>lombok</artifactId>
-        </dependency>
-
-        <!-- Logging -->
-        <dependency>
-            <groupId>ch.qos.logback</groupId>
-            <artifactId>logback-classic</artifactId>
         </dependency>
 
         <!-- Test -->
@@ -97,6 +60,8 @@
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                                     <mainClass>io.leavesfly.jimi.cli.CliApplication</mainClass>
                                 </transformer>
+                                <!-- 合并 META-INF/services 文件（SPI） -->
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
                             </transformers>
                             <finalName>${project.artifactId}-${project.version}-exec</finalName>
                         </configuration>

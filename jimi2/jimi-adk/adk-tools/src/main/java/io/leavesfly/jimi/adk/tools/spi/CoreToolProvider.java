@@ -4,6 +4,7 @@ import io.leavesfly.jimi.adk.api.agent.AgentSpec;
 import io.leavesfly.jimi.adk.api.engine.Runtime;
 import io.leavesfly.jimi.adk.api.tool.Tool;
 import io.leavesfly.jimi.adk.api.tool.ToolProvider;
+import io.leavesfly.jimi.adk.tools.file.GlobTool;
 import io.leavesfly.jimi.adk.tools.file.ListDirTool;
 import io.leavesfly.jimi.adk.tools.file.ReadFileTool;
 import io.leavesfly.jimi.adk.tools.file.WriteFileTool;
@@ -36,6 +37,7 @@ public class CoreToolProvider implements ToolProvider {
         tools.add(new ReadFileTool(workDir));
         tools.add(new WriteFileTool(workDir));
         tools.add(new ListDirTool(workDir));
+        tools.add(new GlobTool(workDir));
         
         // Shell 执行工具
         tools.add(new BashTool(workDir));

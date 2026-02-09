@@ -8,11 +8,16 @@ import io.leavesfly.jimi.adk.api.engine.Runtime;
 import io.leavesfly.jimi.adk.api.message.Message;
 import io.leavesfly.jimi.adk.api.tool.ToolRegistry;
 import io.leavesfly.jimi.adk.api.wire.Wire;
+import io.leavesfly.jimi.adk.core.engine.compaction.Compaction;
+import io.leavesfly.jimi.adk.core.wire.messages.CompactionBegin;
+import io.leavesfly.jimi.adk.core.wire.messages.CompactionEnd;
+import io.leavesfly.jimi.adk.core.wire.messages.StatusUpdate;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Mono;
 
+import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -22,6 +27,16 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @Slf4j
 @Getter
 public class DefaultEngine implements Engine {
+    
+    /**
+     * 预留 Token 数（用于系统提示和新消息）
+     */
+    private static final int RESERVED_TOKENS = 8000;
+    
+    /**
+     * 最小消息数阈值（少于此数不触发压缩）
+     */
+    private static final int MIN_MESSAGES_FOR_COMPACTION = 10;
     
     /**
      * Agent 实例
@@ -49,6 +64,11 @@ public class DefaultEngine implements Engine {
     private final Wire wire;
     
     /**
+     * 上下文压缩器（可选）
+     */
+    private final Compaction compaction;
+    
+    /**
      * Agent 执行器
      */
     private final AgentExecutor executor;
@@ -65,12 +85,13 @@ public class DefaultEngine implements Engine {
     
     @Builder
     public DefaultEngine(Agent agent, Runtime runtime, Context context,
-                        ToolRegistry toolRegistry, Wire wire) {
+                        ToolRegistry toolRegistry, Wire wire, Compaction compaction) {
         this.agent = agent;
         this.runtime = runtime;
         this.context = context;
         this.toolRegistry = toolRegistry;
         this.wire = wire;
+        this.compaction = compaction;
         this.running = new AtomicBoolean(false);
         this.interrupted = new AtomicBoolean(false);
         
@@ -100,7 +121,13 @@ public class DefaultEngine implements Engine {
             
             log.info("开始执行: {}", truncate(input, 100));
             
-            return executor.execute()
+            // 上下文压缩检查
+            Mono<Void> compactionStep = Mono.empty();
+            if (shouldCompact()) {
+                compactionStep = performCompaction();
+            }
+            
+            return compactionStep.then(executor.execute())
                     .doOnSuccess(result -> {
                         log.info("执行完成: steps={}, tokens={}", 
                                 result.getStepsExecuted(), result.getTokensUsed());
@@ -126,6 +153,57 @@ public class DefaultEngine implements Engine {
             executor.interrupt();
             log.info("引擎执行被中断");
         }
+    }
+    
+    /**
+     * 检查是否需要进行上下文压缩
+     */
+    private boolean shouldCompact() {
+        if (compaction == null) {
+            return false;
+        }
+        
+        int messageCount = context.getHistory().size();
+        if (messageCount < MIN_MESSAGES_FOR_COMPACTION) {
+            return false;
+        }
+        
+        // 基于 Token 数量检查
+        int currentTokens = context.getTokenCount();
+        int maxContextTokens = runtime.getMaxContextTokens();
+        
+        if (currentTokens > 0 && maxContextTokens > 0) {
+            // Token 数接近上限时触发压缩
+            return currentTokens > maxContextTokens - RESERVED_TOKENS;
+        }
+        
+        // 回退到基于消息数的检查（Token 计数不可用时）
+        return messageCount > 20;
+    }
+    
+    /**
+     * 执行上下文压缩
+     */
+    private Mono<Void> performCompaction() {
+        int beforeCount = context.getHistory().size();
+        
+        // 发送压缩开始事件
+        wire.send(new CompactionBegin());
+        wire.send(StatusUpdate.info("正在压缩上下文 (" + beforeCount + " 条消息)..."));
+        
+        return compaction.compact(context.getHistory(), runtime.getLlm())
+                .doOnNext(compactedMessages -> {
+                    int afterCount = compactedMessages.size();
+                    log.info("上下文压缩完成: {} -> {} 条消息", beforeCount, afterCount);
+                    context.replaceHistory(compactedMessages);
+                    wire.send(new CompactionEnd(beforeCount, afterCount, true));
+                })
+                .doOnError(e -> {
+                    log.warn("上下文压缩失败，使用原始历史", e);
+                    wire.send(new CompactionEnd(beforeCount, beforeCount, false));
+                })
+                .onErrorResume(e -> Mono.just(context.getHistory()))
+                .then();
     }
     
     /**

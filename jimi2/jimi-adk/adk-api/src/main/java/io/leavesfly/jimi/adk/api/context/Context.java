@@ -66,6 +66,13 @@ public interface Context {
     void clear();
     
     /**
+     * 替换整个对话历史（用于上下文压缩）
+     *
+     * @param messages 新的消息列表
+     */
+    void replaceHistory(List<Message> messages);
+    
+    /**
      * 获取最后一条消息
      *
      * @return 最后一条消息，如果没有则返回 null

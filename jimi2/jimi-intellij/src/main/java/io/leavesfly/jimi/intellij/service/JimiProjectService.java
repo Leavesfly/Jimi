@@ -8,6 +8,7 @@ import io.leavesfly.jimi.adk.api.context.Context;
 import io.leavesfly.jimi.adk.api.engine.Engine;
 import io.leavesfly.jimi.adk.api.engine.ExecutionResult;
 import io.leavesfly.jimi.adk.api.engine.Runtime;
+import io.leavesfly.jimi.adk.api.engine.RuntimeConfig;
 import io.leavesfly.jimi.adk.api.llm.LLM;
 import io.leavesfly.jimi.adk.api.tool.Tool;
 import io.leavesfly.jimi.adk.api.tool.ToolProvider;
@@ -91,7 +92,8 @@ public final class JimiProjectService {
                 .version("2.0.0")
                 .build();
 
-        Runtime toolRuntime = Runtime.builder().workDir(getProjectPath()).build();
+        RuntimeConfig toolConfig = RuntimeConfig.builder().workDir(getProjectPath()).build();
+        Runtime toolRuntime = Runtime.builder().config(toolConfig).build();
         List<String> toolNames = new ArrayList<>();
 
         for (ToolProvider provider : ServiceLoader.load(ToolProvider.class)) {
@@ -147,9 +149,10 @@ public final class JimiProjectService {
             log.warn("LLM 未初始化（API Key 未配置），引擎将无法正常工作");
         }
 
+        RuntimeConfig runtimeConfig = RuntimeConfig.builder().workDir(workDir).build();
         Runtime runtime = Runtime.builder()
-                .workDir(workDir)
                 .llm(llm)
+                .config(runtimeConfig)
                 .build();
         
         this.engine = DefaultEngine.builder()

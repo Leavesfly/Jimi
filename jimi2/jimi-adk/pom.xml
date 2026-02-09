@@ -21,5 +21,10 @@
         <module>adk-core</module>
         <module>adk-llm</module>
         <module>adk-tools</module>
+        <module>adk-tools-extended</module>
+        <module>adk-mcp</module>
+        <module>adk-knowledge</module>
+        <module>adk-config</module>
+        <module>adk-bom</module>
     </modules>
 </project>

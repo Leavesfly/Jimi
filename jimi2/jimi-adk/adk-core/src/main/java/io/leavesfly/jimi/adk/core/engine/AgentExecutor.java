@@ -13,7 +13,12 @@ import io.leavesfly.jimi.adk.api.tool.Tool;
 import io.leavesfly.jimi.adk.api.tool.ToolRegistry;
 import io.leavesfly.jimi.adk.api.tool.ToolResult;
 import io.leavesfly.jimi.adk.api.wire.Wire;
+import io.leavesfly.jimi.adk.core.engine.toolcall.ArgumentsNormalizer;
+import io.leavesfly.jimi.adk.core.engine.toolcall.ToolCallValidator;
+import io.leavesfly.jimi.adk.core.engine.toolcall.ToolErrorTracker;
 import io.leavesfly.jimi.adk.core.wire.messages.*;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -22,7 +27,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 /**
@@ -49,19 +53,25 @@ public class AgentExecutor {
     private final Wire wire;
     
     /**
-     * 当前步数
+     * 工具调用验证器
      */
-    private final AtomicInteger currentStep;
+    private final ToolCallValidator toolCallValidator;
     
     /**
-     * 连续思考步数
+     * 工具错误追踪器
      */
-    private final AtomicInteger thinkingSteps;
+    private final ToolErrorTracker toolErrorTracker;
     
     /**
-     * 总 Token 使用量
+     * ObjectMapper 用于参数标准化
      */
-    private final AtomicInteger totalTokens;
+    private final ObjectMapper objectMapper;
+    
+    /**
+     * 执行状态管理器
+     */
+    @Getter
+    private final ExecutionState executionState;
     
     /**
      * 是否被中断
@@ -75,9 +85,10 @@ public class AgentExecutor {
         this.context = context;
         this.toolRegistry = toolRegistry;
         this.wire = wire;
-        this.currentStep = new AtomicInteger(0);
-        this.thinkingSteps = new AtomicInteger(0);
-        this.totalTokens = new AtomicInteger(0);
+        this.objectMapper = new ObjectMapper();
+        this.toolCallValidator = new ToolCallValidator(objectMapper);
+        this.toolErrorTracker = new ToolErrorTracker();
+        this.executionState = new ExecutionState();
         this.interrupted = new AtomicBoolean(false);
     }
     
@@ -85,10 +96,9 @@ public class AgentExecutor {
      * 执行 Agent 主循环
      */
     public Mono<ExecutionResult> execute() {
-        currentStep.set(0);
-        thinkingSteps.set(0);
-        totalTokens.set(0);
+        executionState.initializeTask(null);
         interrupted.set(false);
+        toolErrorTracker.clearErrors();
         
         // 创建初始检查点
         context.createCheckpoint(0);
@@ -105,23 +115,31 @@ public class AgentExecutor {
      */
     private Mono<ExecutionResult> executeLoop() {
         return Mono.defer(() -> {
-            int step = currentStep.incrementAndGet();
+            int step = executionState.incrementStep();
             
             // 检查中断
             if (interrupted.get()) {
+                wire.send(new StepInterrupted());
                 return Mono.just(ExecutionResult.interrupted());
             }
             
             // 检查步数限制
             if (step > DEFAULT_MAX_STEPS) {
+                wire.send(StatusUpdate.warning("超出最大步数限制: " + DEFAULT_MAX_STEPS));
                 return Mono.just(ExecutionResult.error("超出最大步数限制"));
             }
             
             // 检查连续思考步数
-            if (thinkingSteps.get() >= MAX_THINKING_STEPS) {
+            if (executionState.getConsecutiveNoToolCallSteps() >= MAX_THINKING_STEPS) {
                 return Mono.just(ExecutionResult.success(
                         "Agent 连续思考 " + MAX_THINKING_STEPS + " 步未调用工具，强制结束",
-                        step - 1, totalTokens.get()));
+                        step - 1, executionState.getTokensInTask()));
+            }
+            
+            // 检查工具错误追踪器是否要求终止
+            if (toolErrorTracker.shouldTerminateLoop()) {
+                return Mono.just(ExecutionResult.error(
+                        "检测到连续重复的工具调用错误，终止执行"));
             }
             
             // 发送步骤开始消息
@@ -218,7 +236,13 @@ public class AgentExecutor {
     private Mono<ExecutionResult> handleResponse(int step, StreamAccumulator acc) {
         // 更新 Token 计数
         if (acc.usage != null) {
-            totalTokens.addAndGet(acc.usage.getTotalTokens());
+            int total = acc.usage.getTotalTokens();
+            int input = acc.usage.getPromptTokens();
+            int output = acc.usage.getCompletionTokens();
+            executionState.addTokens(total, input, output);
+            
+            // 发送 Token 使用量消息
+            wire.send(new TokenUsageMessage(input, output, total, executionState.getTokensInTask()));
         }
         
         String content = acc.contentBuilder.toString();
@@ -237,20 +261,19 @@ public class AgentExecutor {
         
         if (hasToolCalls) {
             // 重置思考步数
-            thinkingSteps.set(0);
+            executionState.resetNoToolCallCounter();
             // 执行工具
             return executeTools(acc.toolCalls)
                     .then(executeLoop());
         } else {
             // 增加思考步数
-            thinkingSteps.incrementAndGet();
-            // 无工具调用，检查是否应该继续
-            if (thinkingSteps.get() < MAX_THINKING_STEPS) {
+            boolean shouldStop = executionState.shouldForceComplete(MAX_THINKING_STEPS);
+            if (!shouldStop) {
                 // 可以继续执行
                 return executeLoop();
             }
             // 完成执行
-            return Mono.just(ExecutionResult.success(content, step, totalTokens.get()));
+            return Mono.just(ExecutionResult.success(content, step, executionState.getTokensInTask()));
         }
     }
     
@@ -258,16 +281,36 @@ public class AgentExecutor {
      * 执行工具调用
      */
     private Mono<Void> executeTools(List<ToolCall> toolCalls) {
-        return Flux.fromIterable(toolCalls)
+        // 使用验证器过滤有效的工具调用
+        List<ToolCall> validToolCalls = toolCallValidator.filterValid(toolCalls);
+        
+        if (validToolCalls.isEmpty()) {
+            log.warn("所有工具调用均无效，跳过执行");
+            return Mono.empty();
+        }
+        
+        return Flux.fromIterable(validToolCalls)
                 .flatMap(tc -> {
                     String toolName = tc.getFunction().getName();
                     String arguments = tc.getFunction().getArguments();
                     
+                    // 使用 ArgumentsNormalizer 标准化参数
+                    String normalizedArgs = ArgumentsNormalizer.normalizeToValidJson(arguments, objectMapper);
+                    
                     // 发送工具调用消息
                     wire.send(new ToolCallMessage(tc));
                     
-                    return toolRegistry.execute(toolName, arguments)
+                    return toolRegistry.execute(toolName, normalizedArgs)
                             .doOnNext(result -> {
+                                // 记录工具使用
+                                executionState.recordToolUsed(toolName);
+                                
+                                // 追踪错误
+                                if (!result.isOk()) {
+                                    String toolSignature = toolName + ":" + normalizedArgs.hashCode();
+                                    toolErrorTracker.trackError(toolSignature);
+                                }
+                                
                                 // 发送工具结果消息
                                 wire.send(new ToolResultMessage(tc.getId(), toolName, result));
                                 

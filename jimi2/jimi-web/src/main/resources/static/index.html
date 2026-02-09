@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jimi Web - AI Agent</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <!-- Marked.js for Markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- Highlight.js for code highlighting -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github-dark.min.css">
+    <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+</head>
+<body>
+    <div id="app">
+        <!-- 侧边栏 -->
+        <aside id="sidebar">
+            <div class="sidebar-header">
+                <h1 class="logo">
+                    <span class="logo-icon">J</span>
+                    <span>Jimi Web</span>
+                </h1>
+                <button id="btn-new-session" class="btn btn-primary" title="新建会话">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                        <path d="M8 1a1 1 0 011 1v5h5a1 1 0 110 2H9v5a1 1 0 11-2 0V9H2a1 1 0 010-2h5V2a1 1 0 011-1z"/>
+                    </svg>
+                    新建会话
+                </button>
+            </div>
+            <div id="session-list" class="session-list">
+                <div class="empty-state">暂无会话，点击上方按钮创建</div>
+            </div>
+            <div class="sidebar-footer">
+                <div class="agent-selector">
+                    <label>Agent:</label>
+                    <select id="agent-select">
+                        <option value="default">default</option>
+                    </select>
+                </div>
+            </div>
+        </aside>
+
+        <!-- 主内容区 -->
+        <main id="main-content">
+            <!-- 欢迎页 -->
+            <div id="welcome-page" class="welcome">
+                <div class="welcome-inner">
+                    <div class="welcome-icon">J</div>
+                    <h2>欢迎使用 Jimi Web</h2>
+                    <p>一个强大的 AI Agent 交互平台</p>
+                    <div class="welcome-features">
+                        <div class="feature">
+                            <div class="feature-icon">💬</div>
+                            <div class="feature-text">流式对话</div>
+                        </div>
+                        <div class="feature">
+                            <div class="feature-icon">🛠️</div>
+                            <div class="feature-text">工具调用</div>
+                        </div>
+                        <div class="feature">
+                            <div class="feature-icon">📁</div>
+                            <div class="feature-text">文件操作</div>
+                        </div>
+                        <div class="feature">
+                            <div class="feature-icon">🔄</div>
+                            <div class="feature-text">多会话</div>
+                        </div>
+                    </div>
+                    <button id="btn-welcome-new" class="btn btn-primary btn-lg">开始新对话</button>
+                </div>
+            </div>
+
+            <!-- 聊天页 -->
+            <div id="chat-page" class="chat-page hidden">
+                <div class="chat-header">
+                    <div class="chat-header-info">
+                        <h3 id="chat-title">对话</h3>
+                        <span id="chat-status" class="status-badge">就绪</span>
+                    </div>
+                    <div class="chat-header-actions">
+                        <button id="btn-cancel" class="btn btn-danger hidden" title="取消执行">
+                            取消
+                        </button>
+                    </div>
+                </div>
+
+                <div id="chat-messages" class="chat-messages">
+                    <!-- 消息会动态插入 -->
+                </div>
+
+                <div class="chat-input-area">
+                    <div class="input-wrapper">
+                        <textarea id="chat-input" placeholder="输入消息... (Enter 发送, Shift+Enter 换行)"
+                                  rows="1" autofocus></textarea>
+                        <button id="btn-send" class="btn btn-send" title="发送">
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                                <path d="M2.5 2.5L18 10L2.5 17.5V11.25L13 10L2.5 8.75V2.5Z"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- 新建会话弹窗 -->
+    <div id="modal-overlay" class="modal-overlay hidden">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>新建会话</h3>
+                <button class="modal-close" id="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="input-workdir">工作目录</label>
+                    <input type="text" id="input-workdir" placeholder="留空则使用当前目录">
+                </div>
+                <div class="form-group">
+                    <label for="input-agent">Agent</label>
+                    <select id="input-agent">
+                        <option value="default">default</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn" id="modal-cancel-btn">取消</button>
+                <button class="btn btn-primary" id="modal-create-btn">创建</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/app.js"></script>
+</body>
+</html>

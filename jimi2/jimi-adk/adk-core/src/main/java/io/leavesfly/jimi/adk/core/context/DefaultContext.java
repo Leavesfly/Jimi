@@ -104,4 +104,13 @@ public class DefaultContext implements Context {
         tokenCount = 0;
         log.debug("上下文已清空");
     }
+    
+    @Override
+    public void replaceHistory(List<Message> messages) {
+        history.clear();
+        if (messages != null) {
+            history.addAll(messages);
+        }
+        log.debug("替换对话历史: {} 条消息", history.size());
+    }
 }

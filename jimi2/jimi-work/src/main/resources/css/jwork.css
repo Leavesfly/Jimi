@@ -1,0 +1,146 @@
+/* ============================
+   JWork - OpenWork Style CSS
+   ============================ */
+
+/* --- Main Layout --- */
+.main-view {
+    -fx-background-color: -color-bg-default;
+}
+
+/* --- Toolbar --- */
+.toolbar {
+    -fx-background-color: -color-bg-subtle;
+    -fx-border-color: -color-border-default;
+    -fx-border-width: 0 0 1 0;
+}
+
+/* --- Sidebar --- */
+.sidebar {
+    -fx-background-color: -color-bg-subtle;
+    -fx-border-color: -color-border-default;
+    -fx-border-width: 0 1 0 0;
+}
+
+.nav-button {
+    -fx-background-color: transparent;
+    -fx-padding: 8 12;
+    -fx-cursor: hand;
+    -fx-font-size: 13px;
+}
+
+.nav-button:hover {
+    -fx-background-color: -color-bg-overlay;
+    -fx-background-radius: 6;
+}
+
+/* --- Status Bar --- */
+.status-bar {
+    -fx-background-color: -color-bg-subtle;
+    -fx-border-color: -color-border-default;
+    -fx-border-width: 1 0 0 0;
+}
+
+/* --- Chat Pane --- */
+.chat-pane {
+    -fx-background-color: -color-bg-default;
+}
+
+.chat-scroll {
+    -fx-background-color: transparent;
+}
+
+.chat-area {
+    -fx-background-color: -color-bg-default;
+}
+
+.chat-input {
+    -fx-font-size: 14px;
+}
+
+.chat-input-box {
+    -fx-background-color: -color-bg-subtle;
+    -fx-border-color: -color-border-default;
+    -fx-border-width: 1 0 0 0;
+}
+
+.send-button {
+    -fx-background-color: #5c6bc0;
+    -fx-text-fill: white;
+    -fx-background-radius: 6;
+    -fx-cursor: hand;
+}
+
+.send-button:hover {
+    -fx-background-color: #3f51b5;
+}
+
+.cancel-button {
+    -fx-background-color: #ef5350;
+    -fx-text-fill: white;
+    -fx-background-radius: 6;
+    -fx-cursor: hand;
+}
+
+/* --- Message Styles --- */
+.user-message {
+    -fx-background-color: #e3f2fd;
+    -fx-background-radius: 8;
+}
+
+.assistant-message {
+    -fx-background-color: #f5f5f5;
+    -fx-background-radius: 8;
+}
+
+.role-label {
+    -fx-font-size: 12px;
+}
+
+.assistant-text {
+    -fx-font-size: 14px;
+}
+
+.user-text {
+    -fx-font-size: 14px;
+}
+
+.reasoning-text {
+    -fx-fill: #888;
+    -fx-font-style: italic;
+    -fx-font-size: 13px;
+}
+
+.tool-call-label {
+    -fx-font-size: 12px;
+    -fx-padding: 4 8;
+}
+
+.tool-result-label {
+    -fx-font-size: 12px;
+    -fx-padding: 4 8;
+}
+
+/* --- Timeline Pane --- */
+.timeline-pane {
+    -fx-background-color: -color-bg-default;
+}
+
+.timeline-header {
+    -fx-border-color: -color-border-default;
+    -fx-border-width: 0 0 1 0;
+}
+
+.timeline-item {
+    -fx-background-radius: 6;
+    -fx-cursor: default;
+}
+
+/* --- Skill Manager --- */
+.skill-manager-pane {
+    -fx-background-color: -color-bg-default;
+}
+
+/* --- Welcome Pane --- */
+.welcome-pane {
+    -fx-padding: 40;
+}

@@ -7,6 +7,7 @@ import io.leavesfly.jimi.adk.api.agent.AgentSpec;
 import io.leavesfly.jimi.adk.api.tool.Tool;
 import io.leavesfly.jimi.adk.api.tool.ToolProvider;
 import io.leavesfly.jimi.adk.api.engine.Runtime;
+import io.leavesfly.jimi.adk.api.engine.RuntimeConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -144,9 +145,8 @@ public class AgentLoader {
         ensureToolProvidersLoaded();
         
         // 创建运行时环境（用于工具创建）
-        Runtime runtime = Runtime.builder()
-                .workDir(workDir)
-                .build();
+        RuntimeConfig runtimeConfig = RuntimeConfig.builder().workDir(workDir).build();
+        Runtime runtime = Runtime.builder().config(runtimeConfig).build();
         
         List<Tool> allTools = new ArrayList<>();
         

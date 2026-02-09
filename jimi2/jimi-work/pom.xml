@@ -17,28 +17,17 @@
     <description>JavaFX desktop application for Jimi AI Agent</description>
 
     <dependencies>
-        <!-- Internal ADK -->
+        <!-- ADK All-in-One -->
         <dependency>
             <groupId>io.leavesfly.jimi</groupId>
-            <artifactId>adk-api</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.leavesfly.jimi</groupId>
-            <artifactId>adk-core</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.leavesfly.jimi</groupId>
-            <artifactId>adk-llm</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.leavesfly.jimi</groupId>
-            <artifactId>adk-tools</artifactId>
+            <artifactId>adk-bom</artifactId>
+            <type>pom</type>
         </dependency>
 
-        <!-- SnakeYAML for config parsing -->
+        <!-- Lombok (provided scope, not transitive from BOM) -->
         <dependency>
-            <groupId>org.yaml</groupId>
-            <artifactId>snakeyaml</artifactId>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
         </dependency>
 
         <!-- JavaFX -->
@@ -53,32 +42,6 @@
         <dependency>
             <groupId>io.github.mkpaz</groupId>
             <artifactId>atlantafx-base</artifactId>
-        </dependency>
-
-        <!-- Lombok -->
-        <dependency>
-            <groupId>org.projectlombok</groupId>
-            <artifactId>lombok</artifactId>
-        </dependency>
-
-        <!-- Logging -->
-        <dependency>
-            <groupId>ch.qos.logback</groupId>
-            <artifactId>logback-classic</artifactId>
-        </dependency>
-        
-        <!-- Spring WebFlux for LLM HTTP client -->
-        <dependency>
-            <groupId>org.springframework</groupId>
-            <artifactId>spring-context</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework</groupId>
-            <artifactId>spring-webflux</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.projectreactor.netty</groupId>
-            <artifactId>reactor-netty-http</artifactId>
         </dependency>
 
         <!-- Test -->

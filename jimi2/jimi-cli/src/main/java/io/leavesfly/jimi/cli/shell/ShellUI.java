@@ -1,6 +1,7 @@
 package io.leavesfly.jimi.cli.shell;
 
 import io.leavesfly.jimi.adk.api.agent.Agent;
+import io.leavesfly.jimi.adk.api.agent.AgentSpec;
 import io.leavesfly.jimi.adk.api.context.Context;
 import io.leavesfly.jimi.adk.api.engine.Engine;
 import io.leavesfly.jimi.adk.api.engine.ExecutionResult;
@@ -9,16 +10,31 @@ import io.leavesfly.jimi.adk.api.message.ContentPart;
 import io.leavesfly.jimi.adk.api.message.Message;
 import io.leavesfly.jimi.adk.api.message.Role;
 import io.leavesfly.jimi.adk.api.message.TextPart;
+import io.leavesfly.jimi.adk.api.tool.Tool;
+import io.leavesfly.jimi.adk.api.tool.ToolProvider;
 import io.leavesfly.jimi.adk.api.tool.ToolRegistry;
 import io.leavesfly.jimi.adk.api.wire.Wire;
 import io.leavesfly.jimi.adk.api.wire.WireMessage;
 import io.leavesfly.jimi.adk.core.context.DefaultContext;
 import io.leavesfly.jimi.adk.core.engine.DefaultEngine;
 import io.leavesfly.jimi.adk.api.engine.Runtime;
+import io.leavesfly.jimi.adk.api.engine.RuntimeConfig;
 import io.leavesfly.jimi.adk.core.tool.DefaultToolRegistry;
 import io.leavesfly.jimi.adk.core.wire.DefaultWire;
 import io.leavesfly.jimi.adk.core.wire.messages.*;
+import io.leavesfly.jimi.adk.api.command.Command;
+import io.leavesfly.jimi.adk.api.command.CommandContext;
+import io.leavesfly.jimi.cli.command.CommandRegistry;
+import io.leavesfly.jimi.cli.command.commands.*;
+import io.leavesfly.jimi.cli.command.SimpleCommandOutput;
 import io.leavesfly.jimi.cli.config.CliConfig;
+import io.leavesfly.jimi.cli.notification.NotificationService;
+import io.leavesfly.jimi.cli.notification.NotificationType;
+import io.leavesfly.jimi.cli.shell.input.AgentCommandProcessor;
+import io.leavesfly.jimi.cli.shell.input.InputProcessor;
+import io.leavesfly.jimi.cli.shell.input.MetaCommandProcessor;
+import io.leavesfly.jimi.cli.shell.input.ShellShortcutProcessor;
+import io.leavesfly.jimi.cli.shell.output.OutputFormatter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jline.reader.LineReader;
 import org.jline.reader.LineReaderBuilder;
@@ -33,6 +49,9 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -75,6 +94,12 @@ public class ShellUI {
     /** 工具注册表 */
     private ToolRegistry toolRegistry;
     
+    /** 命令注册表 */
+    private CommandRegistry commandRegistry;
+    
+    /** Runtime 上下文 */
+    private Runtime runtime;
+    
     /** JLine 终端 */
     private Terminal terminal;
     
@@ -92,6 +117,15 @@ public class ShellUI {
     
     /** 命令前缀 */
     private static final String COMMAND_PREFIX = "/";
+    
+    /** 输出格式化器 */
+    private OutputFormatter outputFormatter;
+    
+    /** 通知服务 */
+    private NotificationService notificationService;
+    
+    /** 输入处理器链 */
+    private List<InputProcessor> inputProcessors;
     
     /**
      * 构造函数
@@ -146,11 +180,18 @@ public class ShellUI {
     private void initTerminal() throws IOException {
         terminal = TerminalBuilder.builder()
                 .system(true)
-                .dumb(false)
+                .jansi(true)  // 启用 JANSI 跨平台支持
                 .build();
+        
+        // 初始化输出格式化器和通知服务
+        outputFormatter = new OutputFormatter(terminal);
+        notificationService = new NotificationService();
         
         lineReader = LineReaderBuilder.builder()
                 .terminal(terminal)
+                .completer(new JimiCompleter(commandRegistry != null ? commandRegistry : new CommandRegistry(), workDir))
+                .highlighter(new JimiHighlighter())
+                .parser(new JimiParser())
                 .variable(LineReader.HISTORY_FILE, workDir.resolve(".jimi/history").toString())
                 .build();
     }
@@ -159,17 +200,40 @@ public class ShellUI {
      * 初始化引擎
      */
     private void initEngine() {
-        // 注册 Agent 的工具
+        // 通过 SPI 加载工具
+        AgentSpec agentSpec = AgentSpec.builder()
+                .name(agent.getName())
+                .build();
+        
+        java.util.List<Tool<?>> allTools = new java.util.ArrayList<>();
+        for (ToolProvider provider : java.util.ServiceLoader.load(ToolProvider.class)) {
+            RuntimeConfig tempConfig = RuntimeConfig.builder().workDir(workDir).build();
+            Runtime tempRuntime = Runtime.builder().config(tempConfig).build();
+            if (provider.supports(agentSpec, tempRuntime)) {
+                allTools.addAll(provider.createTools(agentSpec, tempRuntime));
+            }
+        }
+        
+        // 注册工具
+        allTools.forEach(toolRegistry::register);
+        
+        // 注册 Agent 自带的工具
         if (agent.getTools() != null) {
             agent.getTools().forEach(toolRegistry::register);
         }
         
-        // 创建运行时（注入 LLM）
-        Runtime runtime = Runtime.builder()
+        log.info("已加载 {} 个工具", allTools.size());
+        
+        // 创建 Runtime（使用新风格 API）
+        RuntimeConfig runtimeConfig = RuntimeConfig.builder()
                 .workDir(workDir)
-                .llm(llm)
                 .yoloMode(cliConfig.isYoloMode())
                 .maxContextTokens(cliConfig.getMaxContextTokens())
+                .build();
+        
+        runtime = Runtime.builder()
+                .llm(llm)
+                .config(runtimeConfig)
                 .build();
         
         // 创建引擎
@@ -180,6 +244,62 @@ public class ShellUI {
                 .toolRegistry(toolRegistry)
                 .wire(wire)
                 .build();
+        
+        // 初始化命令注册表
+        initCommands(allTools);
+    }
+    
+    /**
+     * 初始化命令系统
+     */
+    private void initCommands(java.util.List<Tool<?>> tools) {
+        commandRegistry = new CommandRegistry();
+        
+        java.util.Map<String, String> config = new java.util.HashMap<>();
+        config.put("provider", llm.getProvider());
+        config.put("model", llm.getModel());
+        config.put("work_dir", workDir.toString());
+        
+        // 注册所有内置命令
+        commandRegistry.register(new HelpCommand(commandRegistry));
+        commandRegistry.register(new VersionCommand("2.0.0"));
+        commandRegistry.register(new ToolsCommand(tools));
+        commandRegistry.register(new ClearCommand());
+        commandRegistry.register(new StatusCommand(engine, tools));
+        commandRegistry.register(new ResetCommand(engine));
+        commandRegistry.register(new ConfigCommand(config));
+        commandRegistry.register(new HistoryCommand(engine));
+        commandRegistry.register(new InitCommand(engine));
+        commandRegistry.register(new ThemeCommand());
+        commandRegistry.register(new CompactCommand(engine));
+        
+        log.info("已注册 {} 个命令", commandRegistry.size());
+        
+        // 初始化输入处理器链（按优先级排序）
+        initInputProcessors();
+        
+        // 用完整的 CommandRegistry 重建 LineReader 的补全器
+        if (terminal != null) {
+            lineReader = LineReaderBuilder.builder()
+                    .terminal(terminal)
+                    .completer(new JimiCompleter(commandRegistry, workDir))
+                    .highlighter(new JimiHighlighter())
+                    .parser(new JimiParser())
+                    .variable(LineReader.HISTORY_FILE, workDir.resolve(".jimi/history").toString())
+                    .build();
+        }
+    }
+    
+    /**
+     * 初始化输入处理器链
+     */
+    private void initInputProcessors() {
+        inputProcessors = new ArrayList<>();
+        inputProcessors.add(new MetaCommandProcessor(commandRegistry));
+        inputProcessors.add(new ShellShortcutProcessor());
+        inputProcessors.add(new AgentCommandProcessor());
+        // 按优先级排序（数值越小优先级越高）
+        inputProcessors.sort(Comparator.comparingInt(InputProcessor::getPriority));
     }
     
     /**
@@ -264,12 +384,10 @@ public class ShellUI {
                     continue;
                 }
                 
-                // 处理命令
-                if (input.startsWith(COMMAND_PREFIX)) {
-                    handleCommand(input);
-                } else {
-                    // 处理普通对话
-                    handleChat(input);
+                // 通过输入处理器链处理
+                boolean shouldContinue = processInput(input);
+                if (!shouldContinue) {
+                    running.set(false);
                 }
                 
             } catch (UserInterruptException e) {
@@ -286,6 +404,43 @@ public class ShellUI {
                 running.set(false);
             }
         }
+    }
+    
+    /**
+     * 通过输入处理器链处理输入
+     */
+    private boolean processInput(String input) {
+        // 构建 ShellContext
+        ShellContext shellContext = ShellContext.builder()
+                .engine(engine)
+                .runtime(runtime)
+                .toolRegistry(toolRegistry)
+                .commandRegistry(commandRegistry)
+                .terminal(terminal)
+                .lineReader(lineReader)
+                .rawInput(input)
+                .outputFormatter(outputFormatter)
+                .build();
+        
+        // 遍历输入处理器链，找到第一个能处理的
+        for (InputProcessor processor : inputProcessors) {
+            if (processor.canProcess(input)) {
+                try {
+                    executing.set(true);
+                    return processor.process(input, shellContext);
+                } catch (Exception e) {
+                    log.error("输入处理异常", e);
+                    printColored("处理异常: " + e.getMessage(), AttributedStyle.RED);
+                    return true;
+                } finally {
+                    executing.set(false);
+                }
+            }
+        }
+        
+        // 没有处理器能处理，回退到默认对话处理
+        handleChat(input);
+        return true;
     }
     
     /**
@@ -317,47 +472,38 @@ public class ShellUI {
      */
     private void handleCommand(String input) {
         String[] parts = input.substring(1).split("\\s+", 2);
-        String command = parts[0].toLowerCase();
-        String args = parts.length > 1 ? parts[1] : "";
+        String commandName = parts[0].toLowerCase();
+        String[] args = parts.length > 1 ? parts[1].split("\\s+") : new String[0];
         
-        switch (command) {
-            case "exit":
-            case "quit":
-            case "q":
-                running.set(false);
-                println("再见！");
-                break;
-                
-            case "help":
-            case "h":
-                printHelp();
-                break;
-                
-            case "clear":
-            case "cls":
-                clearScreen();
-                break;
-                
-            case "reset":
-                resetContext();
-                println("上下文已重置");
-                break;
-                
-            case "history":
-                showHistory();
-                break;
-                
-            case "agent":
-                showAgentInfo();
-                break;
-                
-            case "tools":
-                showTools();
-                break;
-                
-            default:
-                printColored("未知命令: " + command + "，输入 /help 查看帮助", AttributedStyle.RED);
-                break;
+        // 特殊命令：exit/quit
+        if ("exit".equals(commandName) || "quit".equals(commandName) || "q".equals(commandName)) {
+            running.set(false);
+            println("再见！");
+            return;
+        }
+        
+        // 查找命令
+        Command command = commandRegistry.find(commandName);
+        if (command == null) {
+            printColored("未知命令: " + commandName + "，输入 /help 查看帮助", AttributedStyle.RED);
+            return;
+        }
+        
+        // 创建命令上下文
+        CommandContext commandContext = CommandContext.builder()
+                .runtime(runtime)
+                .commandName(commandName)
+                .args(args)
+                .rawInput(input)
+                .output(new SimpleCommandOutput())
+                .build();
+        
+        // 执行命令
+        try {
+            command.execute(commandContext);
+        } catch (Exception e) {
+            log.error("命令执行失败: {}", commandName, e);
+            printColored("命令执行失败: " + e.getMessage(), AttributedStyle.RED);
         }
     }
     
@@ -376,6 +522,9 @@ public class ShellUI {
             // 处理结果
             if (result != null && !result.isSuccess()) {
                 printColored("\n执行失败: " + result.getError(), AttributedStyle.RED);
+                notificationService.notify("执行失败", result.getError(), NotificationType.ERROR);
+            } else {
+                notificationService.notify("执行完成", input, NotificationType.SUCCESS);
             }
             
             println("");
@@ -383,38 +532,10 @@ public class ShellUI {
         } catch (Exception e) {
             log.error("执行异常", e);
             printColored("\n错误: " + e.getMessage(), AttributedStyle.RED);
+            notificationService.notify("执行异常", e.getMessage(), NotificationType.ERROR);
         } finally {
             executing.set(false);
         }
-    }
-    
-    /**
-     * 显示帮助信息
-     */
-    private void printHelp() {
-        println("");
-        printStyled("可用命令:", AttributedStyle.BOLD);
-        println("  /help, /h       显示此帮助信息");
-        println("  /exit, /quit    退出程序");
-        println("  /clear, /cls    清屏");
-        println("  /reset          重置对话上下文");
-        println("  /history        显示对话历史");
-        println("  /agent          显示当前 Agent 信息");
-        println("  /tools          显示可用工具");
-        println("");
-        printStyled("提示:", AttributedStyle.BOLD);
-        println("  - 直接输入文本开始对话");
-        println("  - Ctrl+C 中断当前操作");
-        println("  - Ctrl+D 退出程序");
-        println("");
-    }
-    
-    /**
-     * 清屏
-     */
-    private void clearScreen() {
-        terminal.puts(org.jline.utils.InfoCmp.Capability.clear_screen);
-        terminal.flush();
     }
     
     /**
@@ -424,52 +545,6 @@ public class ShellUI {
         this.context = new DefaultContext();
         // 重新初始化引擎
         initEngine();
-    }
-    
-    /**
-     * 显示历史
-     */
-    private void showHistory() {
-        println("");
-        printStyled("对话历史:", AttributedStyle.BOLD);
-        int i = 1;
-        for (Message msg : context.getHistory()) {
-            String roleStr = msg.getRole() == Role.USER ? "用户" : "助手";
-            String content = msg.getContent();
-            if (content != null && content.length() > 50) {
-                content = content.substring(0, 50) + "...";
-            }
-            println(String.format("  %d. [%s] %s", i++, roleStr, content != null ? content : "(无内容)"));
-        }
-        println("");
-    }
-    
-    /**
-     * 显示 Agent 信息
-     */
-    private void showAgentInfo() {
-        println("");
-        printStyled("Agent 信息:", AttributedStyle.BOLD);
-        println("  名称: " + agent.getName());
-        println("  描述: " + (agent.getDescription() != null ? agent.getDescription() : "无"));
-        println("  版本: " + (agent.getVersion() != null ? agent.getVersion() : "1.0.0"));
-        println("");
-    }
-    
-    /**
-     * 显示可用工具
-     */
-    private void showTools() {
-        println("");
-        printStyled("可用工具:", AttributedStyle.BOLD);
-        if (agent.getTools() != null && !agent.getTools().isEmpty()) {
-            for (var tool : agent.getTools()) {
-                println("  - " + tool.getName() + ": " + tool.getDescription());
-            }
-        } else {
-            println("  无注册工具");
-        }
-        println("");
     }
     
     /**

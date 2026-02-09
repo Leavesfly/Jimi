@@ -29,6 +29,12 @@
             <artifactId>jackson-dataformat-yaml</artifactId>
         </dependency>
 
+        <!-- Jackson Java Time Module -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.datatype</groupId>
+            <artifactId>jackson-datatype-jsr310</artifactId>
+        </dependency>
+
         <!-- Commons Text for template rendering -->
         <dependency>
             <groupId>org.apache.commons</groupId>

@@ -1,0 +1,13 @@
+# Jimi Web 默认配置
+
+llm:
+  provider: openai
+  model: gpt-4o
+  # apiKey: sk-xxx  (推荐使用环境变量 OPENAI_API_KEY)
+  temperature: 0.7
+  maxTokens: 4096
+  connectTimeout: 30
+  readTimeout: 120
+
+yoloMode: false
+maxContextTokens: 100000

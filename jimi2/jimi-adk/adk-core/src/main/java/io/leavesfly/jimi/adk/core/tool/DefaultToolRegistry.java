@@ -1,5 +1,7 @@
 package io.leavesfly.jimi.adk.core.tool;
 
+import io.leavesfly.jimi.adk.api.interaction.Approval;
+import io.leavesfly.jimi.adk.api.interaction.ApprovalResponse;
 import io.leavesfly.jimi.adk.api.tool.Tool;
 import io.leavesfly.jimi.adk.api.tool.ToolRegistry;
 import io.leavesfly.jimi.adk.api.tool.ToolResult;
@@ -34,10 +36,27 @@ public class DefaultToolRegistry implements ToolRegistry {
      */
     private final ToolSchemaGenerator schemaGenerator;
     
+    /**
+     * 审批服务（可选）
+     */
+    private Approval approval;
+    
     public DefaultToolRegistry(ObjectMapper objectMapper) {
         this.tools = new ConcurrentHashMap<>();
         this.objectMapper = objectMapper;
         this.schemaGenerator = new ToolSchemaGenerator(objectMapper);
+    }
+    
+    public DefaultToolRegistry(ObjectMapper objectMapper, Approval approval) {
+        this(objectMapper);
+        this.approval = approval;
+    }
+    
+    /**
+     * 设置审批服务
+     */
+    public void setApproval(Approval approval) {
+        this.approval = approval;
     }
     
     @Override
@@ -93,6 +112,18 @@ public class DefaultToolRegistry implements ToolRegistry {
                     tool.getParamsType()
                 );
                 
+                // 检查是否需要审批
+                if (tool.requiresApproval() && approval != null && !approval.isYolo()) {
+                    String approvalDesc = getApprovalDescriptionUnchecked(tool, params);
+                    ApprovalResponse response = approval.requestApproval(
+                            toolName, toolName, approvalDesc);
+                    
+                    if (response == ApprovalResponse.REJECT) {
+                        log.info("工具调用被用户拒绝: {}", toolName);
+                        return Mono.just(ToolResult.error("操作被用户拒绝: " + toolName));
+                    }
+                }
+                
                 return executeToolUnchecked(tool, params);
                 
             } catch (JsonProcessingException e) {
@@ -103,6 +134,13 @@ public class DefaultToolRegistry implements ToolRegistry {
                 return Mono.just(ToolResult.error("执行失败: " + e.getMessage()));
             }
         });
+    }
+    
+    @SuppressWarnings("unchecked")
+    private <P> String getApprovalDescriptionUnchecked(Tool<?> tool, Object params) {
+        Tool<P> typedTool = (Tool<P>) tool;
+        P typedParams = (P) params;
+        return typedTool.getApprovalDescription(typedParams);
     }
     
     @SuppressWarnings("unchecked")

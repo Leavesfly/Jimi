@@ -17,6 +17,7 @@ dependencies {
     implementation("io.leavesfly.jimi:adk-core:0.1.0-SNAPSHOT")
     implementation("io.leavesfly.jimi:adk-llm:0.1.0-SNAPSHOT")
     implementation("io.leavesfly.jimi:adk-tools:0.1.0-SNAPSHOT")
+    implementation("io.leavesfly.jimi:adk-tools-extended:0.1.0-SNAPSHOT")
     
     // Reactor
     implementation("io.projectreactor:reactor-core:3.6.0")
