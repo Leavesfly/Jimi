@@ -99,7 +99,7 @@ public class AsyncSubagentManager {
                     .startTime(Instant.now())
                     .callback(callback)
                     .timeout(timeout)
-                    .workDir(runtime.getWorkDir())
+                    .workDir(runtime.getConfig().getWorkDir())
                     .build();
 
             activeSubagents.put(subagentId, asyncSubagent);
@@ -156,7 +156,7 @@ public class AsyncSubagentManager {
                     .startTime(Instant.now())
                     .timeout(timeout)
                     .triggerPattern(triggerPattern)
-                    .workDir(runtime.getWorkDir())
+                    .workDir(runtime.getConfig().getWorkDir())
                     .build();
 
             activeSubagents.put(subagentId, asyncSubagent);

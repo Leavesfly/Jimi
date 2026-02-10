@@ -1,9 +1,9 @@
 package io.leavesfly.jimi.adk.knowledge.rag;
 
 import io.leavesfly.jimi.adk.api.engine.Runtime;
-import io.leavesfly.jimi.adk.api.knowledge.query.RetrievalQuery;
-import io.leavesfly.jimi.adk.api.knowledge.result.RetrievalResult;
-import io.leavesfly.jimi.adk.api.knowledge.spi.RagService;
+import io.leavesfly.jimi.adk.knowledge.api.query.RetrievalQuery;
+import io.leavesfly.jimi.adk.knowledge.api.result.RetrievalResult;
+import io.leavesfly.jimi.adk.knowledge.api.spi.RagService;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -45,7 +45,7 @@ public class RagServiceImpl implements RagService {
     @Override
     public Mono<Boolean> initialize(Runtime runtime) {
         return Mono.fromRunnable(() -> {
-            this.workDir = runtime.getWorkDir();
+            this.workDir = runtime.getConfig().getWorkDir();
             log.info("RagService 初始化完成, workDir={}", workDir);
         }).thenReturn(true);
     }

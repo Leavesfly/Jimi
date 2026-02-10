@@ -85,7 +85,7 @@ public class SetTodoListTool extends AbstractTool<SetTodoListTool.Params> {
                     return Mono.just(ToolResult.error("Todo list is required"));
                 }
 
-                Path todoDir = runtime.getWorkDir().resolve(TODO_DIR);
+                Path todoDir = runtime.getConfig().getWorkDir().resolve(TODO_DIR);
                 Path todoFile = todoDir.resolve(TODO_FILE);
 
                 // 确保目录存在

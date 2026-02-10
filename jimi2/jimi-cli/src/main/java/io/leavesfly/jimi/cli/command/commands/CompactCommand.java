@@ -1,6 +1,6 @@
 package io.leavesfly.jimi.cli.command.commands;
 
-import io.leavesfly.jimi.adk.api.engine.Engine;
+import io.leavesfly.jimi.adk.api.context.Context;
 import io.leavesfly.jimi.adk.api.command.Command;
 import io.leavesfly.jimi.adk.api.command.CommandContext;
 
@@ -14,10 +14,10 @@ import io.leavesfly.jimi.adk.api.command.CommandContext;
  */
 public class CompactCommand implements Command {
 
-    private final Engine engine;
+    private final Context adkContext;
 
-    public CompactCommand(Engine engine) {
-        this.engine = engine;
+    public CompactCommand(Context adkContext) {
+        this.adkContext = adkContext;
     }
 
     @Override
@@ -42,16 +42,16 @@ public class CompactCommand implements Command {
         output.title("Compact Context");
         output.separator();
 
-        if (engine == null || engine.getContext() == null) {
-            output.warn("Engine or context not available");
+        if (adkContext == null) {
+            output.warn("Context not available");
             output.println("");
             output.info("Context compaction requires an active conversation session");
             return;
         }
 
         try {
-            int beforeSize = engine.getContext().getHistory().size();
-            int beforeTokens = engine.getContext().getTokenCount();
+            int beforeSize = adkContext.getHistory().size();
+            int beforeTokens = adkContext.getTokenCount();
 
             output.info("Current context:");
             output.println("  Messages: " + beforeSize);

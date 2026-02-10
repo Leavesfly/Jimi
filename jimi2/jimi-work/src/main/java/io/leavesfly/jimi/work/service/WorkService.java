@@ -5,25 +5,15 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import io.leavesfly.jimi.adk.api.agent.Agent;
-import io.leavesfly.jimi.adk.api.agent.AgentSpec;
-import io.leavesfly.jimi.adk.api.context.Context;
 import io.leavesfly.jimi.adk.api.engine.Engine;
 import io.leavesfly.jimi.adk.api.engine.ExecutionResult;
-import io.leavesfly.jimi.adk.api.engine.Runtime;
-import io.leavesfly.jimi.adk.api.engine.RuntimeConfig;
 import io.leavesfly.jimi.adk.api.llm.LLM;
 import io.leavesfly.jimi.adk.api.llm.LLMConfig;
 import io.leavesfly.jimi.adk.api.message.ContentPart;
 import io.leavesfly.jimi.adk.api.message.TextPart;
-import io.leavesfly.jimi.adk.api.tool.Tool;
-import io.leavesfly.jimi.adk.api.tool.ToolProvider;
-import io.leavesfly.jimi.adk.api.tool.ToolRegistry;
 import io.leavesfly.jimi.adk.api.wire.Wire;
 import io.leavesfly.jimi.adk.api.wire.WireMessage;
-import io.leavesfly.jimi.adk.core.context.DefaultContext;
-import io.leavesfly.jimi.adk.core.engine.DefaultEngine;
-import io.leavesfly.jimi.adk.core.tool.DefaultToolRegistry;
-import io.leavesfly.jimi.adk.core.wire.DefaultWire;
+import io.leavesfly.jimi.adk.core.JimiRuntime;
 import io.leavesfly.jimi.adk.core.wire.messages.*;
 import io.leavesfly.jimi.adk.llm.LLMFactory;
 import io.leavesfly.jimi.work.config.WorkConfig;
@@ -111,9 +101,9 @@ public class WorkService {
         log.info("创建会话: workDir={}, agent={}", workDir, agentName);
 
         // 创建引擎
-        Engine engine = buildEngine(workDir, agentName);
+        EngineBundle bundle = buildEngine(workDir, agentName);
 
-        WorkSession session = new WorkSession(engine, workDir, agentName);
+        WorkSession session = new WorkSession(bundle.engine(), bundle.wire(), workDir, agentName);
         sessions.put(session.getId(), session);
 
         // 持久化
@@ -211,10 +201,10 @@ public class WorkService {
         log.info("恢复会话: id={}, workDir={}", metadata.getId(), metadata.getWorkDir());
 
         Path workDir = Paths.get(metadata.getWorkDir());
-        Engine engine = buildEngine(workDir, metadata.getAgentName());
+        EngineBundle bundle = buildEngine(workDir, metadata.getAgentName());
 
         WorkSession session = new WorkSession(
-                metadata.getId(), engine, workDir,
+                metadata.getId(), bundle.engine(), bundle.wire(), workDir,
                 metadata.getAgentName(), metadata.getCreatedAt());
         sessions.put(session.getId(), session);
         persistAllSessions();
@@ -248,7 +238,7 @@ public class WorkService {
             reactor.core.Disposable subscription = null;
             try {
                 // 订阅 Wire 消息流
-                subscription = engine.getWire().asFlux()
+                subscription = session.getWire().asFlux()
                         .doOnSubscribe(s -> subscriptionReady.countDown())
                         .subscribe(msg -> {
                             StreamChunk chunk = convertWireToChunk(msg);
@@ -352,69 +342,25 @@ public class WorkService {
     /**
      * 构建引擎
      */
-    @SuppressWarnings("unchecked")
-    private Engine buildEngine(Path workDir, String agentName) {
-        Wire wire = new DefaultWire();
-        Context context = new DefaultContext();
-        ObjectMapper engineMapper = new ObjectMapper();
-        ToolRegistry toolRegistry = new DefaultToolRegistry(engineMapper);
-
-        // 加载 Agent 和工具
-        AgentSpec agentSpec = AgentSpec.builder()
-                .name(agentName != null ? agentName : "default")
-                .description("Jimi Work Agent")
-                .version("2.0.0")
-                .build();
-
-        RuntimeConfig toolConfig = RuntimeConfig.builder().workDir(workDir).build();
-        Runtime toolRuntime = Runtime.builder().config(toolConfig).build();
-        List<Tool> tools = new ArrayList<>();
-        for (ToolProvider provider : ServiceLoader.load(ToolProvider.class)) {
-            if (provider.supports(agentSpec, toolRuntime)) {
-                for (Tool<?> t : provider.createTools(agentSpec, toolRuntime)) {
-                    tools.add((Tool) t);
-                }
-            }
-        }
-        for (Tool tool : tools) {
-            toolRegistry.register(tool);
-        }
-
-        // 构建工具描述
-        StringBuilder toolDesc = new StringBuilder();
-        for (Tool tool : tools) {
-            toolDesc.append("- ").append(tool.getName()).append(": ").append(tool.getDescription()).append("\n");
-        }
-
+    private EngineBundle buildEngine(Path workDir, String agentName) {
+        // 构建 Agent
         Agent agent = Agent.builder()
                 .name(agentName != null ? agentName : "default")
                 .description("Jimi Work Agent")
                 .version("2.0.0")
-                .systemPrompt("你是 Jimi，一个强大的 AI 编程助手。\n"
-                        + "你有以下工具可用：\n" + toolDesc
-                        + "请始终使用清晰、专业的语言，并在执行危险操作前确认。")
-                .tools(tools)
+                .systemPrompt("你是 Jimi，一个强大的 AI 编程助手。\n请始终使用清晰、专业的语言，并在执行危险操作前确认。")
                 .maxSteps(100)
                 .build();
 
-        RuntimeConfig runtimeConfig = RuntimeConfig.builder()
+        // 使用 JimiRuntime 统一构建
+        JimiRuntime runtime = JimiRuntime.builder()
+                .agent(agent)
+                .llm(llm)
                 .workDir(workDir)
-                .yoloMode(config.isYoloMode())
                 .maxContextTokens(config.getMaxContextTokens())
                 .build();
-        
-        Runtime runtime = Runtime.builder()
-                .llm(llm)
-                .config(runtimeConfig)
-                .build();
 
-        return DefaultEngine.builder()
-                .agent(agent)
-                .runtime(runtime)
-                .context(context)
-                .toolRegistry(toolRegistry)
-                .wire(wire)
-                .build();
+        return new EngineBundle(runtime.getEngine(), runtime.getWire());
     }
 
     /**
@@ -448,4 +394,7 @@ public class WorkService {
      * 待处理审批
      */
     private record PendingApproval(String toolCallId, String jobId) {}
+
+    /** Engine + Wire 组合 */
+    private record EngineBundle(Engine engine, Wire wire) {}
 }

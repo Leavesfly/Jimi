@@ -7,11 +7,11 @@ import java.util.List;
 /**
  * Context 管理器接口
  * 
- * 职责：
- * - 管理消息历史
- * - 管理 Token 计数
- * - 提供上下文持久化能力
+ * @deprecated 使用 {@link Context} 作为基础上下文接口，
+ *             使用 {@link PersistableContext} 获取持久化恢复能力。
+ *             此接口与 Context 职责重叠，将在后续版本中移除。
  */
+@Deprecated
 public interface ContextManager {
     
     /**

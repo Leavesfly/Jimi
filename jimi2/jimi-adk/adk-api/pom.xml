@@ -23,10 +23,10 @@
             <artifactId>reactor-core</artifactId>
         </dependency>
 
-        <!-- Jackson Annotations -->
+        <!-- Jackson Annotations (API层只需注解，不需要完整databind) -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
-            <artifactId>jackson-databind</artifactId>
+            <artifactId>jackson-annotations</artifactId>
         </dependency>
 
         <!-- Lombok -->

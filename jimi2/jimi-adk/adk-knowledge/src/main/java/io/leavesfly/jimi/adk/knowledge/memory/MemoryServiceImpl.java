@@ -1,9 +1,9 @@
 package io.leavesfly.jimi.adk.knowledge.memory;
 
 import io.leavesfly.jimi.adk.api.engine.Runtime;
-import io.leavesfly.jimi.adk.api.knowledge.query.MemoryQuery;
-import io.leavesfly.jimi.adk.api.knowledge.result.MemoryResult;
-import io.leavesfly.jimi.adk.api.knowledge.spi.MemoryService;
+import io.leavesfly.jimi.adk.knowledge.api.query.MemoryQuery;
+import io.leavesfly.jimi.adk.knowledge.api.result.MemoryResult;
+import io.leavesfly.jimi.adk.knowledge.api.spi.MemoryService;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Mono;
 
@@ -32,7 +32,7 @@ public class MemoryServiceImpl implements MemoryService {
     public Mono<Boolean> initialize(Runtime runtime) {
         return Mono.fromRunnable(() -> {
             memoryManager.initialize(runtime);
-            log.info("MemoryService 初始化完成, workDir={}", runtime.getWorkDir());
+            log.info("MemoryService 初始化完成, workDir={}", runtime.getConfig().getWorkDir());
         }).thenReturn(true);
     }
     

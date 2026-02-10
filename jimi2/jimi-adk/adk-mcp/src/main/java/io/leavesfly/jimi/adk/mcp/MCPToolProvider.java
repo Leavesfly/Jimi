@@ -28,7 +28,7 @@ public class MCPToolProvider implements ToolProvider {
     @Override
     public boolean supports(AgentSpec agentSpec, Runtime runtime) {
         // 检查工作目录下是否有 mcp.json 配置文件
-        Path configPath = runtime.getWorkDir().resolve(MCP_CONFIG_FILE);
+        Path configPath = runtime.getConfig().getWorkDir().resolve(MCP_CONFIG_FILE);
         return Files.exists(configPath);
     }
 
@@ -36,7 +36,7 @@ public class MCPToolProvider implements ToolProvider {
     public List<Tool<?>> createTools(AgentSpec agentSpec, Runtime runtime) {
         List<Tool<?>> tools = new ArrayList<>();
 
-        Path configPath = runtime.getWorkDir().resolve(MCP_CONFIG_FILE);
+        Path configPath = runtime.getConfig().getWorkDir().resolve(MCP_CONFIG_FILE);
         if (!Files.exists(configPath)) {
             return tools;
         }

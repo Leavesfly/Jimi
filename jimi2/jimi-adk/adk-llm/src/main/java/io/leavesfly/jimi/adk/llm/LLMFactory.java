@@ -3,16 +3,30 @@ package io.leavesfly.jimi.adk.llm;
 import io.leavesfly.jimi.adk.api.llm.ChatProvider;
 import io.leavesfly.jimi.adk.api.llm.LLM;
 import io.leavesfly.jimi.adk.api.llm.LLMConfig;
-import io.leavesfly.jimi.adk.llm.provider.OpenAICompatibleProvider;
+import io.leavesfly.jimi.adk.api.llm.LLMProvider;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.ServiceLoader;
 import java.util.concurrent.TimeUnit;
 
 /**
  * LLM 工厂
- * 负责创建和缓存 LLM 实例
+ * <p>
+ * 负责创建和缓存 LLM 实例。通过 Java SPI 机制（{@link LLMProvider}）
+ * 自动发现并使用合适的 LLM 提供商，无需硬编码 switch-case。
+ * </p>
+ * <p>
+ * 扩展新的 LLM 提供商只需：
+ * <ol>
+ *   <li>实现 {@link LLMProvider} 接口</li>
+ *   <li>在 META-INF/services/io.leavesfly.jimi.adk.api.llm.LLMProvider 中注册</li>
+ * </ol>
+ * </p>
  */
 @Slf4j
 public class LLMFactory {
@@ -21,6 +35,11 @@ public class LLMFactory {
      * LLM 实例缓存
      */
     private final Cache<String, LLM> llmCache;
+
+    /**
+     * 通过 SPI 加载的 LLM 提供商列表（按优先级降序排列）
+     */
+    private final List<LLMProvider> providers;
     
     public LLMFactory() {
         this.llmCache = Caffeine.newBuilder()
@@ -28,10 +47,29 @@ public class LLMFactory {
                 .expireAfterAccess(30, TimeUnit.MINUTES)
                 .recordStats()
                 .build();
+        this.providers = loadProviders();
+    }
+
+    /**
+     * 通过 SPI 加载所有 LLMProvider 实现，按优先级降序排列
+     */
+    private static List<LLMProvider> loadProviders() {
+        List<LLMProvider> loaded = new ArrayList<>();
+        for (LLMProvider provider : ServiceLoader.load(LLMProvider.class)) {
+            loaded.add(provider);
+            log.debug("已加载 LLMProvider: {}", provider.getClass().getName());
+        }
+        loaded.sort(Comparator.comparingInt(LLMProvider::getPriority).reversed());
+        log.info("已加载 {} 个 LLMProvider", loaded.size());
+        return loaded;
     }
     
     /**
      * 创建 LLM 实例
+     * <p>
+     * 注意：传入的 LLMConfig 应已包含解析后的 API Key（由 JimiConfig.toLLMConfig() 负责解析），
+     * 本方法不再重复解析环境变量。如需直接使用未解析的配置，请先通过 JimiConfig 处理。
+     * </p>
      */
     public LLM create(LLMConfig config) {
         String cacheKey = buildCacheKey(config);
@@ -39,74 +77,35 @@ public class LLMFactory {
         return llmCache.get(cacheKey, key -> {
             log.info("创建 LLM: provider={}, model={}", config.getProvider(), config.getModel());
             
-            // 解析 API Key（支持环境变量）
-            String apiKey = resolveApiKey(config);
-            
-            // 创建配置副本并设置解析后的 API Key
-            LLMConfig resolvedConfig = LLMConfig.builder()
-                    .provider(config.getProvider())
-                    .model(config.getModel())
-                    .apiKey(apiKey)
-                    .baseUrl(config.getBaseUrl())
-                    .temperature(config.getTemperature())
-                    .maxTokens(config.getMaxTokens())
-                    .connectTimeout(config.getConnectTimeout())
-                    .readTimeout(config.getReadTimeout())
-                    .build();
-            
-            ChatProvider chatProvider = createChatProvider(resolvedConfig);
-            return new DefaultLLM(resolvedConfig, chatProvider);
+            ChatProvider chatProvider = createChatProvider(config);
+            return new DefaultLLM(config, chatProvider);
         });
     }
     
     /**
      * 创建聊天提供者
+     * <p>
+     * 通过 SPI 查找支持当前 provider 的 LLMProvider，优先级高的优先匹配。
+     * 如果没有任何 SPI 提供商匹配，则抛出异常。
+     * </p>
      */
     private ChatProvider createChatProvider(LLMConfig config) {
-        String provider = config.getProvider().toLowerCase();
-        
-        // 目前所有提供商都使用 OpenAI 兼容接口
-        // 后续可以根据 provider 创建不同的实现
-        switch (provider) {
-            case "kimi":
-            case "moonshot":
-                return new OpenAICompatibleProvider(config, 
-                        config.getBaseUrl() != null ? config.getBaseUrl() : "https://api.moonshot.cn/v1");
-            case "deepseek":
-                return new OpenAICompatibleProvider(config,
-                        config.getBaseUrl() != null ? config.getBaseUrl() : "https://api.deepseek.com/v1");
-            case "qwen":
-            case "dashscope":
-                return new OpenAICompatibleProvider(config,
-                        config.getBaseUrl() != null ? config.getBaseUrl() : "https://dashscope.aliyuncs.com/compatible-mode/v1");
-            case "ollama":
-                return new OpenAICompatibleProvider(config,
-                        config.getBaseUrl() != null ? config.getBaseUrl() : "http://localhost:11434/v1");
-            case "openai":
-            default:
-                return new OpenAICompatibleProvider(config,
-                        config.getBaseUrl() != null ? config.getBaseUrl() : "https://api.openai.com/v1");
+        String providerName = config.getProvider();
+
+        for (LLMProvider provider : providers) {
+            if (provider.supports(providerName)) {
+                String baseUrl = config.getBaseUrl() != null
+                        ? config.getBaseUrl()
+                        : provider.getDefaultBaseUrl(providerName);
+                log.debug("使用 LLMProvider: {} (priority={})",
+                        provider.getClass().getSimpleName(), provider.getPriority());
+                return provider.createChatProvider(config, baseUrl);
+            }
         }
-    }
-    
-    /**
-     * 解析 API Key
-     * 优先从环境变量读取
-     */
-    private String resolveApiKey(LLMConfig config) {
-        String provider = config.getProvider().toUpperCase();
-        
-        // 尝试从环境变量获取
-        String envKey = provider + "_API_KEY";
-        String apiKey = System.getenv(envKey);
-        
-        if (apiKey != null && !apiKey.isEmpty()) {
-            log.debug("使用环境变量 {} 中的 API Key", envKey);
-            return apiKey;
-        }
-        
-        // 回退到配置文件中的值
-        return config.getApiKey();
+
+        throw new IllegalArgumentException(
+                "不支持的 LLM 提供商: " + providerName
+                        + "。请通过 SPI 注册对应的 LLMProvider 实现。");
     }
     
     /**

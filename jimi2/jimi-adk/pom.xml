@@ -24,6 +24,8 @@
         <module>adk-tools-extended</module>
         <module>adk-mcp</module>
         <module>adk-knowledge</module>
+        <module>adk-hook</module>
+        <module>adk-skill</module>
         <module>adk-config</module>
         <module>adk-bom</module>
     </modules>

@@ -1,9 +1,13 @@
 package io.leavesfly.jimi.cli.shell.input;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.leavesfly.jimi.adk.api.tool.Tool;
 import io.leavesfly.jimi.adk.api.tool.ToolResult;
 import io.leavesfly.jimi.cli.shell.ShellContext;
 import io.leavesfly.jimi.cli.shell.output.OutputFormatter;
 import lombok.extern.slf4j.Slf4j;
+
+import java.util.Optional;
 
 /**
  * Shell 快捷方式输入处理器
@@ -11,6 +15,8 @@ import lombok.extern.slf4j.Slf4j;
  */
 @Slf4j
 public class ShellShortcutProcessor implements InputProcessor {
+    
+    private final ObjectMapper objectMapper = new ObjectMapper();
     
     @Override
     public boolean canProcess(String input) {
@@ -36,11 +42,14 @@ public class ShellShortcutProcessor implements InputProcessor {
         out.printInfo("执行 Shell 命令: " + shellCommand);
         
         try {
-            // 检查 Bash 工具是否可用
-            if (!context.getToolRegistry().hasTool("Bash")) {
+            // 查找 Bash 工具
+            Optional<Tool<?>> toolOpt = context.getToolRegistry().getTool("Bash");
+            if (toolOpt.isEmpty()) {
                 out.printError("Bash 工具不可用");
                 return true;
             }
+            
+            Tool<?> tool = toolOpt.get();
             
             // 构造 Bash 工具参数（JSON 格式）
             String arguments = String.format(
@@ -48,10 +57,8 @@ public class ShellShortcutProcessor implements InputProcessor {
                 jsonEscape(shellCommand)
             );
             
-            // 执行 Bash 工具
-            ToolResult result = context.getToolRegistry()
-                .execute("Bash", arguments)
-                .block();
+            // 反序列化参数并执行
+            ToolResult result = executeTool(tool, arguments);
             
             if (result == null) {
                 out.printError("执行命令失败: 无返回结果");
@@ -81,6 +88,19 @@ public class ShellShortcutProcessor implements InputProcessor {
         }
         
         return true;
+    }
+    
+    /**
+     * 执行工具（类型安全）
+     */
+    @SuppressWarnings("unchecked")
+    private <P> ToolResult executeTool(Tool<?> tool, String arguments) throws Exception {
+        Tool<P> typedTool = (Tool<P>) tool;
+        P params = (P) objectMapper.readValue(
+                arguments == null || arguments.isEmpty() ? "{}" : arguments,
+                tool.getParamsType()
+        );
+        return typedTool.execute(params).block();
     }
     
     /**

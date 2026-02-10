@@ -3,13 +3,18 @@ package io.leavesfly.jimi.adk.api.command;
 import java.util.List;
 
 /**
- * Command 接口
+ * Command SPI 接口
  * <p>
- * 所有命令处理器都需要实现此接口。
+ * 所有前端命令处理器（CLI、IDE 插件、Web）都需要实现此接口。
  * 支持命令优先级、分类、别名等高级特性。
  * </p>
+ * <p>
+ * 架构定位：作为 ADK API 层的 SPI 契约，允许各前端模块
+ * 提供自己的命令实现，而不局限于 CLI。
+ * </p>
  *
- * @author Jimi2 Team
+ * @see CommandContext 命令执行上下文
+ * @see CommandOutput 命令输出抽象
  */
 public interface Command {
 

@@ -17,6 +17,8 @@ import java.util.Map;
  * - script: 执行脚本
  * - agent: 委托给 Agent
  * - composite: 组合多个命令/脚本
+ * 
+ * <p>这是一个纯数据模型，验证逻辑请使用 {@link ExecutionSpecValidator}。
  */
 @Data
 @Builder
@@ -73,59 +75,4 @@ public class ExecutionSpec {
      */
     @Builder.Default
     private List<CompositeStepSpec> steps = new ArrayList<>();
-    
-    /**
-     * 验证配置有效性
-     */
-    public void validate() {
-        if (type == null || type.trim().isEmpty()) {
-            throw new IllegalArgumentException("Execution type is required");
-        }
-        
-        switch (type) {
-            case "script":
-                validateScriptExecution();
-                break;
-            case "agent":
-                validateAgentExecution();
-                break;
-            case "composite":
-                validateCompositeExecution();
-                break;
-            default:
-                throw new IllegalArgumentException(
-                    "Invalid execution type: " + type + 
-                    ". Supported types: script, agent, composite"
-                );
-        }
-        
-        if (timeout <= 0) {
-            throw new IllegalArgumentException("Timeout must be positive, got: " + timeout);
-        }
-    }
-    
-    private void validateScriptExecution() {
-        if ((script == null || script.trim().isEmpty()) && 
-            (scriptFile == null || scriptFile.trim().isEmpty())) {
-            throw new IllegalArgumentException(
-                "Either 'script' or 'scriptFile' is required for script execution"
-            );
-        }
-    }
-    
-    private void validateAgentExecution() {
-        if (agent == null || agent.trim().isEmpty()) {
-            throw new IllegalArgumentException("Agent name is required for agent execution");
-        }
-        if (task == null || task.trim().isEmpty()) {
-            throw new IllegalArgumentException("Task description is required for agent execution");
-        }
-    }
-    
-    private void validateCompositeExecution() {
-        if (steps == null || steps.isEmpty()) {
-            throw new IllegalArgumentException("Steps are required for composite execution");
-        }
-        steps.forEach(CompositeStepSpec::validate);
-    }
 }

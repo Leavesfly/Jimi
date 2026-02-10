@@ -1,6 +1,7 @@
 package io.leavesfly.jimi.cli.command.custom;
 
 import io.leavesfly.jimi.adk.api.model.ExecutionSpec;
+import io.leavesfly.jimi.adk.core.validation.ExecutionSpecValidator;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -72,7 +73,7 @@ public class CustomCommandSpec {
         if (execution == null) {
             throw new IllegalArgumentException("Execution config is required for: " + name);
         }
-        execution.validate();
+        ExecutionSpecValidator.validate(execution);
         if (parameters != null) {
             parameters.forEach(ParameterSpec::validate);
         }

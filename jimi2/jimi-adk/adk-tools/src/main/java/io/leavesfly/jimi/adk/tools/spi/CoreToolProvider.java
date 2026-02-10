@@ -30,7 +30,7 @@ public class CoreToolProvider implements ToolProvider {
     
     @Override
     public List<Tool<?>> createTools(AgentSpec agentSpec, Runtime runtime) {
-        Path workDir = runtime.getWorkDir();
+        Path workDir = runtime.getConfig().getWorkDir();
         List<Tool<?>> tools = new ArrayList<>();
         
         // 文件操作工具

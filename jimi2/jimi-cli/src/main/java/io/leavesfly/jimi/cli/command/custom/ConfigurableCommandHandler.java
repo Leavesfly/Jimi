@@ -146,8 +146,8 @@ public class ConfigurableCommandHandler implements Command {
         }
         
         ProcessBuilder pb = new ProcessBuilder("/bin/bash", "-c", script);
-        if (context.getRuntime() != null && context.getRuntime().getWorkDir() != null) {
-            pb.directory(context.getRuntime().getWorkDir().toFile());
+        if (context.getRuntime() != null && context.getRuntime().getConfig().getWorkDir() != null) {
+            pb.directory(context.getRuntime().getConfig().getWorkDir().toFile());
         }
         pb.redirectErrorStream(true);
         if (!env.isEmpty()) {
@@ -226,9 +226,9 @@ public class ConfigurableCommandHandler implements Command {
         if (text == null) return null;
         String result = text;
         result = result.replace("${HOME}", System.getProperty("user.home"));
-        if (context.getRuntime() != null && context.getRuntime().getWorkDir() != null) {
-            result = result.replace("${JIMI_WORK_DIR}", context.getRuntime().getWorkDir().toString());
-            result = result.replace("${PROJECT_ROOT}", context.getRuntime().getWorkDir().toString());
+        if (context.getRuntime() != null && context.getRuntime().getConfig().getWorkDir() != null) {
+            result = result.replace("${JIMI_WORK_DIR}", context.getRuntime().getConfig().getWorkDir().toString());
+            result = result.replace("${PROJECT_ROOT}", context.getRuntime().getConfig().getWorkDir().toString());
         }
         if (context.getArgsAsString() != null) {
             result = result.replace("${ARGS}", context.getArgsAsString());
@@ -239,8 +239,8 @@ public class ConfigurableCommandHandler implements Command {
     private Path resolvePath(String pathStr, CommandContext context) {
         String resolved = replaceVariables(pathStr, context);
         Path path = Path.of(resolved);
-        if (!path.isAbsolute() && context.getRuntime() != null && context.getRuntime().getWorkDir() != null) {
-            path = context.getRuntime().getWorkDir().resolve(path);
+        if (!path.isAbsolute() && context.getRuntime() != null && context.getRuntime().getConfig().getWorkDir() != null) {
+            path = context.getRuntime().getConfig().getWorkDir().resolve(path);
         }
         return path;
     }

@@ -1,6 +1,7 @@
 package io.leavesfly.jimi.adk.api.llm;
 
 import io.leavesfly.jimi.adk.api.message.Message;
+import io.leavesfly.jimi.adk.api.tool.ToolSchema;
 import reactor.core.publisher.Flux;
 
 import java.util.List;
@@ -22,7 +23,7 @@ public interface ChatProvider {
     Flux<ChatCompletionChunk> generateStream(
             String systemPrompt,
             List<Message> history,
-            List<Object> tools
+            List<ToolSchema> tools
     );
     
     /**

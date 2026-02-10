@@ -3,22 +3,18 @@ package io.leavesfly.jimi.intellij.service;
 import com.intellij.openapi.components.Service;
 import com.intellij.openapi.project.Project;
 import io.leavesfly.jimi.adk.api.agent.Agent;
-import io.leavesfly.jimi.adk.api.agent.AgentSpec;
 import io.leavesfly.jimi.adk.api.context.Context;
 import io.leavesfly.jimi.adk.api.engine.Engine;
 import io.leavesfly.jimi.adk.api.engine.ExecutionResult;
-import io.leavesfly.jimi.adk.api.engine.Runtime;
-import io.leavesfly.jimi.adk.api.engine.RuntimeConfig;
 import io.leavesfly.jimi.adk.api.llm.LLM;
 import io.leavesfly.jimi.adk.api.tool.Tool;
 import io.leavesfly.jimi.adk.api.tool.ToolProvider;
 import io.leavesfly.jimi.adk.api.tool.ToolRegistry;
 import io.leavesfly.jimi.adk.api.wire.Wire;
-import io.leavesfly.jimi.adk.core.context.DefaultContext;
-import io.leavesfly.jimi.adk.core.engine.DefaultEngine;
-import io.leavesfly.jimi.adk.core.tool.DefaultToolRegistry;
-import io.leavesfly.jimi.adk.core.wire.DefaultWire;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import io.leavesfly.jimi.adk.api.engine.Runtime;
+import io.leavesfly.jimi.adk.api.engine.RuntimeConfig;
+import io.leavesfly.jimi.adk.api.agent.AgentSpec;
+import io.leavesfly.jimi.adk.core.JimiRuntime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Mono;
@@ -32,7 +28,8 @@ import java.util.ServiceLoader;
 /**
  * Jimi 项目服务
  * <p>
- * 为每个项目提供独立的 Jimi Agent 实例
+ * 为每个项目提供独立的 Jimi Agent 实例。
+ * 使用 {@link JimiRuntime} 统一组装核心组件。
  * </p>
  *
  * @author Jimi2 Team
@@ -45,47 +42,30 @@ public final class JimiProjectService {
     /** 关联的项目 */
     private final Project project;
     
-    /** 消息总线 */
-    private final Wire wire;
-    
-    /** 对话上下文 */
-    private Context context;
-    
-    /** 工具注册表 */
-    private final ToolRegistry toolRegistry;
-    
-    /** 执行引擎 */
-    private Engine engine;
-    
-    /** 当前 Agent */
-    private Agent agent;
-    
+    /** JimiRuntime 统一运行时 */
+    private JimiRuntime jimiRuntime;
+
     /**
      * 构造函数（由 IntelliJ 平台调用）
      *
      * @param project 项目实例
      */
+    @SuppressWarnings("unchecked")
     public JimiProjectService(Project project) {
         this.project = project;
-        this.wire = new DefaultWire();
-        this.context = new DefaultContext();
-        
-        ObjectMapper objectMapper = new ObjectMapper();
-        this.toolRegistry = new DefaultToolRegistry(objectMapper);
-        
-        initAgent();
-        registerTools();
-        initEngine();
+
+        Agent agent = buildAgent();
+        initRuntime(agent);
         
         log.info("Jimi 项目服务已初始化: {}", project.getName());
     }
     
     /**
-     * 初始化 Agent
+     * 构建 Agent
      */
-    @SuppressWarnings("unchecked")
-    private void initAgent() {
-        // 通过 SPI 发现工具，收集工具名称
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private Agent buildAgent() {
+        // 通过 SPI 发现工具
         AgentSpec agentSpec = AgentSpec.builder()
                 .name("jimi-intellij")
                 .description("Jimi IntelliJ IDEA 助手")
@@ -94,20 +74,19 @@ public final class JimiProjectService {
 
         RuntimeConfig toolConfig = RuntimeConfig.builder().workDir(getProjectPath()).build();
         Runtime toolRuntime = Runtime.builder().config(toolConfig).build();
-        List<String> toolNames = new ArrayList<>();
 
+        List<Tool> spiTools = new ArrayList<>();
         for (ToolProvider provider : ServiceLoader.load(ToolProvider.class)) {
             if (provider.supports(agentSpec, toolRuntime)) {
                 for (Tool<?> t : provider.createTools(agentSpec, toolRuntime)) {
-                    toolNames.add(t.getName());
                     spiTools.add((Tool) t);
                 }
             }
         }
 
-        log.info("SPI 发现工具: {}", toolNames);
+        log.info("SPI 发现工具: {} 个", spiTools.size());
 
-        this.agent = Agent.builder()
+        return Agent.builder()
                 .name("jimi-intellij")
                 .description("Jimi IntelliJ IDEA 助手")
                 .version("2.0.0")
@@ -117,30 +96,15 @@ public final class JimiProjectService {
                         "3. 查找和修复 Bug\n" +
                         "4. 重构代码结构\n" +
                         "请简洁、专业地回答问题。")
-                .toolNames(toolNames)
+                .tools(new ArrayList<>(spiTools))
                 .maxSteps(50)
                 .build();
     }
-    
-    /** SPI 加载的工具列表 */
-    @SuppressWarnings("rawtypes")
-    private final List<Tool> spiTools = new ArrayList<>();
 
     /**
-     * 注册 SPI 工具到 ToolRegistry
+     * 通过 JimiRuntime 统一初始化所有核心组件
      */
-    @SuppressWarnings("unchecked")
-    private void registerTools() {
-        for (Tool tool : spiTools) {
-            toolRegistry.register(tool);
-        }
-        log.info("已注册 {} 个工具", spiTools.size());
-    }
-
-    /**
-     * 初始化引擎
-     */
-    private void initEngine() {
+    private void initRuntime(Agent agent) {
         Path workDir = getProjectPath();
 
         // 从应用级服务获取 LLM
@@ -149,25 +113,15 @@ public final class JimiProjectService {
             log.warn("LLM 未初始化（API Key 未配置），引擎将无法正常工作");
         }
 
-        RuntimeConfig runtimeConfig = RuntimeConfig.builder().workDir(workDir).build();
-        Runtime runtime = Runtime.builder()
-                .llm(llm)
-                .config(runtimeConfig)
-                .build();
-        
-        this.engine = DefaultEngine.builder()
+        this.jimiRuntime = JimiRuntime.builder()
                 .agent(agent)
-                .runtime(runtime)
-                .context(context)
-                .toolRegistry(toolRegistry)
-                .wire(wire)
+                .llm(llm)
+                .workDir(workDir)
                 .build();
     }
     
     /**
      * 获取项目路径
-     *
-     * @return 项目路径
      */
     private Path getProjectPath() {
         String basePath = project.getBasePath();
@@ -176,73 +130,57 @@ public final class JimiProjectService {
     
     /**
      * 发送消息
-     *
-     * @param message 消息内容
-     * @return 执行结果
      */
     public Mono<ExecutionResult> sendMessage(String message) {
-        return engine.run(message);
+        return jimiRuntime.getEngine().run(message);
     }
     
     /**
      * 发送带上下文的消息
-     *
-     * @param message          消息内容
-     * @param additionalContext 额外上下文
-     * @return 执行结果
      */
     public Mono<ExecutionResult> sendMessage(String message, String additionalContext) {
-        return engine.run(message, additionalContext);
+        return jimiRuntime.getEngine().run(message, additionalContext);
     }
     
     /**
      * 获取消息总线
-     *
-     * @return 消息总线
      */
     public Wire getWire() {
-        return wire;
+        return jimiRuntime.getWire();
     }
     
     /**
      * 获取上下文
-     *
-     * @return 上下文
      */
     public Context getContext() {
-        return context;
+        return jimiRuntime.getContext();
     }
     
     /**
      * 重置对话
      */
     public void resetConversation() {
-        this.context = new DefaultContext();
-        initEngine();
+        Agent agent = buildAgent();
+        initRuntime(agent);
         log.info("对话已重置");
     }
     
     /**
      * 检查引擎是否正在运行
-     *
-     * @return 是否正在运行
      */
     public boolean isRunning() {
-        return engine.isRunning();
+        return jimiRuntime.getEngine().isRunning();
     }
     
     /**
      * 中断执行
      */
     public void interrupt() {
-        engine.interrupt();
+        jimiRuntime.getEngine().interrupt();
     }
     
     /**
      * 获取项目服务实例
-     *
-     * @param project 项目
-     * @return 服务实例
      */
     public static JimiProjectService getInstance(Project project) {
         return project.getService(JimiProjectService.class);

@@ -1,6 +1,6 @@
 package io.leavesfly.jimi.cli.command.commands;
 
-import io.leavesfly.jimi.adk.api.engine.Engine;
+import io.leavesfly.jimi.adk.api.context.Context;
 import io.leavesfly.jimi.adk.api.message.Message;
 import io.leavesfly.jimi.adk.api.command.Command;
 import io.leavesfly.jimi.adk.api.command.CommandContext;
@@ -14,10 +14,10 @@ import java.util.List;
  */
 public class HistoryCommand implements Command {
 
-    private final Engine engine;
+    private final Context adkContext;
 
-    public HistoryCommand(Engine engine) {
-        this.engine = engine;
+    public HistoryCommand(Context adkContext) {
+        this.adkContext = adkContext;
     }
 
     @Override
@@ -44,12 +44,12 @@ public class HistoryCommand implements Command {
     public void execute(CommandContext context) {
         var output = context.getOutput();
 
-        if (engine == null || engine.getContext() == null) {
-            output.warn("Engine or context not available");
+        if (adkContext == null) {
+            output.warn("Context not available");
             return;
         }
 
-        List<Message> history = engine.getContext().getHistory();
+        List<Message> history = adkContext.getHistory();
         if (history.isEmpty()) {
             output.info("No conversation history");
             return;

@@ -66,7 +66,7 @@ public class MemoryManager {
             return;
         }
         
-        Path workDir = runtime.getWorkDir();
+        Path workDir = runtime.getConfig().getWorkDir();
         this.memoryDir = workDir.resolve(".jimi").resolve("memory");
         
         try {

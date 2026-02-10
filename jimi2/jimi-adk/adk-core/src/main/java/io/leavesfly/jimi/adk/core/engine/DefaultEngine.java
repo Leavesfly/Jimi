@@ -170,7 +170,7 @@ public class DefaultEngine implements Engine {
         
         // 基于 Token 数量检查
         int currentTokens = context.getTokenCount();
-        int maxContextTokens = runtime.getMaxContextTokens();
+        int maxContextTokens = runtime.getConfig().getMaxContextTokens();
         
         if (currentTokens > 0 && maxContextTokens > 0) {
             // Token 数接近上限时触发压缩

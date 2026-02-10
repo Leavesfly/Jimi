@@ -48,6 +48,14 @@
         </dependency>
         <dependency>
             <groupId>io.leavesfly.jimi</groupId>
+            <artifactId>adk-hook</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.leavesfly.jimi</groupId>
+            <artifactId>adk-skill</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.leavesfly.jimi</groupId>
             <artifactId>adk-config</artifactId>
         </dependency>
 

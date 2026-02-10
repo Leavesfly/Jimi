@@ -33,6 +33,12 @@
             <artifactId>reactor-netty-http</artifactId>
         </dependency>
 
+        <!-- Jackson (for JSON request/response processing) -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+
         <!-- Caffeine Cache -->
         <dependency>
             <groupId>com.github.ben-manes.caffeine</groupId>

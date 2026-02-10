@@ -1,6 +1,7 @@
 package io.leavesfly.jimi.cli.command.commands;
 
 import io.leavesfly.jimi.adk.api.agent.Agent;
+import io.leavesfly.jimi.adk.api.context.Context;
 import io.leavesfly.jimi.adk.api.engine.Engine;
 import io.leavesfly.jimi.adk.api.tool.Tool;
 import io.leavesfly.jimi.adk.api.command.Command;
@@ -16,10 +17,12 @@ import java.util.List;
 public class StatusCommand implements Command {
 
     private final Engine engine;
+    private final Context adkContext;
     private final List<Tool<?>> tools;
 
-    public StatusCommand(Engine engine, List<Tool<?>> tools) {
+    public StatusCommand(Engine engine, Context adkContext, List<Tool<?>> tools) {
         this.engine = engine;
+        this.adkContext = adkContext;
         this.tools = tools;
     }
 
@@ -51,8 +54,8 @@ public class StatusCommand implements Command {
             output.println("Agent: " + agent.getName());
             output.println("Max Steps: " + agent.getMaxSteps());
 
-            if (agent.getToolNames() != null) {
-                output.println("Configured Tools: " + agent.getToolNames().size());
+            if (agent.getTools() != null) {
+                output.println("Loaded Tools: " + agent.getTools().size());
             }
         } else {
             output.warn("Engine not available");
@@ -64,10 +67,10 @@ public class StatusCommand implements Command {
         }
 
         // 上下文信息
-        if (engine != null && engine.getContext() != null) {
+        if (adkContext != null) {
             try {
-                int messageCount = engine.getContext().getHistory().size();
-                int tokenCount = engine.getContext().getTokenCount();
+                int messageCount = adkContext.getHistory().size();
+                int tokenCount = adkContext.getTokenCount();
                 output.println("Context Messages: " + messageCount);
                 output.println("Context Tokens: " + tokenCount);
             } catch (Exception e) {
@@ -77,7 +80,7 @@ public class StatusCommand implements Command {
 
         // 运行时信息
         if (context.getRuntime() != null) {
-            output.println("Work Directory: " + context.getRuntime().getWorkDir());
+            output.println("Work Directory: " + context.getRuntime().getConfig().getWorkDir());
         }
 
         output.println("");

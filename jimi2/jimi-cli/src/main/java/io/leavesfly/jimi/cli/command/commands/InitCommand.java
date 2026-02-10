@@ -43,7 +43,7 @@ public class InitCommand implements Command {
         var output = context.getOutput();
 
         // 检查工作目录
-        Path workDir = context.getRuntime().getWorkDir();
+        Path workDir = context.getRuntime().getConfig().getWorkDir();
         Path agentsMd = workDir.resolve("AGENTS.md");
 
         output.title("Initialize Codebase");

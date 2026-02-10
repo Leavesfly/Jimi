@@ -101,9 +101,9 @@ public class GrepTool extends AbstractTool<GrepTool.Params> {
                     return Mono.just(ToolResult.error("Invalid regex pattern: " + e.getMessage()));
                 }
 
-                Path searchPath = ".".equals(params.path) ? runtime.getWorkDir() : Path.of(params.path);
+                Path searchPath = ".".equals(params.path) ? runtime.getConfig().getWorkDir() : Path.of(params.path);
                 if (!searchPath.isAbsolute()) {
-                    searchPath = runtime.getWorkDir().resolve(searchPath);
+                    searchPath = runtime.getConfig().getWorkDir().resolve(searchPath);
                 }
 
                 if (!Files.exists(searchPath)) {

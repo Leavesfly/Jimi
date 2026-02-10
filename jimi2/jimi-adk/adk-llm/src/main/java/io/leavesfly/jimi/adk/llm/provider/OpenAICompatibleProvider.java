@@ -5,6 +5,7 @@ import io.leavesfly.jimi.adk.api.llm.ChatProvider;
 import io.leavesfly.jimi.adk.api.llm.LLMConfig;
 import io.leavesfly.jimi.adk.api.message.Message;
 import io.leavesfly.jimi.adk.api.message.Role;
+import io.leavesfly.jimi.adk.api.tool.ToolSchema;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -46,7 +47,7 @@ public class OpenAICompatibleProvider implements ChatProvider {
     @Override
     public Flux<ChatCompletionChunk> generateStream(String systemPrompt,
                                                      List<Message> history,
-                                                     List<Object> tools) {
+                                                     List<ToolSchema> tools) {
         try {
             String requestBody = buildRequestBody(systemPrompt, history, tools);
             
@@ -78,7 +79,7 @@ public class OpenAICompatibleProvider implements ChatProvider {
     /**
      * 构建请求体
      */
-    private String buildRequestBody(String systemPrompt, List<Message> history, List<Object> tools) 
+    private String buildRequestBody(String systemPrompt, List<Message> history, List<ToolSchema> tools) 
             throws JsonProcessingException {
         ObjectNode body = objectMapper.createObjectNode();
         

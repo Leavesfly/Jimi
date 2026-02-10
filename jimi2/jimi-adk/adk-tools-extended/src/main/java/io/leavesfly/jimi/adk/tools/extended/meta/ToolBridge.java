@@ -2,6 +2,7 @@ package io.leavesfly.jimi.adk.tools.extended.meta;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.leavesfly.jimi.adk.api.tool.Tool;
 import io.leavesfly.jimi.adk.api.tool.ToolRegistry;
 import io.leavesfly.jimi.adk.api.tool.ToolResult;
 import lombok.extern.slf4j.Slf4j;
@@ -9,6 +10,7 @@ import lombok.extern.slf4j.Slf4j;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * 工具调用桥接
@@ -59,9 +61,17 @@ public class ToolBridge {
         }
         
         try {
-            // 调用 ToolRegistry 并 block 等待结果
-            ToolResult result = toolRegistry.execute(toolName, arguments)
-                    .block(Duration.ofSeconds(60)); // 单个工具调用最多等待 60 秒
+            // 查找工具
+            Optional<Tool<?>> toolOpt = toolRegistry.getTool(toolName);
+            if (toolOpt.isEmpty()) {
+                return "Error: Tool not found: " + toolName;
+            }
+            
+            Tool<?> tool = toolOpt.get();
+            
+            // 反序列化参数并执行
+            ToolResult result = executeTool(tool, arguments)
+                    .block(Duration.ofSeconds(60));
             
             if (result == null) {
                 return "Error: Tool execution returned null";
@@ -87,6 +97,20 @@ public class ToolBridge {
             log.error("ToolBridge: Error executing tool '{}'", toolName, e);
             return "Error: Tool execution failed: " + e.getMessage();
         }
+    }
+    
+    /**
+     * 执行工具（类型安全）
+     */
+    @SuppressWarnings("unchecked")
+    private <P> reactor.core.publisher.Mono<ToolResult> executeTool(Tool<?> tool, String arguments) 
+            throws JsonProcessingException {
+        Tool<P> typedTool = (Tool<P>) tool;
+        P params = (P) objectMapper.readValue(
+                arguments == null || arguments.isEmpty() ? "{}" : arguments,
+                tool.getParamsType()
+        );
+        return typedTool.execute(params);
     }
     
     /**

@@ -1,7 +1,5 @@
 package io.leavesfly.jimi.adk.api.tool;
 
-import reactor.core.publisher.Mono;
-
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -42,15 +40,6 @@ public interface ToolRegistry {
      * Check if a tool exists.
      */
     boolean hasTool(String name);
-
-    /**
-     * Execute a tool by name with JSON arguments.
-     * 
-     * @param toolName the tool name
-     * @param arguments JSON string of arguments
-     * @return the execution result
-     */
-    Mono<ToolResult> execute(String toolName, String arguments);
 
     /**
      * Get tool schemas for LLM function calling.

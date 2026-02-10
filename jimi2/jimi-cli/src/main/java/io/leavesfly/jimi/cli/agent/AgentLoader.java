@@ -117,7 +117,7 @@ public class AgentLoader {
      */
     private Agent createAgentFromSpec(AgentSpec spec) {
         // 加载工具
-        List<Tool> tools = loadTools(spec);
+        List<Tool<?>> tools = loadTools(spec);
         
         return Agent.builder()
                 .name(spec.getName())
@@ -126,7 +126,6 @@ public class AgentLoader {
                 .systemPrompt(spec.getSystemPrompt())
                 .model(spec.getModel())
                 .tools(tools)
-                .toolNames(spec.getTools())
                 .maxSteps(spec.getMaxSteps())
                 .build();
     }
@@ -138,7 +137,7 @@ public class AgentLoader {
      * @return 工具列表
      */
     @SuppressWarnings("unchecked")
-    private List<Tool> loadTools(AgentSpec spec) {
+    private List<Tool<?>> loadTools(AgentSpec spec) {
         List<String> toolNames = spec.getTools();
         
         // 加载所有工具提供者
@@ -148,15 +147,13 @@ public class AgentLoader {
         RuntimeConfig runtimeConfig = RuntimeConfig.builder().workDir(workDir).build();
         Runtime runtime = Runtime.builder().config(runtimeConfig).build();
         
-        List<Tool> allTools = new ArrayList<>();
+        List<Tool<?>> allTools = new ArrayList<>();
         
         // 从每个提供者创建工具
         for (ToolProvider provider : toolProviders) {
             if (provider.supports(spec, runtime)) {
                 List<Tool<?>> providerTools = provider.createTools(spec, runtime);
-                for (Tool<?> tool : providerTools) {
-                    allTools.add((Tool) tool);
-                }
+                allTools.addAll(providerTools);
             }
         }
         

@@ -14,6 +14,7 @@
 
     <modules>
         <module>jimi-adk</module>
+        <module>jimi-adk-demo</module>
         <module>jimi-cli</module>
         <module>jimi-work</module>
         <module>jimi-web</module>
@@ -86,6 +87,16 @@
             </dependency>
             <dependency>
                 <groupId>io.leavesfly.jimi</groupId>
+                <artifactId>adk-hook</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.leavesfly.jimi</groupId>
+                <artifactId>adk-skill</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.leavesfly.jimi</groupId>
                 <artifactId>adk-bom</artifactId>
                 <version>${project.version}</version>
                 <type>pom</type>
@@ -107,6 +118,11 @@
             <dependency>
                 <groupId>com.fasterxml.jackson.core</groupId>
                 <artifactId>jackson-databind</artifactId>
+                <version>${jackson.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.fasterxml.jackson.core</groupId>
+                <artifactId>jackson-annotations</artifactId>
                 <version>${jackson.version}</version>
             </dependency>
             <dependency>

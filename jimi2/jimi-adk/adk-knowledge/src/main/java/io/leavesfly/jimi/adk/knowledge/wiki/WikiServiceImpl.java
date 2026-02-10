@@ -1,9 +1,9 @@
 package io.leavesfly.jimi.adk.knowledge.wiki;
 
 import io.leavesfly.jimi.adk.api.engine.Runtime;
-import io.leavesfly.jimi.adk.api.knowledge.query.WikiQuery;
-import io.leavesfly.jimi.adk.api.knowledge.result.WikiResult;
-import io.leavesfly.jimi.adk.api.knowledge.spi.WikiService;
+import io.leavesfly.jimi.adk.knowledge.api.query.WikiQuery;
+import io.leavesfly.jimi.adk.knowledge.api.result.WikiResult;
+import io.leavesfly.jimi.adk.knowledge.api.spi.WikiService;
 import io.leavesfly.jimi.adk.api.llm.LLM;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Mono;
@@ -46,7 +46,7 @@ public class WikiServiceImpl implements WikiService {
     public Mono<Boolean> initialize(Runtime runtime) {
         return Mono.fromRunnable(() -> {
             this.runtime = runtime;
-            this.workDir = runtime.getWorkDir();
+            this.workDir = runtime.getConfig().getWorkDir();
             log.info("WikiService 初始化完成, workDir={}", workDir);
         }).thenReturn(true);
     }

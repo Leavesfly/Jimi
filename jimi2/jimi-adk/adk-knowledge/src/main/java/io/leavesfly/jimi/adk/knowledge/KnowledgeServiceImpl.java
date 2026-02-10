@@ -1,10 +1,10 @@
 package io.leavesfly.jimi.adk.knowledge;
 
 import io.leavesfly.jimi.adk.api.engine.Runtime;
-import io.leavesfly.jimi.adk.api.knowledge.KnowledgeService;
-import io.leavesfly.jimi.adk.api.knowledge.query.*;
-import io.leavesfly.jimi.adk.api.knowledge.result.*;
-import io.leavesfly.jimi.adk.api.knowledge.spi.*;
+import io.leavesfly.jimi.adk.knowledge.api.KnowledgeService;
+import io.leavesfly.jimi.adk.knowledge.api.query.*;
+import io.leavesfly.jimi.adk.knowledge.api.result.*;
+import io.leavesfly.jimi.adk.knowledge.api.spi.*;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Mono;
 

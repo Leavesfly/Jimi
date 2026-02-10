@@ -1,6 +1,7 @@
 package io.leavesfly.jimi.work.model;
 
 import io.leavesfly.jimi.adk.api.engine.Engine;
+import io.leavesfly.jimi.adk.api.wire.Wire;
 import lombok.Getter;
 
 import java.nio.file.Path;
@@ -15,6 +16,7 @@ public class WorkSession {
 
     private final String id;
     private final Engine engine;
+    private final Wire wire;
     private final Path workDir;
     private final String agentName;
     private final LocalDateTime createdAt;
@@ -24,13 +26,14 @@ public class WorkSession {
     /** 是否正在运行 */
     private volatile boolean running;
 
-    public WorkSession(Engine engine, Path workDir, String agentName) {
-        this(UUID.randomUUID().toString(), engine, workDir, agentName, LocalDateTime.now());
+    public WorkSession(Engine engine, Wire wire, Path workDir, String agentName) {
+        this(UUID.randomUUID().toString(), engine, wire, workDir, agentName, LocalDateTime.now());
     }
 
-    public WorkSession(String id, Engine engine, Path workDir, String agentName, LocalDateTime createdAt) {
+    public WorkSession(String id, Engine engine, Wire wire, Path workDir, String agentName, LocalDateTime createdAt) {
         this.id = id;
         this.engine = engine;
+        this.wire = wire;
         this.workDir = workDir;
         this.agentName = agentName;
         this.createdAt = createdAt;

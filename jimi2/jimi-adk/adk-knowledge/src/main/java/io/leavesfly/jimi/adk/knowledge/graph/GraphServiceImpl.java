@@ -1,9 +1,9 @@
 package io.leavesfly.jimi.adk.knowledge.graph;
 
 import io.leavesfly.jimi.adk.api.engine.Runtime;
-import io.leavesfly.jimi.adk.api.knowledge.query.GraphQuery;
-import io.leavesfly.jimi.adk.api.knowledge.result.GraphResult;
-import io.leavesfly.jimi.adk.api.knowledge.spi.GraphService;
+import io.leavesfly.jimi.adk.knowledge.api.query.GraphQuery;
+import io.leavesfly.jimi.adk.knowledge.api.result.GraphResult;
+import io.leavesfly.jimi.adk.knowledge.api.spi.GraphService;
 import io.leavesfly.jimi.adk.knowledge.graph.model.CodeEntity;
 import io.leavesfly.jimi.adk.knowledge.graph.model.CodeRelation;
 import io.leavesfly.jimi.adk.knowledge.graph.navigator.GraphNavigator;
@@ -39,8 +39,8 @@ public class GraphServiceImpl implements GraphService {
     @Override
     public Mono<Boolean> initialize(Runtime runtime) {
         return Mono.fromRunnable(() -> {
-            graphManager.setWorkDir(runtime.getWorkDir());
-            log.info("GraphService 初始化完成, workDir={}", runtime.getWorkDir());
+            graphManager.setWorkDir(runtime.getConfig().getWorkDir());
+            log.info("GraphService 初始化完成, workDir={}", runtime.getConfig().getWorkDir());
         }).thenReturn(true);
     }
     

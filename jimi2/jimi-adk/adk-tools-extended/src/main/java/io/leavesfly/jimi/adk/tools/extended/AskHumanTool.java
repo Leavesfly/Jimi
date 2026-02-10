@@ -54,7 +54,7 @@ public class AskHumanTool extends AbstractTool<AskHumanTool.Params> {
               "向用户提问并等待反馈。用于需要人工确认、获取用户意见或等待用户输入的场景。" +
               "支持三种交互类型：confirm(确认方案)、input(自由输入)、choice(多选项选择)。",
               Params.class);
-        this.humanInteraction = runtime.getHumanInteraction();
+        this.humanInteraction = runtime.getInteraction().getHumanInteraction();
     }
 
     @Override

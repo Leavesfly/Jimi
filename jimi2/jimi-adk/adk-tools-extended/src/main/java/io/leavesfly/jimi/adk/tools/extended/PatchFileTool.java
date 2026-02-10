@@ -40,6 +40,16 @@ public class PatchFileTool extends AbstractTool<PatchFileTool.Params> {
         this.runtime = runtime;
     }
 
+    @Override
+    public boolean requiresApproval() {
+        return true;
+    }
+
+    @Override
+    public String getApprovalDescription(Params params) {
+        return "Edit file (patch): " + params.path;
+    }
+
     @Data
     @Builder
     @NoArgsConstructor
@@ -66,7 +76,7 @@ public class PatchFileTool extends AbstractTool<PatchFileTool.Params> {
 
                 Path targetPath = Path.of(params.path);
                 if (!targetPath.isAbsolute()) {
-                    targetPath = runtime.getWorkDir().resolve(targetPath);
+                    targetPath = runtime.getConfig().getWorkDir().resolve(targetPath);
                 }
 
                 if (!Files.exists(targetPath)) {
@@ -79,7 +89,7 @@ public class PatchFileTool extends AbstractTool<PatchFileTool.Params> {
 
                 // 验证路径在 workDir 内
                 Path resolvedPath = targetPath.toRealPath();
-                Path resolvedWorkDir = runtime.getWorkDir().toRealPath();
+                Path resolvedWorkDir = runtime.getConfig().getWorkDir().toRealPath();
                 if (!resolvedPath.startsWith(resolvedWorkDir)) {
                     return Mono.just(ToolResult.error(
                             String.format("`%s` is outside working directory", params.path)));

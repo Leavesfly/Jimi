@@ -17,7 +17,7 @@ import java.nio.file.Path;
 /**
  * StrReplaceFile 工具 - 字符串替换编辑文件
  * <p>
- * 简化版实现，去掉审批和沙箱机制，直接基于 ADK Runtime。
+ * 基于 ADK Runtime，支持审批机制，修改文件前需用户确认。
  * </p>
  *
  * @author Jimi2 Team
@@ -32,6 +32,16 @@ public class StrReplaceFileTool extends AbstractTool<StrReplaceFileTool.Params> 
                 "Replace a string in a file. old_str must exactly match the file content.",
                 Params.class);
         this.runtime = runtime;
+    }
+
+    @Override
+    public boolean requiresApproval() {
+        return true;
+    }
+
+    @Override
+    public String getApprovalDescription(Params params) {
+        return "Edit file (str_replace): " + params.path;
     }
 
     @Data
@@ -69,7 +79,7 @@ public class StrReplaceFileTool extends AbstractTool<StrReplaceFileTool.Params> 
 
                 Path targetPath = Path.of(params.path);
                 if (!targetPath.isAbsolute()) {
-                    targetPath = runtime.getWorkDir().resolve(targetPath);
+                    targetPath = runtime.getConfig().getWorkDir().resolve(targetPath);
                 }
 
                 if (!Files.exists(targetPath)) {
@@ -82,7 +92,7 @@ public class StrReplaceFileTool extends AbstractTool<StrReplaceFileTool.Params> 
 
                 // 验证路径在 workDir 内
                 Path resolvedPath = targetPath.toRealPath();
-                Path resolvedWorkDir = runtime.getWorkDir().toRealPath();
+                Path resolvedWorkDir = runtime.getConfig().getWorkDir().toRealPath();
                 if (!resolvedPath.startsWith(resolvedWorkDir)) {
                     return Mono.just(ToolResult.error(
                             String.format("`%s` is outside working directory", params.path)));

@@ -5,8 +5,11 @@ import io.leavesfly.jimi.adk.api.message.Message;
 import java.util.List;
 
 /**
- * 上下文接口
- * 管理对话历史和状态
+ * 上下文接口 - 统一的对话上下文管理
+ * <p>
+ * 管理对话历史、状态和检查点。
+ * 如需持久化能力，请使用 {@link PersistableContext} 子接口。
+ * </p>
  */
 public interface Context {
     

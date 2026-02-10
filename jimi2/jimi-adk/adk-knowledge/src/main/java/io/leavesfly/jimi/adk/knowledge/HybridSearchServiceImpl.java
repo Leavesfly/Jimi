@@ -1,15 +1,15 @@
 package io.leavesfly.jimi.adk.knowledge;
 
 import io.leavesfly.jimi.adk.api.engine.Runtime;
-import io.leavesfly.jimi.adk.api.knowledge.query.GraphQuery;
-import io.leavesfly.jimi.adk.api.knowledge.query.HybridQuery;
-import io.leavesfly.jimi.adk.api.knowledge.query.RetrievalQuery;
-import io.leavesfly.jimi.adk.api.knowledge.result.GraphResult;
-import io.leavesfly.jimi.adk.api.knowledge.result.HybridResult;
-import io.leavesfly.jimi.adk.api.knowledge.result.RetrievalResult;
-import io.leavesfly.jimi.adk.api.knowledge.spi.GraphService;
-import io.leavesfly.jimi.adk.api.knowledge.spi.HybridSearchService;
-import io.leavesfly.jimi.adk.api.knowledge.spi.RagService;
+import io.leavesfly.jimi.adk.knowledge.api.query.GraphQuery;
+import io.leavesfly.jimi.adk.knowledge.api.query.HybridQuery;
+import io.leavesfly.jimi.adk.knowledge.api.query.RetrievalQuery;
+import io.leavesfly.jimi.adk.knowledge.api.result.GraphResult;
+import io.leavesfly.jimi.adk.knowledge.api.result.HybridResult;
+import io.leavesfly.jimi.adk.knowledge.api.result.RetrievalResult;
+import io.leavesfly.jimi.adk.knowledge.api.spi.GraphService;
+import io.leavesfly.jimi.adk.knowledge.api.spi.HybridSearchService;
+import io.leavesfly.jimi.adk.knowledge.api.spi.RagService;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Mono;
 

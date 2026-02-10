@@ -22,11 +22,19 @@ public class JimiConfig {
 
     private static final Logger log = LoggerFactory.getLogger(JimiConfig.class);
 
-    /** 原始配置 Map */
+    /** 原始配置 Map（向后兼容） */
     private final Map<String, Object> config;
+
+    /** 强类型 LLM 配置 */
+    private final LlmProperties llmProperties;
+
+    /** 强类型运行时配置 */
+    private final RuntimeProperties runtimeProperties;
 
     protected JimiConfig(Map<String, Object> config) {
         this.config = config;
+        this.llmProperties = parseLlmProperties(config);
+        this.runtimeProperties = parseRuntimeProperties(config);
     }
 
     /**
@@ -47,34 +55,38 @@ public class JimiConfig {
         return config;
     }
 
+    /**
+     * 获取强类型 LLM 配置
+     */
+    public LlmProperties getLlmProperties() {
+        return llmProperties;
+    }
+
+    /**
+     * 获取强类型运行时配置
+     */
+    public RuntimeProperties getRuntimeProperties() {
+        return runtimeProperties;
+    }
+
     // ==================== LLM 配置 ====================
 
     /**
-     * 构建 LLMConfig
+     * 构建 LLMConfig（基于强类型属性）
      */
     public LLMConfig toLLMConfig() {
-        Map<String, Object> llmMap = getMap("llm");
-
-        String provider = getString(llmMap, "provider", "openai");
-        String model = getString(llmMap, "model", "gpt-4o");
-        String baseUrl = getString(llmMap, "baseUrl", null);
-        double temperature = getDouble(llmMap, "temperature", 0.7);
-        int maxTokens = getInt(llmMap, "maxTokens", 4096);
-        int connectTimeout = getInt(llmMap, "connectTimeout", 30);
-        int readTimeout = getInt(llmMap, "readTimeout", 120);
-
         // API Key: 环境变量优先 > 配置文件
-        String apiKey = resolveApiKey(provider, getString(llmMap, "apiKey", null));
+        String apiKey = resolveApiKey(llmProperties.getProvider(), llmProperties.getApiKey());
 
         return LLMConfig.builder()
-                .provider(provider)
-                .model(model)
+                .provider(llmProperties.getProvider())
+                .model(llmProperties.getModel())
                 .apiKey(apiKey)
-                .baseUrl(baseUrl)
-                .temperature(temperature)
-                .maxTokens(maxTokens)
-                .connectTimeout(connectTimeout)
-                .readTimeout(readTimeout)
+                .baseUrl(llmProperties.getBaseUrl())
+                .temperature(llmProperties.getTemperature())
+                .maxTokens(llmProperties.getMaxTokens())
+                .connectTimeout(llmProperties.getConnectTimeout())
+                .readTimeout(llmProperties.getReadTimeout())
                 .build();
     }
 
@@ -84,14 +96,14 @@ public class JimiConfig {
      * 是否为 YOLO 模式
      */
     public boolean isYoloMode() {
-        return getBoolean(config, "yoloMode", false);
+        return runtimeProperties.isYoloMode();
     }
 
     /**
      * 获取最大上下文 Token 数
      */
     public int getMaxContextTokens() {
-        return getInt(config, "maxContextTokens", 100000);
+        return runtimeProperties.getMaxContextTokens();
     }
 
     // ==================== API Key 解析 ====================
@@ -187,5 +199,37 @@ public class JimiConfig {
         if (val instanceof Boolean) return (Boolean) val;
         if (val instanceof String) return Boolean.parseBoolean((String) val);
         return defaultVal;
+    }
+
+    // ==================== 强类型配置解析 ====================
+
+    /**
+     * 从原始配置 Map 解析 LlmProperties
+     */
+    @SuppressWarnings("unchecked")
+    private static LlmProperties parseLlmProperties(Map<String, Object> config) {
+        Object llmObj = config.get("llm");
+        Map<String, Object> llmMap = (llmObj instanceof Map) ? (Map<String, Object>) llmObj : new LinkedHashMap<>();
+
+        return LlmProperties.builder()
+                .provider(getString(llmMap, "provider", "openai"))
+                .model(getString(llmMap, "model", "gpt-4o"))
+                .apiKey(getString(llmMap, "apiKey", null))
+                .baseUrl(getString(llmMap, "baseUrl", null))
+                .temperature(getDouble(llmMap, "temperature", 0.7))
+                .maxTokens(getInt(llmMap, "maxTokens", 4096))
+                .connectTimeout(getInt(llmMap, "connectTimeout", 30))
+                .readTimeout(getInt(llmMap, "readTimeout", 120))
+                .build();
+    }
+
+    /**
+     * 从原始配置 Map 解析 RuntimeProperties
+     */
+    private static RuntimeProperties parseRuntimeProperties(Map<String, Object> config) {
+        return RuntimeProperties.builder()
+                .yoloMode(getBoolean(config, "yoloMode", false))
+                .maxContextTokens(getInt(config, "maxContextTokens", 100000))
+                .build();
     }
 }

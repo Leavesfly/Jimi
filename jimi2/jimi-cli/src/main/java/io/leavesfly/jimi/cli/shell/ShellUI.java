@@ -11,16 +11,11 @@ import io.leavesfly.jimi.adk.api.message.Message;
 import io.leavesfly.jimi.adk.api.message.Role;
 import io.leavesfly.jimi.adk.api.message.TextPart;
 import io.leavesfly.jimi.adk.api.tool.Tool;
-import io.leavesfly.jimi.adk.api.tool.ToolProvider;
 import io.leavesfly.jimi.adk.api.tool.ToolRegistry;
 import io.leavesfly.jimi.adk.api.wire.Wire;
 import io.leavesfly.jimi.adk.api.wire.WireMessage;
-import io.leavesfly.jimi.adk.core.context.DefaultContext;
-import io.leavesfly.jimi.adk.core.engine.DefaultEngine;
 import io.leavesfly.jimi.adk.api.engine.Runtime;
-import io.leavesfly.jimi.adk.api.engine.RuntimeConfig;
-import io.leavesfly.jimi.adk.core.tool.DefaultToolRegistry;
-import io.leavesfly.jimi.adk.core.wire.DefaultWire;
+import io.leavesfly.jimi.adk.core.JimiRuntime;
 import io.leavesfly.jimi.adk.core.wire.messages.*;
 import io.leavesfly.jimi.adk.api.command.Command;
 import io.leavesfly.jimi.adk.api.command.CommandContext;
@@ -82,11 +77,14 @@ public class ShellUI {
     /** CLI 配置 */
     private final CliConfig cliConfig;
     
+    /** JimiRuntime 实例 */
+    private JimiRuntime jimiRuntime;
+
     /** 执行引擎 */
     private Engine engine;
     
     /** 消息总线 */
-    private final Wire wire;
+    private Wire wire;
     
     /** 对话上下文 */
     private Context context;
@@ -140,10 +138,7 @@ public class ShellUI {
         this.workDir = workDir;
         this.llm = llm;
         this.cliConfig = cliConfig;
-        this.wire = new DefaultWire();
-        this.context = new DefaultContext();
         this.objectMapper = new ObjectMapper();
-        this.toolRegistry = new DefaultToolRegistry(objectMapper);
     }
     
     /**
@@ -197,55 +192,27 @@ public class ShellUI {
     }
     
     /**
-     * 初始化引擎
+     * 初始化引擎（通过 JimiRuntime 统一组装）
      */
+    @SuppressWarnings("deprecation")
     private void initEngine() {
-        // 通过 SPI 加载工具
-        AgentSpec agentSpec = AgentSpec.builder()
-                .name(agent.getName())
-                .build();
-        
-        java.util.List<Tool<?>> allTools = new java.util.ArrayList<>();
-        for (ToolProvider provider : java.util.ServiceLoader.load(ToolProvider.class)) {
-            RuntimeConfig tempConfig = RuntimeConfig.builder().workDir(workDir).build();
-            Runtime tempRuntime = Runtime.builder().config(tempConfig).build();
-            if (provider.supports(agentSpec, tempRuntime)) {
-                allTools.addAll(provider.createTools(agentSpec, tempRuntime));
-            }
-        }
-        
-        // 注册工具
-        allTools.forEach(toolRegistry::register);
-        
-        // 注册 Agent 自带的工具
-        if (agent.getTools() != null) {
-            agent.getTools().forEach(toolRegistry::register);
-        }
-        
-        log.info("已加载 {} 个工具", allTools.size());
-        
-        // 创建 Runtime（使用新风格 API）
-        RuntimeConfig runtimeConfig = RuntimeConfig.builder()
+        // 使用 JimiRuntime.builder() 统一组装所有核心组件
+        this.jimiRuntime = JimiRuntime.builder()
+                .agent(agent)
+                .llm(llm)
                 .workDir(workDir)
-                .yoloMode(cliConfig.isYoloMode())
                 .maxContextTokens(cliConfig.getMaxContextTokens())
                 .build();
-        
-        runtime = Runtime.builder()
-                .llm(llm)
-                .config(runtimeConfig)
-                .build();
-        
-        // 创建引擎
-        engine = DefaultEngine.builder()
-                .agent(agent)
-                .runtime(runtime)
-                .context(context)
-                .toolRegistry(toolRegistry)
-                .wire(wire)
-                .build();
-        
-        // 初始化命令注册表
+
+        // 从 JimiRuntime 获取组件引用
+        this.engine = jimiRuntime.getEngine();
+        this.wire = jimiRuntime.getWire();
+        this.context = jimiRuntime.getContext();
+        this.toolRegistry = jimiRuntime.getToolRegistry();
+        this.runtime = jimiRuntime.getRuntime();
+
+        // 初始化命令系统
+        java.util.List<Tool<?>> allTools = new java.util.ArrayList<>(toolRegistry.getAllTools());
         initCommands(allTools);
     }
     
@@ -265,13 +232,13 @@ public class ShellUI {
         commandRegistry.register(new VersionCommand("2.0.0"));
         commandRegistry.register(new ToolsCommand(tools));
         commandRegistry.register(new ClearCommand());
-        commandRegistry.register(new StatusCommand(engine, tools));
-        commandRegistry.register(new ResetCommand(engine));
+        commandRegistry.register(new StatusCommand(engine, context, tools));
+        commandRegistry.register(new ResetCommand(context));
         commandRegistry.register(new ConfigCommand(config));
-        commandRegistry.register(new HistoryCommand(engine));
+        commandRegistry.register(new HistoryCommand(context));
         commandRegistry.register(new InitCommand(engine));
         commandRegistry.register(new ThemeCommand());
-        commandRegistry.register(new CompactCommand(engine));
+        commandRegistry.register(new CompactCommand(context));
         
         log.info("已注册 {} 个命令", commandRegistry.size());
         
@@ -542,8 +509,7 @@ public class ShellUI {
      * 重置上下文
      */
     private void resetContext() {
-        this.context = new DefaultContext();
-        // 重新初始化引擎
+        // 重新通过 JimiRuntime 初始化引擎和所有组件
         initEngine();
     }
     
