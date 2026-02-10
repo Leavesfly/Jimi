@@ -13,8 +13,23 @@
     <artifactId>adk-tools</artifactId>
     <packaging>jar</packaging>
 
-    <name>ADK Tools - Built-in Tools</name>
-    <description>Built-in tools for Jimi ADK</description>
+    <name>ADK Tools - Core Tools</name>
+    <description>Core tools for Jimi ADK with zero external dependencies (JDK-only).
+
+        Separation Criteria: This module contains tools that ONLY depend on JDK standard
+        libraries and adk-api. No Spring, no third-party libraries. This ensures the core
+        tool set remains lightweight and has minimal transitive dependency footprint.
+
+        Included tools:
+        - ReadFileTool  : Read file content with line range support
+        - WriteFileTool : Write/create files (requires approval)
+        - ListDirTool   : List directory contents with recursive support
+        - GlobTool      : Glob pattern file matching
+        - BashTool      : Shell command execution (requires approval)
+
+        Tools requiring external dependencies (Spring WebFlux, java-diff-utils, etc.)
+        belong in adk-tools-extended.
+    </description>
 
     <dependencies>
         <!-- Internal -->

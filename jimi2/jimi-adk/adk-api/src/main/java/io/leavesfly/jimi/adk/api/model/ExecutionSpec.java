@@ -19,6 +19,7 @@ import java.util.Map;
  * - composite: 组合多个命令/脚本
  * 
  * <p>这是一个纯数据模型，验证逻辑请使用 {@link ExecutionSpecValidator}。
+ * @see ExecutionSpecValidator
  */
 @Data
 @Builder

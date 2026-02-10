@@ -1,0 +1,322 @@
+# ==================== Jimi CLI 配置文件 ====================
+# 所有配置项的详细说明和默认值
+# 用户可复制此文件到 ~/.jimi/config.yml 进行自定义配置
+
+# ==================== 基础配置 ====================
+
+# 默认使用的模型名称，必须在 models 中定义
+default_model: qwen3-max
+
+# ==================== LLM 提供商配置 ====================
+
+providers:
+  # 阿里通义千问配置
+  qwen:
+    type: qwen
+    base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+    api_key: YOUR_API_KEY_HERE  # 请替换为您的 API Key
+    custom_headers: { }
+    rate_limit:
+      window_ms: 4000      # 时间窗口（毫秒）
+      max_requests: 4      # 窗口内最大请求数
+      sleep_ms: 3000       # 超限后等待时间（毫秒）
+
+  # Ollama 本地模型配置
+  ollama:
+    type: ollama
+    base_url: http://localhost:11434/v1
+    api_key: ""  # Ollama 通常不需要 API Key
+    custom_headers: { }
+
+  # Kimi (Moonshot) 配置
+  kimi:
+    type: kimi
+    base_url: https://api.moonshot.cn/v1
+    api_key: YOUR_API_KEY_HERE
+    custom_headers: { }
+    rate_limit:
+      window_ms: 60000
+      max_requests: 10
+      sleep_ms: 1000
+
+  # 智谱 GLM 配置
+  glm:
+    type: glm
+    base_url: https://open.bigmodel.cn/api/paas/v4
+    api_key: YOUR_API_KEY_HERE
+    custom_headers: { }
+    rate_limit:
+      window_ms: 60000
+      max_requests: 20
+      sleep_ms: 1000
+
+  # MiniMax 配置
+  minimax:
+    type: minimax
+    base_url: https://api.minimaxi.com/v1
+    api_key: YOUR_API_KEY_HERE
+    custom_headers: { }
+    rate_limit:
+      window_ms: 60000
+      max_requests: 30
+      sleep_ms: 1000
+
+# ==================== 模型配置 ====================
+
+models:
+  # 通义千问系列
+  qwen3-max:
+    provider: qwen
+    model: qwen3-max
+    max_context_size: 200000
+
+  qwen3-next-80b-a3b-thinking:
+    provider: qwen
+    model: qwen3-next-80b-a3b-thinking
+    max_context_size: 200000
+
+  qwen3-next-80b-a3b-instruct:
+    provider: qwen
+    model: qwen3-next-80b-a3b-instruct
+    max_context_size: 200000
+
+  qwen3-coder-plus:
+    provider: qwen
+    model: qwen3-coder-plus
+    max_context_size: 200000
+
+  # Kimi 系列
+  kimi-k2-thinking-turbo:
+    provider: kimi
+    model: kimi-k2-thinking-turbo
+    max_context_size: 200000
+
+  kimi-k2-instruct:
+    provider: kimi
+    model: kimi-k2-instruct
+    max_context_size: 200000
+
+  # 智谱 GLM 系列
+  glm-4.7:
+    provider: glm
+    model: glm-4.7
+    max_context_size: 200000
+
+  glm-4-flash:
+    provider: glm
+    model: glm-4-flash
+    max_context_size: 128000
+
+  glm-4-plus:
+    provider: glm
+    model: glm-4-plus
+    max_context_size: 128000
+
+  # MiniMax 系列
+  minimax-m2.1:
+    provider: minimax
+    model: MiniMax-M2.1
+    max_context_size: 200000
+
+  minimax-m2.1-lightning:
+    provider: minimax
+    model: MiniMax-M2.1-lightning
+    max_context_size: 200000
+
+  minimax-m2:
+    provider: minimax
+    model: MiniMax-M2
+    max_context_size: 200000
+
+  # Ollama 本地模型
+  qwen3:4b-instruct-2507-q8_0:
+    provider: ollama
+    model: qwen3:4b-instruct-2507-q8_0
+    max_context_size: 100000
+
+  qwen3:4b-thinking-2507-q8_0:
+    provider: ollama
+    model: qwen3:4b-thinking-2507-q8_0
+    max_context_size: 100000
+
+# ==================== 循环控制配置 ====================
+
+loop_control:
+  max_steps_per_run: 200    # 单次运行最大步数
+  max_retries_per_step: 3   # 单步最大重试次数
+
+# ==================== Web 搜索配置 ====================
+
+web_search:
+  base_url: https://api.bochaai.com/v1/web-search
+  api_key: YOUR_API_KEY_HERE
+  custom_headers: { }
+
+# ==================== 向量索引配置 ====================
+
+vector_index:
+  enabled: false                          # 是否启用向量索引功能
+  index_path: .jimi/vector_index          # 索引存储路径
+  embedding_provider: qwen                # 使用的嵌入提供商
+  embedding_model: text-embedding-v3      # 嵌入模型名称
+  embedding_dimension: 1024               # 嵌入向量维度
+  chunk_size: 50                          # 文本分块大小（行数）
+  chunk_overlap: 5                        # 分块重叠行数
+  top_k: 5                                # 检索返回的最大结果数
+  file_extensions: .java,.kt,.py,.js,.ts,.go,.rs  # 支持的文件扩展名
+
+# ==================== 代码图配置 ====================
+
+graph:
+  enabled: true                   # 是否启用代码图功能
+  auto_build: false               # 文件变化时是否自动构建
+  build_on_startup: false         # 启动时是否构建代码图
+  storage_path: .jimi/code_graph  # 图存储路径
+  auto_load: true                 # 启动时是否自动加载已保存的图
+  auto_save: true                 # 构建后是否自动保存
+
+  # 包含的文件模式（支持 glob 语法）
+  include_patterns:
+    - "**/*.java"
+
+  # 排除的文件模式
+  exclude_patterns:
+    - "**/test/**"
+    - "**/tests/**"
+    - "**/target/**"
+    - "**/build/**"
+    - "**/node_modules/**"
+    - "**/.git/**"
+
+  # 缓存配置
+  cache:
+    enabled: true      # 是否启用缓存
+    ttl: 3600          # 缓存过期时间（秒）
+    max_size: 10000    # 最大缓存条目数
+
+  # 搜索配置
+  search:
+    max_results: 50           # 最大搜索结果数
+    enable_hybrid: true       # 是否启用混合搜索（图+向量）
+    graph_weight: 0.6         # 图搜索权重（0-1）
+    vector_weight: 0.4        # 向量搜索权重（0-1）
+    min_similarity: 0.3       # 最小相似度阈值（0-1）
+
+# ==================== Skills 功能配置 ====================
+
+skill:
+  enabled: false                          # 是否启用 Skills 功能
+  auto_match: true                        # 是否自动匹配 Skills
+  enable_claude_code_compatibility: true  # 是否启用 Claude Code 兼容模式
+
+  # 匹配配置
+  matching:
+    score_threshold: 30              # 用户输入匹配的最低得分阈值（0-100）
+    context_score_threshold: 15      # 上下文匹配的最低得分阈值（0-100）
+    max_matched_skills: 5            # 最大匹配 Skills 数量
+    enable_context_matching: false   # 是否启用上下文动态匹配
+
+  # 缓存配置
+  cache:
+    enabled: true      # 是否启用缓存
+    ttl: 3600          # 缓存过期时间（秒）
+    max_size: 1000     # 缓存最大条目数
+
+  # 脚本执行配置
+  script_execution:
+    enabled: true           # 是否启用脚本执行
+    timeout: 60             # 脚本执行超时时间（秒）
+    require_approval: false # 是否需要审批
+
+  # 日志配置
+  logging:
+    log_match_details: false         # 是否记录匹配详情
+    log_injection_details: false     # 是否记录注入详情
+    log_performance_metrics: false   # 是否记录性能指标
+
+# ==================== 记忆模块配置 ====================
+
+memory:
+
+  # 长期记忆配置
+  long_term_enabled: true         # 是否启用长期记忆
+  auto_extract: true              # 是否自动从工具结果提取知识
+  auto_inject: true               # 是否自动注入相关知识到上下文
+  max_insights: 100               # 最多保留的知识条目数量
+  insight_expiry_days: 90         # 知识过期天数
+  max_task_history: 50            # 最多保留的任务历史数量
+
+# ==================== MetaTool 配置 ====================
+
+meta_tool:
+  enabled: true                # 是否启用 MetaTool（编程式工具调用）
+  max_execution_time: 30       # 最大执行时间（秒）
+  max_code_length: 10000       # 最大代码长度（字符）
+  log_execution_details: true  # 是否记录执行详情
+
+# ==================== 沙箱配置 ====================
+
+sandbox:
+  enabled: false                # 是否启用沙箱机制（默认关闭）
+  mode: RESTRICTED              # 沙箱模式：STRICT（严格）/RESTRICTED（受限）/PERMISSIVE（宽松）
+
+  # 文件系统限制配置
+  filesystem:
+    allow_write_outside_workspace: false  # 是否允许在工作区外写入
+    denied_paths: # 禁止访问的路径（支持 glob 模式）
+      - "/etc/**"
+      - "/usr/**"
+      - "/System/**"
+      - "**/.ssh/**"
+      - "**/.aws/**"
+      - "**/.kube/**"
+    max_file_size: 10485760       # 最大文件大小（字节，默认 10MB）
+
+  # Shell 命令限制配置
+  shell:
+    dangerous_patterns: # 危险命令模式（支持正则表达式）
+      - "rm -rf"
+      - ":(){ :|:& };:"            # fork 炸弹
+      - "dd if="
+      - "> /dev/sda"
+      - "mkfs\\."
+      - "chmod -R 777"
+    allowed_commands: [ ]          # 白名单命令（如果为空，则使用黑名单模式）
+
+  # 网络访问限制配置
+  network:
+    denied_domains: # 禁止访问的域名
+      - "169.254.169.254"          # AWS metadata endpoint
+      - "metadata.google.internal"  # GCP metadata endpoint
+      - "100.100.100.200"          # 阿里云 metadata endpoint
+
+# ==================== Shell UI 配置 ====================
+
+shell_ui:
+  # 显示配置
+  show_spinner: true                    # 是否显示进度指示器（旋转动画）
+  show_token_usage: false               # 是否显示 Token 消耗统计
+  tool_display_mode: minimal            # 工具调用显示模式：full/compact/minimal
+  tool_args_truncate_length: 100        # 工具参数截断长度（紧凑模式下）
+
+  # 旋转动画配置
+  spinner_type: dots                    # 旋转动画类型：dots/arrows/circles
+  spinner_interval_ms: 100              # 旋转动画更新间隔（毫秒）
+
+  # 提示符配置
+  # - simple: 简洁模式，只有图标和名称
+  # - normal: 标准模式，显示图标、名称和状态
+  # - rich: 丰富模式，显示图标、名称、状态、消息数和 Token 数
+  prompt_style: normal                  # 提示符样式：simple/normal/rich
+  show_time_in_prompt: false            # 是否在提示符中显示时间
+  show_context_stats: false             # 是否在提示符中显示上下文统计
+
+  # 快捷提示配置
+  show_shortcuts_hint: true             # 是否显示快捷操作提示
+  shortcuts_hint_frequency: first_time  # 快捷提示显示频率：always/first_time/periodic
+  shortcuts_hint_interval: 10           # 定期显示的间隔（交互次数）
+
+  # 主题与通知配置
+  theme_name: default                   # 主题名称
+  enable_desktop_notification: true     # 是否启用桌面通知
+  enable_notification_sound: true       # 是否启用终端提示音

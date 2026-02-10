@@ -13,7 +13,26 @@
 
     <artifactId>adk-tools-extended</artifactId>
     <name>ADK Tools Extended</name>
-    <description>扩展工具集（Grep/StrReplace/Web 等）</description>
+    <description>Extended tools that require external dependencies beyond JDK standard libraries.
+
+        Separation Criteria: This module contains tools that depend on third-party libraries
+        such as Spring WebFlux (for HTTP), java-diff-utils (for patch), etc. Separating them
+        from adk-tools keeps the core tool set lightweight and allows applications to opt-in
+        to extended capabilities selectively.
+
+        Included tools:
+        - GrepTool          : Regex search in files
+        - StrReplaceFileTool: String replacement editing (requires approval)
+        - PatchFileTool     : Apply unified diff patches (depends on java-diff-utils)
+        - FetchURLTool      : Fetch web page content (depends on Spring WebFlux)
+        - WebSearchTool     : Web search capability (depends on Spring WebFlux)
+        - SetTodoListTool   : Todo list management
+        - AskHumanTool      : Human-in-the-loop interaction
+        - TaskTool           : Sub-agent task delegation
+        - MetaTool          : Meta-programming via JShell
+
+        External dependencies: spring-webflux, reactor-netty-http, java-diff-utils
+    </description>
 
     <dependencies>
         <!-- ADK API -->

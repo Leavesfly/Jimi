@@ -1,0 +1,53 @@
+# Default Agent 配置
+name: Default-Agent
+description: 通用软件开发助手
+
+# 系统提示词文件路径
+system_prompt: system_prompt.md
+
+# 系统提示词参数（可选）
+system_prompt_args: { }
+
+# 指定模型（可选，如果不指定则使用全局默认模型）
+model: qwen3-max
+
+# 可用工具列表
+tools:
+  # 文件操作:
+  - Glob
+  - grep
+  - read_file
+  - str_replace_file
+  - write_file
+  - list_dir
+
+  # Shell:
+  - bash
+
+  # Web:
+  - fetch_url
+  - web_search
+
+  # 其他:
+  - AskHuman
+  - set_todo_list
+  - Task
+  - patch_file
+
+# 子 Agent 配置
+subagents:
+  Architect-Agent:
+    path: architect/agent.yaml
+    description: 需求分析、架构设计、技术方案和任务规划
+  Code-Agent:
+    path: code/agent.yaml
+    description: 代码实现、重构、优化和调试
+  Quality-Agent:
+    path: quality/agent.yaml
+    description: 代码质量审查、测试执行和质量保障
+  DevOps-Agent:
+    path: devops/agent.yaml
+    description: 项目构建、应用部署和运维管理
+  Doc-Agent:
+    path: doc/agent.yaml
+    description: 技术文档编写、维护和技术信息调研

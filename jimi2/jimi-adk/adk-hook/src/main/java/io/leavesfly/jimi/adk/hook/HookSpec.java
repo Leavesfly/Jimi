@@ -1,7 +1,7 @@
 package io.leavesfly.jimi.adk.hook;
 
 import io.leavesfly.jimi.adk.api.model.ExecutionSpec;
-import io.leavesfly.jimi.adk.core.validation.ExecutionSpecValidator;
+import io.leavesfly.jimi.adk.api.model.ExecutionSpecValidator;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;

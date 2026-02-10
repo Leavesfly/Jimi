@@ -1,0 +1,35 @@
+# Code Agent - 专门负责代码实现、重构与调试
+name: Code-Agent
+description: 专门负责代码实现、重构、优化和调试的智能体
+
+# 系统提示词
+system_prompt: system_prompt.md
+
+# 系统提示词参数
+system_prompt_args: {}
+
+# 指定模型（可选，如果不指定则使用全局默认模型）
+model: qwen3-coder-plus
+
+# 可用工具（专注于代码编写）
+tools:
+  # 文件操作:
+  - Glob
+  - grep
+  - read_file
+  - str_replace_file
+  - write_file
+  - list_dir
+
+  # Shell:
+  - bash
+
+  # Web:
+  - fetch_url
+  - web_search
+
+  # 其他:
+  - AskHuman
+  - set_todo_list
+  - patch_file
+  - Task

@@ -14,7 +14,27 @@
     <packaging>jar</packaging>
 
     <name>ADK Core - Core Implementation</name>
-    <description>Core implementation of Jimi ADK</description>
+    <description>Core implementation of Jimi ADK.
+
+        This module provides the default implementations of adk-api interfaces and the
+        JimiRuntime bootstrap factory. It is the central assembly point for all ADK components.
+
+        Package responsibilities:
+        - engine/      : DefaultEngine (agentic loop), Compaction (context compression)
+        - context/     : DefaultContext (conversation history management)
+        - wire/        : DefaultWire (message bus for streaming events)
+        - tool/        : DefaultToolRegistry (tool registration and invocation)
+        - session/     : DefaultSession, DefaultSessionManager (lightweight, interface in adk-api)
+        - sandbox/     : SandboxConfig, SandboxValidator (command safety validation)
+        - agent/       : Agent model and AgentSpec builder
+
+        Architecture Notes:
+        - Session and Sandbox are intentionally kept in adk-core (not separate modules) due to
+          their small code size. They are already abstracted via interfaces in adk-api.
+        - JimiRuntime.builder() is the unified bootstrap entry point for all application layers
+          (CLI, Web, Desktop, IntelliJ). Application-specific differences (Agent definition,
+          LLM configuration) are intentionally left to each application module.
+    </description>
 
     <dependencies>
         <!-- Internal -->

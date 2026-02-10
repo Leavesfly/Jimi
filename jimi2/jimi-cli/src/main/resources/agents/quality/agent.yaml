@@ -1,0 +1,25 @@
+# Quality Agent - 专门负责代码审查、测试和质量保障
+name: Quality-Agent
+description: 专门负责代码质量审查、测试执行和质量保障的智能体
+
+# 系统提示词
+system_prompt: system_prompt.md
+
+# 系统提示词参数
+system_prompt_args: {}
+
+# 指定模型（可选，如果不指定则使用全局默认模型）
+model: glm-4.7
+
+# 可用工具（专注于代码审查）
+tools:
+  - bash
+  - read_file
+  - write_file
+  - str_replace_file
+  - Glob
+  - grep
+  - web_search
+  - fetch_url
+  - set_todo_list
+  - list_dir

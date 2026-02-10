@@ -14,7 +14,20 @@
     <packaging>jar</packaging>
 
     <name>ADK Knowledge - Knowledge System</name>
-    <description>Knowledge system including Graph, RAG, Memory, and Wiki</description>
+    <description>Knowledge system including Graph, RAG, Memory, and Wiki.
+
+        This module contains four sub-systems with distinct responsibilities:
+        - graph/   : Code Graph (AST parsing, code navigation, impact analysis) - depends on JavaParser
+        - rag/     : Vector Retrieval (embedding, chunking, similarity search) - depends on Embedding API
+        - memory/  : Long-term Memory (project insights, task history, error patterns)
+        - wiki/    : Documentation Generation (auto-generated project wiki)
+
+        Architecture Note:
+        Each sub-system has its own SPI interface defined in the api/ package (GraphService,
+        RagService, MemoryService, WikiService). KnowledgeService acts as a unified facade.
+        These sub-systems are candidates for future module extraction (adk-graph, adk-rag,
+        adk-memory) when the codebase grows and independent versioning is needed.
+    </description>
 
     <dependencies>
         <!-- Internal -->

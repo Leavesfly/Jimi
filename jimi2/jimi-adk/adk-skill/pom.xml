@@ -16,6 +16,12 @@
     <description>Skill system for Jimi Application Development Kit</description>
 
     <dependencies>
+        <!-- ADK API -->
+        <dependency>
+            <groupId>io.leavesfly.jimi</groupId>
+            <artifactId>adk-api</artifactId>
+        </dependency>
+
         <!-- Lombok -->
         <dependency>
             <groupId>org.projectlombok</groupId>

@@ -1,12 +1,11 @@
-package io.leavesfly.jimi.adk.core.validation;
-
-import io.leavesfly.jimi.adk.api.model.CompositeStepSpec;
-import io.leavesfly.jimi.adk.api.model.ExecutionSpec;
+package io.leavesfly.jimi.adk.api.model;
 
 /**
  * ExecutionSpec 验证器
  * <p>
  * 将验证逻辑从数据模型中分离，保持 API 层的 DTO 纯净性。
+ * 放置在 adk-api 模块中，使得所有依赖 ExecutionSpec 的模块都可以直接使用验证能力，
+ * 而无需依赖 adk-core。
  * </p>
  */
 public final class ExecutionSpecValidator {
