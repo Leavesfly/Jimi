@@ -267,6 +267,26 @@ public class SkillInjector {
     }
     
     /**
+     * 标记 Skill 为已激活（不注入内容，仅记录状态）
+     * <p>
+     * 供 ReadSkillTool 在 PROGRESSIVE 模式下调用。
+     * 当 LLM 通过 ReadSkill 工具主动加载了某个 Skill 的内容后，
+     * 调用此方法将其标记为已激活，防止后续重复加载。
+     *
+     * @param skill 要标记的 Skill
+     */
+    public void markAsActive(SkillSpec skill) {
+        if (skill != null && skill.getName() != null) {
+            if (activeSkillNames.add(skill.getName())) {
+                activeSkills.add(skill);
+                log.info("Marked skill as active (progressive disclosure): {}", skill.getName());
+            } else {
+                log.debug("Skill '{}' is already active, skipping", skill.getName());
+            }
+        }
+    }
+    
+    /**
      * 清理所有激活状态
      */
     public void clearActiveSkills() {

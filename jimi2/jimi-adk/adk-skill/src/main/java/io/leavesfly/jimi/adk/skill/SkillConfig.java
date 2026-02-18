@@ -11,6 +11,10 @@ public class SkillConfig {
     private boolean enabled = true;
     private boolean autoMatch = true;
     private boolean enableClaudeCodeCompatibility = true;
+    
+    /** 披露模式：EAGER（默认，向后兼容）或 PROGRESSIVE（逐步披露） */
+    private DisclosureMode disclosureMode = DisclosureMode.EAGER;
+    
     private MatchingConfig matching = new MatchingConfig();
     private CacheConfig cache = new CacheConfig();
     private LoggingConfig logging = new LoggingConfig();

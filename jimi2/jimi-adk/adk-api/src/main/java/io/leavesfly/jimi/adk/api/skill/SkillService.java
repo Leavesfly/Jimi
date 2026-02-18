@@ -76,4 +76,36 @@ public interface SkillService {
      * @return 是否已初始化
      */
     boolean isInitialized();
+
+    /**
+     * 获取 Skills 摘要文本（用于系统提示注入）
+     * <p>
+     * 在 PROGRESSIVE 模式下，返回 {@code <available_skills>} XML 摘要，
+     * 仅包含 name + description，极低 token 成本。
+     * 在 EAGER 模式下，返回空字符串（不需要摘要）。
+     *
+     * @return 摘要文本，无 Skill 时返回空字符串
+     */
+    default String getSkillsSummary() {
+        return "";
+    }
+
+    /**
+     * 获取指定 Skill 的完整内容（用于 ReadSkill 工具按需加载）
+     *
+     * @param skillName Skill 名称
+     * @return Skill 完整内容，未找到时返回 null
+     */
+    default String getSkillContent(String skillName) {
+        return null;
+    }
+
+    /**
+     * 获取当前的披露模式名称
+     *
+     * @return 披露模式名称（如 "EAGER" 或 "PROGRESSIVE"）
+     */
+    default String getDisclosureModeName() {
+        return "EAGER";
+    }
 }

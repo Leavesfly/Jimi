@@ -24,14 +24,28 @@ public class DefaultSkillService implements SkillService {
     private final SkillRegistry skillRegistry;
     private final SkillMatcher skillMatcher;
     private final SkillInjector skillInjector;
+    private final SkillConfig skillConfig;
+    private final SkillSummaryBuilder summaryBuilder;
     private volatile boolean initialized = false;
 
     public DefaultSkillService(SkillRegistry skillRegistry,
                                SkillMatcher skillMatcher,
-                               SkillInjector skillInjector) {
+                               SkillInjector skillInjector,
+                               SkillConfig skillConfig) {
         this.skillRegistry = skillRegistry;
         this.skillMatcher = skillMatcher;
         this.skillInjector = skillInjector;
+        this.skillConfig = skillConfig;
+        this.summaryBuilder = new SkillSummaryBuilder(skillRegistry);
+    }
+
+    /**
+     * 向后兼容的构造函数（不传 SkillConfig 时默认 EAGER 模式）
+     */
+    public DefaultSkillService(SkillRegistry skillRegistry,
+                               SkillMatcher skillMatcher,
+                               SkillInjector skillInjector) {
+        this(skillRegistry, skillMatcher, skillInjector, null);
     }
 
     /**
@@ -63,6 +77,18 @@ public class DefaultSkillService implements SkillService {
             return null;
         }
 
+        // PROGRESSIVE 模式：不主动注入，由 LLM 通过 ReadSkill 工具按需加载
+        if (getDisclosureMode() == DisclosureMode.PROGRESSIVE) {
+            List<SkillSpec> matched = skillMatcher.matchFromInput(inputText);
+            if (!matched.isEmpty()) {
+                log.info("[PROGRESSIVE] Potential skills for input (LLM will decide via ReadSkill tool): {}",
+                    matched.stream().map(SkillSpec::getName)
+                        .collect(java.util.stream.Collectors.joining(", ")));
+            }
+            return null;
+        }
+
+        // EAGER 模式：保持现有行为
         List<SkillSpec> matched = skillMatcher.matchFromInput(inputText);
         if (matched.isEmpty()) {
             return null;
@@ -126,6 +152,36 @@ public class DefaultSkillService implements SkillService {
         return skillInjector;
     }
 
+    @Override
+    public String getSkillsSummary() {
+        if (!initialized) {
+            return "";
+        }
+        return summaryBuilder.buildSummary();
+    }
+
+    @Override
+    public String getSkillContent(String skillName) {
+        return skillRegistry.findByName(skillName)
+                .map(SkillSpec::getContent)
+                .orElse(null);
+    }
+
+    @Override
+    public String getDisclosureModeName() {
+        return getDisclosureMode().name();
+    }
+
+    /**
+     * 获取当前的披露模式
+     */
+    public DisclosureMode getDisclosureMode() {
+        if (skillConfig != null) {
+            return skillConfig.getDisclosureMode();
+        }
+        return DisclosureMode.EAGER;
+    }
+
     private SkillDescriptor toDescriptor(SkillSpec spec) {
         return SkillDescriptor.builder()
                 .name(spec.getName())
@@ -134,6 +190,8 @@ public class DefaultSkillService implements SkillService {
                 .category(spec.getCategory())
                 .triggers(spec.getTriggers())
                 .scope(spec.getScope() != null ? spec.getScope().name() : null)
+                .hasResources(spec.getResourcesPath() != null)
+                .hasScripts(spec.getScriptsPath() != null)
                 .build();
     }
 }

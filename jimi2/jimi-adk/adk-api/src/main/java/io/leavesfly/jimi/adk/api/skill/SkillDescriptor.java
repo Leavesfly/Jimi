@@ -40,4 +40,12 @@ public class SkillDescriptor {
 
     /** 作用域：GLOBAL 或 PROJECT */
     private String scope;
+
+    /** 是否有辅助资源文件 */
+    @Builder.Default
+    private boolean hasResources = false;
+
+    /** 是否有可执行脚本 */
+    @Builder.Default
+    private boolean hasScripts = false;
 }
