@@ -1,8 +1,0 @@
-server:
-  port: 8080
-
-spring:
-  main:
-    banner-mode: off
-  webflux:
-    static-path-pattern: "/**"
