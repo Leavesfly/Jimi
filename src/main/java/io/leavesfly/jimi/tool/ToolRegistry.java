@@ -7,7 +7,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import io.leavesfly.jimi.core.engine.toolcall.ArgumentsNormalizer;
+
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Mono;
 
@@ -98,13 +98,8 @@ public class ToolRegistry {
 
             Tool<?> tool = toolOpt.get();
 
-            String effectiveArguments = "";
+            String effectiveArguments = arguments;
             try {
-
-                log.info("Parsed parameters before for {}: {}", toolName, arguments);
-
-                // 将参数转成标准的json格式
-                effectiveArguments = ArgumentsNormalizer.normalizeToValidJson(arguments, objectMapper);
 
                 log.info("Parsed parameters after for {}: {}", toolName, effectiveArguments);
 

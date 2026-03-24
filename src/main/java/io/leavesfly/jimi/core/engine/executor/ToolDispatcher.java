@@ -5,7 +5,7 @@ import io.leavesfly.jimi.core.engine.context.Context;
 import io.leavesfly.jimi.core.engine.hook.HookContext;
 import io.leavesfly.jimi.core.engine.hook.HookRegistry;
 import io.leavesfly.jimi.core.engine.hook.HookType;
-import io.leavesfly.jimi.core.engine.toolcall.ToolCallValidator;
+
 import io.leavesfly.jimi.core.engine.toolcall.ToolErrorTracker;
 
 import io.leavesfly.jimi.llm.message.Message;
@@ -37,7 +37,7 @@ public class ToolDispatcher {
 
     private final ToolRegistry toolRegistry;
     private final Wire wire;
-    private final ToolCallValidator toolCallValidator;
+
     private final ToolErrorTracker toolErrorTracker;
     private final HookRegistry hookRegistry;
     private final Path workDir;
@@ -56,7 +56,7 @@ public class ToolDispatcher {
         this.toolRegistry = toolRegistry;
         this.workDir = workDir;
         wire = SpringContextUtils.getBean(Wire.class);
-        toolCallValidator = SpringContextUtils.getBean(ToolCallValidator.class);
+
         toolErrorTracker = SpringContextUtils.getBean(ToolErrorTracker.class);
         this.hookRegistry = SpringContextUtils.getBean(HookRegistry.class);
     }
@@ -73,17 +73,17 @@ public class ToolDispatcher {
         log.info("Starting sequential execution of {} tool calls", toolCalls.size());
 
         return Flux.fromIterable(toolCalls).index().concatMap(tuple -> {
-            long toolIndex = tuple.getT1();
-            ToolCall toolCall = tuple.getT2();
+                    long toolIndex = tuple.getT1();
+                    ToolCall toolCall = tuple.getT2();
 
-            log.info("Executing tool call #{}/{}", toolIndex + 1, toolCalls.size());
+                    log.info("Executing tool call #{}/{}", toolIndex + 1, toolCalls.size());
 
-            return executeToolCall(toolCall, context).doOnError(e -> log.error("Tool call #{} failed", toolIndex, e)).onErrorResume(e -> {
-                log.error("Caught error in tool call #{}, returning error message", toolIndex, e);
-                String toolCallId = (toolCall != null && toolCall.getId() != null) ? toolCall.getId() : "unknown_" + toolIndex;
-                return Mono.just(Message.tool(toolCallId, "Tool execution failed: " + e.getMessage()));
-            });
-        }).collectList().doOnNext(results -> log.info("Collected {} tool results after sequential execution", results.size()))
+                    return executeToolCall(toolCall, context).doOnError(e -> log.error("Tool call #{} failed", toolIndex, e)).onErrorResume(e -> {
+                        log.error("Caught error in tool call #{}, returning error message", toolIndex, e);
+                        String toolCallId = (toolCall != null && toolCall.getId() != null) ? toolCall.getId() : "unknown_" + toolIndex;
+                        return Mono.just(Message.tool(toolCallId, "Tool execution failed: " + e.getMessage()));
+                    });
+                }).collectList().doOnNext(results -> log.info("Collected {} tool results after sequential execution", results.size()))
                 .flatMap(results -> context.appendMessage(results).doOnSuccess(v -> log.info("Successfully appended {} tool results to context", results.size()))
                         .doOnError(e -> log.error("Failed to append tool results to context", e)));
     }
@@ -99,19 +99,12 @@ public class ToolDispatcher {
         return Mono.defer(() -> {
             try {
 
-                ToolCallValidator.ValidationResult validation = toolCallValidator.validate(toolCall);
-                if (!validation.isValid()) {
-                    log.error("Tool call validation failed: {}", validation.getErrorMessage());
-                    ToolResult errorResult = ToolResult.error(validation.getErrorMessage(), "Validation failed");
-                    wire.send(new ToolResultMessage(validation.getToolCallId(), errorResult));
-                    return Mono.just(Message.tool(validation.getToolCallId(), validation.getErrorMessage()));
-                }
 
                 // 发送工具调用开始消息到 Wire
                 wire.send(new ToolCallMessage(toolCall));
 
                 String toolName = toolCall.getFunction().getName();
-                String toolCallId = validation.getToolCallId();
+                String toolCallId = toolCall.getId();
                 String rawArgs = toolCall.getFunction().getArguments();
                 String toolSignature = toolName + ":" + rawArgs;
 
