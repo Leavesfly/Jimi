@@ -177,40 +177,35 @@ public class LLMFactory {
             case KIMI:
                 return new KimiChatProvider(model, config, objectMapper);
 
-            case DEEPSEEK:
-                return new OpenAICompatibleChatProvider(
-                        model, config, objectMapper, "DeepSeek");
-
-            case QWEN:
-                return new OpenAICompatibleChatProvider(
-                        model, config, objectMapper, "Qwen");
-
-            case OLLAMA:
-                return new OpenAICompatibleChatProvider(
-                        model, config, objectMapper, "Ollama");
-
-            case OPENAI:
-                return new OpenAICompatibleChatProvider(
-                        model, config, objectMapper, "OpenAI");
-
-            case CLAUDE:
-                return new OpenAICompatibleChatProvider(
-                        model, config, objectMapper, "Claude");
-
             case CURSOR:
-                return new CursorChatProvider(
-                        model, config, objectMapper);
-
-            case GLM:
-                return new OpenAICompatibleChatProvider(
-                        model, config, objectMapper, "GLM");
-
-            case MINIMAX:
-                return new OpenAICompatibleChatProvider(
-                        model, config, objectMapper, "MiniMax");
+                return new CursorChatProvider(model, config, objectMapper);
 
             default:
-                throw new ConfigException("Unsupported provider type: " + type);
+                return new OpenAICompatibleChatProvider(
+                        model, config, objectMapper, formatProviderLabel(type));
+        }
+    }
+
+    /**
+     * 格式化 Provider label
+     * 将 ProviderType 的枚举名称转换为友好的显示名称
+     * 例如: DEEPSEEK -> DeepSeek, OPENAI -> OpenAI, MINIMAX -> MiniMax
+     *
+     * @param type Provider 类型
+     * @return 格式化后的 label
+     */
+    private String formatProviderLabel(LLMProviderConfig.ProviderType type) {
+        String name = type.name();
+
+        // 特殊情况处理
+        switch (name) {
+            case "OPENAI":
+                return "OpenAI";
+            case "MINIMAX":
+                return "MiniMax";
+            default:
+                // 通用逻辑：首字母大写，其余小写
+                return name.substring(0, 1).toUpperCase() + name.substring(1).toLowerCase();
         }
     }
 

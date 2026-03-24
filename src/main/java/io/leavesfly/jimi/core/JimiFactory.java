@@ -18,7 +18,6 @@ import io.leavesfly.jimi.core.engine.runtime.Runtime;
 import io.leavesfly.jimi.tool.ToolRegistry;
 import io.leavesfly.jimi.tool.ToolRegistryFactory;
 import io.leavesfly.jimi.wire.Wire;
-
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -210,15 +209,16 @@ public class JimiFactory {
 
                 knowledgeService.initialize(runtime);
 
-                // 8. 创建 JimiEngine（使用 Builder 模式）
-                JimiEngine soul = JimiEngine.builder()
+                // 8. 创建 JimiEngine
+                AgentExecutor executor = AgentExecutor.builder()
                         .agent(agent)
                         .runtime(runtime)
                         .context(context)
+                        .wire(wire)
                         .toolRegistry(toolRegistry)
-                        .wire(wire)  // 使用注入的 Wire Bean
-                        .compaction(compaction)  // 使用注入的 Compaction Bean
+                        .compaction(compaction)
                         .build();
+                JimiEngine soul = JimiEngine.create(executor);
 
                 // 9. 恢复上下文历史
                 return context.restore()

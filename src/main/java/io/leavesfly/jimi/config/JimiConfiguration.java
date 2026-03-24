@@ -8,9 +8,7 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import io.leavesfly.jimi.config.info.*;
 import io.leavesfly.jimi.core.compaction.Compaction;
 import io.leavesfly.jimi.core.compaction.SimpleCompaction;
-import io.leavesfly.jimi.core.engine.executor.ContextManager;
-import io.leavesfly.jimi.core.engine.executor.MemoryRecorder;
-import io.leavesfly.jimi.core.engine.executor.ResponseProcessor;
+
 import io.leavesfly.jimi.core.sandbox.SandboxValidator;
 import io.leavesfly.jimi.exception.ConfigException;
 import io.leavesfly.jimi.knowledge.graph.GraphManager;
@@ -18,12 +16,10 @@ import io.leavesfly.jimi.knowledge.rag.*;
 import io.leavesfly.jimi.wire.Wire;
 import io.leavesfly.jimi.wire.WireImpl;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
-import org.springframework.context.annotation.Scope;
 
 import java.io.IOException;
 import java.net.URL;
@@ -107,85 +103,28 @@ public class JimiConfiguration {
     }
 
     /**
-     * GraphConfig Bean - 代码图配置
-     * 从 JimiConfig 中获取
+     * 子配置 Bean —— 从 JimiConfig 中提取，供其他 Bean 注入使用
      */
     @Bean
-    @Autowired
-    public GraphConfig graphConfig(JimiConfig jimiConfig) {
-        return jimiConfig.getGraph();
-    }
+    public GraphConfig graphConfig(JimiConfig jimiConfig) { return jimiConfig.getGraph(); }
 
-    /**
-     * GraphManager Bean - 代码图管理器
-     * 统一管理代码图的生命周期
-     */
     @Bean
-    @Autowired
+    public MetaToolConfig metaToolConfig(JimiConfig jimiConfig) { return jimiConfig.getMetaTool(); }
+
+    @Bean
+    public MemoryConfig memoryConfig(JimiConfig jimiConfig) { return jimiConfig.getMemory(); }
+
+    @Bean
+    public VectorIndexConfig vectorIndexConfig(JimiConfig jimiConfig) { return jimiConfig.getVectorIndex(); }
+
+    @Bean
     public GraphManager graphManager(GraphConfig graphConfig) {
         return new GraphManager(graphConfig);
     }
 
-    /**
-     * ShellUIConfig Bean - Shell UI 配置
-     * 从 JimiConfig 中获取
-     */
     @Bean
-    @Autowired
-    public ShellUIConfig shellUIConfig(JimiConfig jimiConfig) {
-        return jimiConfig.getShellUI();
-    }
-
-    /**
-     * MetaToolConfig Bean - MetaTool 配置
-     * 从 JimiConfig 中获取
-     */
-    @Bean
-    @Autowired
-    public MetaToolConfig metaToolConfig(JimiConfig jimiConfig) {
-        return jimiConfig.getMetaTool();
-    }
-
-    /**
-     * MemoryConfig Bean - 记忆模块配置
-     * 从 JimiConfig 中获取
-     */
-    @Bean
-    @Autowired
-    public MemoryConfig memoryConfig(JimiConfig jimiConfig) {
-        return jimiConfig.getMemory();
-    }
-
-    /**
-     * SandboxConfig Bean - 沙箱配置
-     * 从 JimiConfig 中获取
-     */
-    @Bean
-    @Autowired
-    public SandboxConfig sandboxConfig(JimiConfig jimiConfig) {
-        return jimiConfig.getSandbox();
-    }
-
-    /**
-     * SandboxValidator Bean - 沙箱验证器
-     * 需要 SandboxConfig 和工作目录
-     * 工作目录会在运行时动态设置，这里先用null初始化
-     */
-    @Bean
-    @Autowired
-    public SandboxValidator sandboxValidator(SandboxConfig sandboxConfig) {
-        // 工作目录会在 JimiFactory 创建 Runtime 时设置
-        return new SandboxValidator(sandboxConfig, null);
-    }
-
-    /**
-     * VectorIndexConfig Bean - 向量索引配置
-     * 从 JimiConfig 中获取
-     */
-    @Bean
-    @Autowired
-    public VectorIndexConfig vectorIndexConfig(JimiConfig jimiConfig) {
-        return jimiConfig.getVectorIndex();
+    public SandboxValidator sandboxValidator(JimiConfig jimiConfig) {
+        return new SandboxValidator(jimiConfig.getSandbox(), null);
     }
 
     // ==================== 向量索引相关组件 ====================
@@ -195,7 +134,6 @@ public class JimiConfiguration {
      * 根据 JimiConfig 中的 vector_index.enabled 配置条件性创建
      */
     @Bean
-    @Autowired
     public EmbeddingProvider embeddingProvider(JimiConfig jimiConfig, ObjectMapper objectMapper) {
         VectorIndexConfig config = jimiConfig.getVectorIndex();
 
@@ -237,7 +175,6 @@ public class JimiConfiguration {
      * 根据 JimiConfig 中的 vector_index.enabled 配置条件性创建
      */
     @Bean
-    @Autowired
     public VectorStore vectorStore(JimiConfig jimiConfig, EmbeddingProvider embeddingProvider, ObjectMapper objectMapper) {
         VectorIndexConfig config = jimiConfig.getVectorIndex();
 
@@ -282,7 +219,6 @@ public class JimiConfiguration {
      * 根据 JimiConfig 中的 vector_index.enabled 配置条件性创建
      */
     @Bean
-    @Autowired
     public Chunker chunker(JimiConfig jimiConfig) {
         VectorIndexConfig config = jimiConfig.getVectorIndex();
 

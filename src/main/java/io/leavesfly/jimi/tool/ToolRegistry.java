@@ -258,6 +258,29 @@ public class ToolRegistry {
     }
 
     /**
+     * 将 Java 类型映射到 JSON Schema 类型
+     *
+     * @param type Java 类型
+     * @return JSON Schema 类型字符串，如果需要特殊处理则返回 null
+     */
+    private String mapJavaTypeToJsonType(Class<?> type) {
+        if (type == String.class) {
+            return "string";
+        } else if (type == Integer.class || type == int.class) {
+            return "integer";
+        } else if (type == Long.class || type == long.class) {
+            return "integer";
+        } else if (type == Boolean.class || type == boolean.class) {
+            return "boolean";
+        } else if (type == Double.class || type == double.class) {
+            return "number";
+        } else if (type == Float.class || type == float.class) {
+            return "number";
+        }
+        return null;
+    }
+
+    /**
      * 生成字段的 JSON Schema
      * 支持基本类型、List 和嵌套对象
      *
@@ -267,21 +290,15 @@ public class ToolRegistry {
     private void generateFieldSchema(Field field, ObjectNode propSchema) {
         Class<?> fieldType = field.getType();
 
-        // 处理基本类型
-        if (fieldType == String.class) {
-            propSchema.put("type", "string");
-        } else if (fieldType == Integer.class || fieldType == int.class) {
-            propSchema.put("type", "integer");
-        } else if (fieldType == Long.class || fieldType == long.class) {
-            propSchema.put("type", "integer");
-        } else if (fieldType == Boolean.class || fieldType == boolean.class) {
-            propSchema.put("type", "boolean");
-        } else if (fieldType == Double.class || fieldType == double.class) {
-            propSchema.put("type", "number");
-        } else if (fieldType == Float.class || fieldType == float.class) {
-            propSchema.put("type", "number");
-        } else if (List.class.isAssignableFrom(fieldType)) {
-            // 处理 List 类型，解析泛型参数
+        // 使用公共方法处理基本类型
+        String jsonType = mapJavaTypeToJsonType(fieldType);
+        if (jsonType != null) {
+            propSchema.put("type", jsonType);
+            return;
+        }
+
+        // 处理 List 类型，解析泛型参数
+        if (List.class.isAssignableFrom(fieldType)) {
             propSchema.put("type", "array");
 
             // 获取泛型参数
@@ -324,21 +341,15 @@ public class ToolRegistry {
      * @param schema Schema 节点
      */
     private void generateTypeSchema(Class<?> type, ObjectNode schema) {
-        // 处理基本类型
-        if (type == String.class) {
-            schema.put("type", "string");
-        } else if (type == Integer.class || type == int.class) {
-            schema.put("type", "integer");
-        } else if (type == Long.class || type == long.class) {
-            schema.put("type", "integer");
-        } else if (type == Boolean.class || type == boolean.class) {
-            schema.put("type", "boolean");
-        } else if (type == Double.class || type == double.class) {
-            schema.put("type", "number");
-        } else if (type == Float.class || type == float.class) {
-            schema.put("type", "number");
-        } else if (type.isEnum()) {
-            // 处理枚举类型
+        // 使用公共方法处理基本类型
+        String jsonType = mapJavaTypeToJsonType(type);
+        if (jsonType != null) {
+            schema.put("type", jsonType);
+            return;
+        }
+
+        // 处理枚举类型
+        if (type.isEnum()) {
             schema.put("type", "string");
             ArrayNode enumValues = objectMapper.createArrayNode();
             for (Object constant : type.getEnumConstants()) {

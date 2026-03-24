@@ -4,6 +4,9 @@ import io.leavesfly.jimi.core.agent.Agent;
 import io.leavesfly.jimi.core.compaction.Compaction;
 import io.leavesfly.jimi.core.engine.context.Context;
 import io.leavesfly.jimi.core.engine.executor.*;
+import io.leavesfly.jimi.core.engine.hook.HookContext;
+import io.leavesfly.jimi.core.engine.hook.HookRegistry;
+import io.leavesfly.jimi.core.engine.hook.HookType;
 import io.leavesfly.jimi.core.engine.runtime.Runtime;
 import io.leavesfly.jimi.exception.MaxStepsReachedException;
 import io.leavesfly.jimi.exception.RunCancelledException;
@@ -11,6 +14,7 @@ import io.leavesfly.jimi.exception.RunCancelledException;
 import io.leavesfly.jimi.llm.LLM;
 import io.leavesfly.jimi.llm.message.ContentPart;
 import io.leavesfly.jimi.llm.message.Message;
+import io.leavesfly.jimi.llm.message.TextPart;
 import io.leavesfly.jimi.tool.ToolRegistry;
 
 import io.leavesfly.jimi.util.SpringContextUtils;
@@ -53,6 +57,7 @@ public class AgentExecutor {
     private final MemoryRecorder memoryRecorder;
     private final ResponseProcessor responseProcessor;
     private final ContextManager contextManager;
+    private final HookRegistry hookRegistry;
 
     // ==================== 可选配置 ====================
     private final boolean isSubagent;
@@ -81,9 +86,9 @@ public class AgentExecutor {
         this.memoryRecorder = SpringContextUtils.getBean(MemoryRecorder.class);
         this.responseProcessor = SpringContextUtils.getBean(ResponseProcessor.class);
         this.contextManager = SpringContextUtils.getBean(ContextManager.class);
-
-
+        this.hookRegistry = SpringContextUtils.getBean(HookRegistry.class);
     }
+
 
     /**
      * 创建 Builder
@@ -183,6 +188,17 @@ public class AgentExecutor {
      * @return 执行完成的 Mono
      */
     public Mono<Void> execute(List<ContentPart> userInput) {
+        return execute(userInput, false);
+    }
+
+    /**
+     * 执行 Agent 任务
+     *
+     * @param userInput     用户输入
+     * @param skipKnowledge 是否跳过知识检索和 Skill 匹配（用于系统内部续问场景）
+     * @return 执行完成的 Mono
+     */
+    public Mono<Void> execute(List<ContentPart> userInput, boolean skipKnowledge) {
         return Mono.defer(() -> {
 
             // 初始化任务跟踪
@@ -200,37 +216,106 @@ public class AgentExecutor {
             String userQuery = memoryRecorder.extractHighLevelIntent(userInput);
             executionState.setCurrentUserQuery(userQuery);
 
+            // 构建用户输入文本（用于 Hook 上下文）
+            String userInputText = extractUserInputText(userInput);
+
+            // 触发 PRE_USER_INPUT hook
+            HookContext preInputHookContext = HookContext.builder()
+                    .hookType(HookType.PRE_USER_INPUT)
+                    .workDir(runtime.getWorkDir())
+                    .userInput(userInputText)
+                    .agentName(agentName)
+                    .build();
+
             // 创建检查点 0，添加用户消息（Context 内部自动提取高层意图），并更新 Token 计数
-            return context.checkpoint(false)
+            return triggerHookSafely(HookType.PRE_USER_INPUT, preInputHookContext)
+                    .then(context.checkpoint(false))
                     .then(context.appendMessage(userMessage))
                     .then(context.updateTokenCount(newTokenCount))
                     .doOnSuccess(v -> log.debug("Added user input: {} tokens (total: {})", userInputTokens, newTokenCount))
                     // Agent 主循环
-                    .then(agentLoop())
+                    .then(agentLoop(skipKnowledge))
 
                     .doOnSuccess(v -> {
                         log.info("Agent execution completed");
                         memoryRecorder.recordTaskHistory(executionState, context, "success").subscribe();
                         executionState.incrementTasksCompleted();
+
+                        // 触发 POST_USER_INPUT hook（异步，不阻塞主流程）
+                        HookContext postInputHookContext = HookContext.builder()
+                                .hookType(HookType.POST_USER_INPUT)
+                                .workDir(runtime.getWorkDir())
+                                .userInput(userInputText)
+                                .agentName(agentName)
+                                .build();
+                        triggerHookSafely(HookType.POST_USER_INPUT, postInputHookContext).subscribe();
                     })
                     .doOnError(e -> {
                         log.error("Agent execution failed", e);
                         memoryRecorder.recordTaskHistory(executionState, context, "failed").subscribe();
+
+                        // 触发 ON_ERROR hook（异步，不阻塞主流程）
+                        HookContext errorHookContext = HookContext.builder()
+                                .hookType(HookType.ON_ERROR)
+                                .workDir(runtime.getWorkDir())
+                                .errorMessage(e.getMessage())
+                                .errorStackTrace(getStackTraceString(e))
+                                .agentName(agentName)
+                                .build();
+                        triggerHookSafely(HookType.ON_ERROR, errorHookContext).subscribe();
                     });
         });
     }
 
     /**
+     * 从用户输入内容中提取文本
+     */
+    private String extractUserInputText(List<ContentPart> userInput) {
+        return userInput.stream()
+                .filter(part -> part instanceof TextPart)
+                .map(part -> ((TextPart) part).getText())
+                .reduce("", (a, b) -> a.isEmpty() ? b : a + "\n" + b);
+    }
+
+    /**
+     * 获取异常堆栈字符串
+     */
+    private String getStackTraceString(Throwable throwable) {
+        java.io.StringWriter stringWriter = new java.io.StringWriter();
+        throwable.printStackTrace(new java.io.PrintWriter(stringWriter));
+        return stringWriter.toString();
+    }
+
+    /**
+     * 安全触发 Hook，捕获异常避免影响主流程
+     */
+    private Mono<Void> triggerHookSafely(HookType hookType, HookContext hookContext) {
+        try {
+            return hookRegistry.trigger(hookType, hookContext)
+                    .onErrorResume(e -> {
+                        log.warn("Hook trigger failed for type {}: {}", hookType, e.getMessage());
+                        return Mono.empty();
+                    });
+        } catch (Exception e) {
+            log.warn("Hook trigger failed for type {}: {}", hookType, e.getMessage());
+            return Mono.empty();
+        }
+    }
+
+    /**
      * Agent 主循环
      */
-    private Mono<Void> agentLoop() {
-        return Mono.defer(() -> agentLoopStep(1));
+    private Mono<Void> agentLoop(boolean skipKnowledge) {
+        return Mono.defer(() -> agentLoopStep(1, skipKnowledge));
     }
 
     /**
      * Agent 循环步骤
+     *
+     * @param stepNo        当前步骤号
+     * @param skipKnowledge 是否跳过知识检索和 Skill 匹配
      */
-    private Mono<Void> agentLoopStep(int stepNo) {
+    private Mono<Void> agentLoopStep(int stepNo, boolean skipKnowledge) {
         // 检查是否已取消
         if (runtime.getSession().isCancelled()) {
             log.info("Agent '{}' cancelled at step {}", agentName != null ? agentName : "main", stepNo);
@@ -258,24 +343,27 @@ public class AgentExecutor {
 
         return Mono.defer(() -> {
             // 检查上下文是否超限，触发压缩
-            return contextManager.checkAndCompact(context, runtime.getLlm(), compaction)
+            Mono<Void> pipeline = contextManager.checkAndCompact(context, runtime.getLlm(), compaction)
                     .then(context.checkpoint(false))
+                    .then();
 
-                    // 注入Skills
-                    .then(contextManager.matchAndInjectSkills(context, stepNo))
-                    // 注入知识
-                    .then(contextManager.matchAndInjectKnowlwdge(context, stepNo))
+            // 仅在非跳过模式下注入 Skills 和知识
+            if (!skipKnowledge) {
+                pipeline = pipeline
+                        .then(contextManager.matchAndInjectSkills(context, stepNo))
+                        .then(contextManager.matchAndInjectKnowlwdge(context, stepNo));
+            }
 
-                    //执行单步
+            return pipeline
                     .then(step())
-
                     .flatMap(finished -> {
                         if (finished) {
                             log.info("Agent '{}' loop finished at local step {}, global step {}",
                                     agentName != null ? agentName : "main", stepNo, globalStepNo);
                             return Mono.empty();
                         } else {
-                            return agentLoopStep(stepNo + 1);
+                            // 后续步骤中 skipKnowledge 不再生效（stepNo > 1 时 ContextManager 本身就会跳过）
+                            return agentLoopStep(stepNo + 1, skipKnowledge);
                         }
                     })
                     .then()
@@ -302,10 +390,38 @@ public class AgentExecutor {
                     .generateStream(systemPrompt, context.getHistory(), toolSchemas)
                     .contextWrite(ctx -> ctx.put("workDir", runtime.getWorkDir()))
                     .reduce(new ResponseProcessor.StreamAccumulator(), responseProcessor::processStreamChunk)
-                    .flatMap(acc -> responseProcessor.handleStreamCompletion(acc, context, executionState, toolRegistry))
+                    .flatMap(acc -> responseProcessor.handleStreamCompletion(acc, context, executionState, toolRegistry, runtime.getWorkDir()))
                     .onErrorResume(responseProcessor::handleLLMError);
         });
     }
 
+    // ==================== Getter 方法 ====================
 
+    public Agent getAgent() {
+        return agent;
+    }
+
+    public Runtime getRuntime() {
+        return runtime;
+    }
+
+    public Context getContext() {
+        return context;
+    }
+
+    public Wire getWire() {
+        return wire;
+    }
+
+    public ToolRegistry getToolRegistry() {
+        return toolRegistry;
+    }
+
+    public boolean isSubagent() {
+        return isSubagent;
+    }
+
+    public Compaction getCompaction() {
+        return compaction;
+    }
 }

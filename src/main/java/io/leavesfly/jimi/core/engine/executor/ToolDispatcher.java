@@ -2,6 +2,9 @@ package io.leavesfly.jimi.core.engine.executor;
 
 
 import io.leavesfly.jimi.core.engine.context.Context;
+import io.leavesfly.jimi.core.engine.hook.HookContext;
+import io.leavesfly.jimi.core.engine.hook.HookRegistry;
+import io.leavesfly.jimi.core.engine.hook.HookType;
 import io.leavesfly.jimi.core.engine.toolcall.ToolCallValidator;
 import io.leavesfly.jimi.core.engine.toolcall.ToolErrorTracker;
 
@@ -17,6 +20,7 @@ import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.nio.file.Path;
 import java.util.List;
 
 /**
@@ -35,17 +39,26 @@ public class ToolDispatcher {
     private final Wire wire;
     private final ToolCallValidator toolCallValidator;
     private final ToolErrorTracker toolErrorTracker;
-
+    private final HookRegistry hookRegistry;
+    private final Path workDir;
 
     /**
      * 基础构造函数
      */
     public ToolDispatcher(ToolRegistry toolRegistry) {
+        this(toolRegistry, null);
+    }
 
+    /**
+     * 带工作目录的构造函数（支持 Hook 触发）
+     */
+    public ToolDispatcher(ToolRegistry toolRegistry, Path workDir) {
         this.toolRegistry = toolRegistry;
+        this.workDir = workDir;
         wire = SpringContextUtils.getBean(Wire.class);
         toolCallValidator = SpringContextUtils.getBean(ToolCallValidator.class);
         toolErrorTracker = SpringContextUtils.getBean(ToolErrorTracker.class);
+        this.hookRegistry = SpringContextUtils.getBean(HookRegistry.class);
     }
 
 
@@ -118,17 +131,54 @@ public class ToolDispatcher {
      */
     private Mono<Message> executeValidToolCall(String toolName, String arguments, String toolCallId, String toolSignature, Context context) {
 
-        return toolRegistry.execute(toolName, arguments).doOnNext(result -> {
-            // 发送工具执行结果消息到 Wire
-            wire.send(new ToolResultMessage(toolCallId, result));
+        // 触发 PRE_TOOL_CALL hook
+        HookContext preHookContext = HookContext.builder()
+                .hookType(HookType.PRE_TOOL_CALL)
+                .workDir(workDir)
+                .toolName(toolName)
+                .toolCallId(toolCallId)
+                .build();
 
-        }).map(result -> convertToolResultToMessage(result, toolCallId, toolSignature, context)).onErrorResume(e -> {
-            log.error("Tool execution failed: {}", toolName, e);
-            ToolResult errorResult = ToolResult.error("Tool execution error: " + e.getMessage(), "Execution failed");
-            wire.send(new ToolResultMessage(toolCallId, errorResult));
+        return triggerHookSafely(HookType.PRE_TOOL_CALL, preHookContext)
+                .then(toolRegistry.execute(toolName, arguments))
+                .doOnNext(result -> {
+                    // 发送工具执行结果消息到 Wire
+                    wire.send(new ToolResultMessage(toolCallId, result));
 
-            return Mono.just(Message.tool(toolCallId, "Tool execution error: " + e.getMessage()));
-        });
+                    // 触发 POST_TOOL_CALL hook（异步，不阻塞主流程）
+                    HookContext postHookContext = HookContext.builder()
+                            .hookType(HookType.POST_TOOL_CALL)
+                            .workDir(workDir)
+                            .toolName(toolName)
+                            .toolCallId(toolCallId)
+                            .toolResult(formatToolResult(result))
+                            .build();
+                    triggerHookSafely(HookType.POST_TOOL_CALL, postHookContext).subscribe();
+                })
+                .map(result -> convertToolResultToMessage(result, toolCallId, toolSignature, context))
+                .onErrorResume(e -> {
+                    log.error("Tool execution failed: {}", toolName, e);
+                    ToolResult errorResult = ToolResult.error("Tool execution error: " + e.getMessage(), "Execution failed");
+                    wire.send(new ToolResultMessage(toolCallId, errorResult));
+
+                    return Mono.just(Message.tool(toolCallId, "Tool execution error: " + e.getMessage()));
+                });
+    }
+
+    /**
+     * 安全触发 Hook，捕获异常避免影响主流程
+     */
+    private Mono<Void> triggerHookSafely(HookType hookType, HookContext hookContext) {
+        try {
+            return hookRegistry.trigger(hookType, hookContext)
+                    .onErrorResume(e -> {
+                        log.warn("Hook trigger failed for type {}: {}", hookType, e.getMessage());
+                        return Mono.empty();
+                    });
+        } catch (Exception e) {
+            log.warn("Hook trigger failed for type {}: {}", hookType, e.getMessage());
+            return Mono.empty();
+        }
     }
 
     /**

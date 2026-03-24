@@ -4,6 +4,7 @@ import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.nio.file.Path;
@@ -173,17 +174,14 @@ public class HookRegistry {
         
         log.info("Executing {} matched hooks for type: {}", matchedHooks.size(), type);
         
-        // 依次执行所有匹配的 Hook (按优先级顺序)
-        return Mono.fromRunnable(() -> {
-            for (HookSpec hook : matchedHooks) {
-                try {
-                    executor.execute(hook, context).block();
-                } catch (Exception e) {
-                    log.error("Hook execution failed: {}", hook.getName(), e);
-                    // 继续执行其他 Hook
-                }
-            }
-        });
+        // 依次执行所有匹配的 Hook (按优先级顺序，非阻塞)
+        return Flux.fromIterable(matchedHooks)
+                .concatMap(hook -> executor.execute(hook, context)
+                        .onErrorResume(e -> {
+                            log.error("Hook execution failed: {}", hook.getName(), e);
+                            return Mono.empty();
+                        }))
+                .then();
     }
     
     /**

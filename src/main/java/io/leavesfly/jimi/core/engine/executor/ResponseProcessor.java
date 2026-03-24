@@ -12,6 +12,8 @@ import io.leavesfly.jimi.tool.ToolRegistry;
 import io.leavesfly.jimi.wire.Wire;
 import io.leavesfly.jimi.wire.message.ContentPartMessage;
 import io.leavesfly.jimi.wire.message.TokenUsageMessage;
+
+import java.nio.file.Path;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -223,6 +225,14 @@ public class ResponseProcessor {
      */
     public Mono<Boolean> handleStreamCompletion(StreamAccumulator acc, Context context
             , ExecutionState executionState, ToolRegistry toolRegistry) {
+        return handleStreamCompletion(acc, context, executionState, toolRegistry, null);
+    }
+
+    /**
+     * 处理流式完成后的逻辑（带工作目录，支持 Hook 触发）
+     */
+    public Mono<Boolean> handleStreamCompletion(StreamAccumulator acc, Context context
+            , ExecutionState executionState, ToolRegistry toolRegistry, Path workDir) {
 
         Message assistantMessage = buildMessageFromAccumulator(acc);
 
@@ -247,7 +257,7 @@ public class ResponseProcessor {
 
         return updateTokens
                 .then(context.appendMessage(assistantMessage))
-                .then(processAssistantMessage(assistantMessage, context, executionState, toolRegistry));
+                .then(processAssistantMessage(assistantMessage, context, executionState, toolRegistry, workDir));
     }
 
     /**
@@ -374,7 +384,7 @@ public class ResponseProcessor {
      * @return 是否完成（true 表示循环结束）
      */
     private Mono<Boolean> processAssistantMessage(Message assistantMessage, Context context
-            , ExecutionState executionState, ToolRegistry toolRegistry) {
+            , ExecutionState executionState, ToolRegistry toolRegistry, Path workDir) {
 
         if (assistantMessage.getToolCalls() == null || assistantMessage.getToolCalls().isEmpty()) {
             if (executionState.shouldForceComplete(5)) {
@@ -392,7 +402,7 @@ public class ResponseProcessor {
 
         log.info("准备执行 {} 个工具调用", assistantMessage.getToolCalls().size());
 
-        ToolDispatcher toolDispatcher = new ToolDispatcher(toolRegistry);
+        ToolDispatcher toolDispatcher = new ToolDispatcher(toolRegistry, workDir);
 
         return toolDispatcher.executeToolCalls(assistantMessage.getToolCalls(), context)
                 .then(Mono.defer(() -> {

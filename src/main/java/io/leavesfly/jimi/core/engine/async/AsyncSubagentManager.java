@@ -3,6 +3,7 @@ package io.leavesfly.jimi.core.engine.async;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.leavesfly.jimi.core.agent.Agent;
 import io.leavesfly.jimi.core.agent.AgentSpec;
+import io.leavesfly.jimi.core.AgentExecutor;
 import io.leavesfly.jimi.core.JimiEngine;
 import io.leavesfly.jimi.core.compaction.SimpleCompaction;
 import io.leavesfly.jimi.core.engine.runtime.Runtime;
@@ -244,16 +245,17 @@ public class AsyncSubagentManager {
                 // 创建独立 Wire
                 Wire subWire = new WireImpl();
 
-                // 创建引擎（使用 Builder 模式）
-                JimiEngine engine = JimiEngine.builder()
+                // 创建引擎
+                AgentExecutor executor = AgentExecutor.builder()
                         .agent(asyncSubagent.getAgent())
                         .runtime(runtime)
                         .context(context)
-                        .toolRegistry(toolRegistry)
                         .wire(subWire)
+                        .toolRegistry(toolRegistry)
                         .compaction(new SimpleCompaction())
                         .isSubagent(true)
                         .build();
+                JimiEngine engine = JimiEngine.create(executor);
                 asyncSubagent.setEngine(engine);
 
                 // 编译正则表达式
@@ -436,16 +438,17 @@ public class AsyncSubagentManager {
 //                // 创建独立 Wire
                 Wire subWire = new WireImpl();
 
-                // 创建引擎（使用 Builder 模式）
-                JimiEngine engine = JimiEngine.builder()
+                // 创建引擎
+                AgentExecutor fireAndForgetExecutor = AgentExecutor.builder()
                         .agent(asyncSubagent.getAgent())
                         .runtime(runtime)
                         .context(context)
-                        .toolRegistry(toolRegistry)
                         .wire(subWire)
+                        .toolRegistry(toolRegistry)
                         .compaction(new SimpleCompaction())
                         .isSubagent(true)
                         .build();
+                JimiEngine engine = JimiEngine.create(fireAndForgetExecutor);
                 asyncSubagent.setEngine(engine);
 
                 // Wire 事件转发（仅转发关键事件）

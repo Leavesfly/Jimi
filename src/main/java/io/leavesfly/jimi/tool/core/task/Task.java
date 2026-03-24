@@ -9,6 +9,7 @@ import io.leavesfly.jimi.core.agent.AgentSpec;
 import io.leavesfly.jimi.core.agent.SubagentSpec;
 import io.leavesfly.jimi.core.compaction.SimpleCompaction;
 import io.leavesfly.jimi.core.session.Session;
+import io.leavesfly.jimi.core.AgentExecutor;
 import io.leavesfly.jimi.core.JimiEngine;
 import io.leavesfly.jimi.core.agent.Agent;
 import io.leavesfly.jimi.core.engine.context.Context;
@@ -380,15 +381,16 @@ public class Task extends AbstractTool<Task.Params> implements WireAware {
      * 创建子 JimiEngine（使用 Builder 模式）
      */
     private JimiEngine createSubSoul(Agent agent, Context subContext, ToolRegistry subToolRegistry) {
-        return JimiEngine.builder()
+        AgentExecutor executor = AgentExecutor.builder()
                 .agent(agent)
                 .runtime(runtime)
                 .context(subContext)
-                .toolRegistry(subToolRegistry)
                 .wire(parentWire != null ? parentWire : new WireImpl())
+                .toolRegistry(subToolRegistry)
                 .compaction(new SimpleCompaction())
                 .isSubagent(true)
                 .build();
+        return JimiEngine.create(executor);
     }
 
 //    /**
@@ -432,7 +434,7 @@ public class Task extends AbstractTool<Task.Params> implements WireAware {
         if (response.length() < minResponseLength) {
             log.debug("Subagent response too brief ({}), requesting continuation", response.length());
 
-            return subSoul.run(continuePrompt).then(Mono.defer(() -> {
+            return subSoul.run(continuePrompt, true).then(Mono.defer(() -> {
                 List<Message> updatedHistory = subContext.getHistory();
                 if (!updatedHistory.isEmpty()) {
                     Message continueMsg = updatedHistory.get(updatedHistory.size() - 1);

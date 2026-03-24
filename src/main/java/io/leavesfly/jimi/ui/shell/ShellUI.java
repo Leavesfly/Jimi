@@ -1,6 +1,9 @@
 package io.leavesfly.jimi.ui.shell;
 
 import io.leavesfly.jimi.core.JimiEngine;
+import io.leavesfly.jimi.core.engine.hook.HookContext;
+import io.leavesfly.jimi.core.engine.hook.HookRegistry;
+import io.leavesfly.jimi.core.engine.hook.HookType;
 import io.leavesfly.jimi.core.interaction.approval.ApprovalRequest;
 import io.leavesfly.jimi.core.interaction.approval.ApprovalResponse;
 import io.leavesfly.jimi.core.interaction.HumanInputRequest;
@@ -97,6 +100,9 @@ public class ShellUI implements AutoCloseable {
     
     // 通知服务
     private final NotificationService notificationService;
+    
+    // Hook 注册表
+    private final HookRegistry hookRegistry;
 
     /**
      * 创建 Shell UI
@@ -156,6 +162,9 @@ public class ShellUI implements AutoCloseable {
         
         // 获取通知服务
         this.notificationService = applicationContext.getBean(io.leavesfly.jimi.ui.notification.NotificationService.class);
+        
+        // 获取 Hook 注册表
+        this.hookRegistry = applicationContext.getBean(HookRegistry.class);
 
         // 获取工作目录
         Path workingDir = soul.getRuntime().getSession().getWorkDir();
@@ -389,6 +398,9 @@ public class ShellUI implements AutoCloseable {
         return Mono.defer(() -> {
             running.set(true);
 
+            // 触发 ON_SESSION_START hook
+            triggerSessionHook(HookType.ON_SESSION_START);
+
             // 打印欢迎信息
             printWelcome();
 
@@ -422,8 +434,34 @@ public class ShellUI implements AutoCloseable {
                 }
             }
 
+            // 触发 ON_SESSION_END hook
+            triggerSessionHook(HookType.ON_SESSION_END);
+
             return Mono.just(true);
         });
+    }
+
+    /**
+     * 触发会话生命周期 Hook
+     */
+    private void triggerSessionHook(HookType hookType) {
+        try {
+            Path workDir = soul.getRuntime().getWorkDir();
+            String agentName = soul.getAgent() != null ? soul.getAgent().getName() : null;
+
+            HookContext hookContext = HookContext.builder()
+                    .hookType(hookType)
+                    .workDir(workDir)
+                    .agentName(agentName)
+                    .build();
+
+            hookRegistry.trigger(hookType, hookContext)
+                    .doOnError(e -> log.warn("Session hook trigger failed for type {}: {}", hookType, e.getMessage()))
+                    .onErrorResume(e -> reactor.core.publisher.Mono.empty())
+                    .block();
+        } catch (Exception e) {
+            log.warn("Failed to trigger session hook {}: {}", hookType, e.getMessage());
+        }
     }
 
     /**
