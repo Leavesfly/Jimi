@@ -5,9 +5,7 @@ import io.leavesfly.jimi.core.engine.hook.HookContext;
 import io.leavesfly.jimi.core.engine.hook.HookRegistry;
 import io.leavesfly.jimi.core.engine.hook.HookType;
 import io.leavesfly.jimi.core.interaction.approval.ApprovalRequest;
-import io.leavesfly.jimi.core.interaction.approval.ApprovalResponse;
 import io.leavesfly.jimi.core.interaction.HumanInputRequest;
-import io.leavesfly.jimi.core.interaction.HumanInputResponse;
 import io.leavesfly.jimi.llm.ChatCompletionResult;
 import io.leavesfly.jimi.llm.message.ContentPart;
 import io.leavesfly.jimi.llm.message.TextPart;
@@ -21,6 +19,7 @@ import io.leavesfly.jimi.ui.shell.input.AgentCommandProcessor;
 import io.leavesfly.jimi.ui.shell.input.InputProcessor;
 import io.leavesfly.jimi.ui.shell.input.MetaCommandProcessor;
 import io.leavesfly.jimi.ui.shell.input.ShellShortcutProcessor;
+import io.leavesfly.jimi.ui.shell.output.AssistantTextRenderer;
 import io.leavesfly.jimi.ui.shell.output.OutputFormatter;
 import io.leavesfly.jimi.ui.ToolVisualization;
 import io.leavesfly.jimi.wire.Wire;
@@ -63,41 +62,37 @@ public class ShellUI implements AutoCloseable {
     private final AtomicBoolean running;
     private final AtomicReference<String> currentStatus;
     private final Map<String, String> activeTools; // ConcurrentHashMap, accessed from Wire subscriber thread
-    private final AtomicBoolean assistantOutputStarted;
-    private final AtomicInteger currentLineLength; // 当前行的字符计数
-    private final AtomicBoolean isInReasoningMode; // 当前是否在推理模式
     private Disposable wireSubscription;
 
     // Shell UI 配置
     private final ShellUIConfig uiConfig;
-    
+
     // 主题配置
     private ThemeConfig theme;
-    
-    // 旋转动画相关
-    private Thread spinnerThread;
-    private final AtomicBoolean showSpinner;
-    private final AtomicReference<String> spinnerMessage;
-    
-    // Token 统计
-    private final AtomicInteger currentStepTokens; // 当前步骤的Token消耗
-    
+
     // 快捷提示计数器
-    private final AtomicInteger interactionCount; // 交互次数计数器
-    private final AtomicBoolean welcomeHintShown; // 是否已显示欢迎提示
-    private final AtomicBoolean inputHintShown; // 是否已显示输入提示
-    private final AtomicBoolean thinkingHintShown; // 是否已显示思考提示
+    private final AtomicInteger interactionCount;
+    private final AtomicBoolean welcomeHintShown;
+    private final AtomicBoolean inputHintShown;
+    private final AtomicBoolean thinkingHintShown;
 
     // 插件化组件
     private final OutputFormatter outputFormatter;
     private final CommandRegistry commandRegistry;
     private final List<InputProcessor> inputProcessors;
-    
+
     // 通知服务
     private final NotificationService notificationService;
-    
+
     // Hook 注册表
     private final HookRegistry hookRegistry;
+
+    // 委托组件
+    private final SpinnerManager spinnerManager;
+    private final PromptBuilder promptBuilder;
+    private final AssistantTextRenderer renderer;
+    private final InteractionHandler interactionHandler;
+    private final AsyncSubagentEventDisplay asyncDisplay;
 
     /**
      * 创建 Shell UI
@@ -112,30 +107,12 @@ public class ShellUI implements AutoCloseable {
         this.running = new AtomicBoolean(false);
         this.currentStatus = new AtomicReference<>("ready");
         this.activeTools = new ConcurrentHashMap<>();
-        this.assistantOutputStarted = new AtomicBoolean(false);
-        this.currentLineLength = new AtomicInteger(0);
-        this.isInReasoningMode = new AtomicBoolean(false);
         // 获取 UI 配置
         this.uiConfig = soul.getRuntime().getConfig().getShellUI();
-        
+
         // 初始化主题
-        String themeName = uiConfig.getThemeName();
-        if (themeName != null && !themeName.isEmpty()) {
-            this.theme = ThemeConfig.getPresetTheme(themeName);
-        } else {
-            this.theme = uiConfig.getTheme();
-        }
-        if (this.theme == null) {
-            this.theme = ThemeConfig.defaultTheme();
-        }
-        
-        // 初始化旋转动画相关
-        this.showSpinner = new AtomicBoolean(false);
-        this.spinnerMessage = new AtomicReference<>("");
-        
-        // 初始化 Token 统计
-        this.currentStepTokens = new AtomicInteger(0);
-        
+        this.theme = resolveTheme();
+
         // 初始化快捷提示计数器
         this.interactionCount = new AtomicInteger(0);
         this.welcomeHintShown = new AtomicBoolean(false);
@@ -151,10 +128,10 @@ public class ShellUI implements AutoCloseable {
         // 从 Spring 容器获取 CommandRegistry（已自动注册所有命令）
         this.commandRegistry = applicationContext.getBean(CommandRegistry.class);
         log.info("Loaded CommandRegistry with {} commands from Spring context", commandRegistry.size());
-        
+
         // 获取通知服务
         this.notificationService = applicationContext.getBean(io.leavesfly.jimi.ui.notification.NotificationService.class);
-        
+
         // 获取 Hook 注册表
         this.hookRegistry = applicationContext.getBean(HookRegistry.class);
 
@@ -182,6 +159,13 @@ public class ShellUI implements AutoCloseable {
 
         // 初始化输出格式化器
         this.outputFormatter = new OutputFormatter(terminal, theme);
+
+        // 初始化委托组件
+        this.renderer = new AssistantTextRenderer(terminal, theme);
+        this.spinnerManager = new SpinnerManager(terminal, uiConfig);
+        this.promptBuilder = new PromptBuilder(currentStatus, uiConfig, theme, soul);
+        this.interactionHandler = new InteractionHandler(terminal, outputFormatter, lineReader, renderer);
+        this.asyncDisplay = new AsyncSubagentEventDisplay(terminal, outputFormatter, notificationService, uiConfig, renderer);
 
         // 初始化输入处理器
         this.inputProcessors = new ArrayList<>();
@@ -242,19 +226,19 @@ public class ShellUI implements AutoCloseable {
             } else if (message instanceof ApprovalRequest approvalRequest) {
                 log.info("[ShellUI] Received ApprovalRequest: action={}, description={}",
                         approvalRequest.getAction(), approvalRequest.getDescription());
-                handleApprovalRequest(approvalRequest);
+                interactionHandler.handleApprovalRequest(approvalRequest);
             } else if (message instanceof HumanInputRequest humanInputRequest) {
                 log.info("[ShellUI] Received HumanInputRequest: type={}, question={}",
                         humanInputRequest.getInputType(), truncateForLog(humanInputRequest.getQuestion()));
-                handleHumanInputRequest(humanInputRequest);
+                interactionHandler.handleHumanInputRequest(humanInputRequest);
             } else if (message instanceof AsyncSubagentStarted asyncStarted) {
-                handleAsyncSubagentStarted(asyncStarted);
+                asyncDisplay.handleStarted(asyncStarted);
             } else if (message instanceof AsyncSubagentProgress asyncProgress) {
-                handleAsyncSubagentProgress(asyncProgress);
+                asyncDisplay.handleProgress(asyncProgress);
             } else if (message instanceof AsyncSubagentCompleted asyncCompleted) {
-                handleAsyncSubagentCompleted(asyncCompleted);
+                asyncDisplay.handleCompleted(asyncCompleted);
             } else if (message instanceof AsyncSubagentTrigger asyncTrigger) {
-                handleAsyncSubagentTrigger(asyncTrigger);
+                asyncDisplay.handleTrigger(asyncTrigger);
             } else {
                 log.debug("Unhandled wire message type: {}", message.getClass().getSimpleName());
             }
@@ -264,8 +248,6 @@ public class ShellUI implements AutoCloseable {
     }
 
     private void handleStepBegin(StepBegin stepBegin) {
-        currentStepTokens.set(0);
-
         if (stepBegin.isSubagent()) {
             String agentName = stepBegin.getAgentName() != null ? stepBegin.getAgentName() : "subagent";
             printStatus("  🤖 [" + agentName + "] Step " + stepBegin.getStepNumber() + " - Thinking...");
@@ -274,25 +256,20 @@ public class ShellUI implements AutoCloseable {
             printStatus("🧠 Step " + stepBegin.getStepNumber() + " - Thinking...");
 
             if (uiConfig.isShowSpinner()) {
-                startSpinner("正在思考...");
+                spinnerManager.start("正在思考...");
             }
             if (stepBegin.getStepNumber() == 1) {
                 showShortcutsHint("thinking");
             }
 
-            assistantOutputStarted.set(false);
-            currentLineLength.set(0);
-            isInReasoningMode.set(false);
+            renderer.resetForNewStep();
         }
     }
 
     private void handleStepInterrupted() {
         currentStatus.set("interrupted");
         activeTools.clear();
-        if (assistantOutputStarted.getAndSet(false)) {
-            terminal.writer().println();
-            terminal.flush();
-        }
+        renderer.flushLineIfNeeded();
         printError("⚠️  Step interrupted");
         showShortcutsHint("error");
     }
@@ -315,25 +292,22 @@ public class ShellUI implements AutoCloseable {
 
     private void handleContentPart(ContentPartMessage contentMsg) {
         if (uiConfig.isShowSpinner()) {
-            stopSpinner();
+            spinnerManager.stop();
         }
 
         ContentPart part = contentMsg.getContentPart();
         if (part instanceof TextPart textPart) {
             boolean isReasoning = contentMsg.getContentType() == ContentPartMessage.ContentType.REASONING;
-            printAssistantText(textPart.getText(), isReasoning);
+            renderer.print(textPart.getText(), isReasoning);
         }
     }
 
     private void handleToolCall(ToolCallMessage toolCallMsg) {
         if (uiConfig.isShowSpinner()) {
-            stopSpinner();
+            spinnerManager.stop();
         }
 
-        if (assistantOutputStarted.getAndSet(false)) {
-            terminal.writer().println();
-            terminal.flush();
-        }
+        renderer.flushLineIfNeeded();
 
         ToolCall toolCall = toolCallMsg.getToolCall();
         String toolName = toolCall.getFunction().getName();
@@ -457,159 +431,12 @@ public class ShellUI implements AutoCloseable {
      */
     private String readLine() {
         try {
-            String prompt = buildPrompt();
-            return lineReader.readLine(prompt);
+            return lineReader.readLine(promptBuilder.build());
         } catch (UserInterruptException e) {
             throw e;
         } catch (EndOfFileException e) {
             return null;
         }
-    }
-
-    /**
-     * 构建提示符
-     */
-    private String buildPrompt() {
-        return switch (uiConfig.getPromptStyle()) {
-            case "simple" -> buildSimplePrompt();
-            case "rich" -> buildRichPrompt();
-            default -> buildNormalPrompt();
-        };
-    }
-    
-    /**
-     * 构建简洁提示符（只有图标和名称）
-     */
-    private String buildSimplePrompt() {
-        String status = currentStatus.get();
-        AttributedStyle style = getStyleForStatus(status);
-        String icon = getIconForStatus(status);
-        
-        String promptText = icon + " jimi> ";
-        return new AttributedString(promptText, style).toAnsi();
-    }
-    
-    /**
-     * 构建标准提示符（图标、名称和状态）
-     */
-    private String buildNormalPrompt() {
-        String status = currentStatus.get();
-        AttributedStyle style = getStyleForStatus(status);
-        String icon = getIconForStatus(status);
-
-        StringBuilder promptText = new StringBuilder();
-        promptText.append(icon).append(" jimi");
-
-        if ("compacting".equals(status)) {
-            promptText.append("[🗂️]");
-        }
-
-        promptText.append("> ");
-        return new AttributedString(promptText.toString(), style).toAnsi();
-    }
-    
-    /**
-     * 构建丰富提示符（图标、名称、状态、上下文统计）
-     */
-    private String buildRichPrompt() {
-        String status = currentStatus.get();
-        AttributedStyle style = getStyleForStatus(status);
-        String icon = getIconForStatus(status);
-        
-        StringBuilder promptText = new StringBuilder();
-        
-        // 调试日志
-        log.debug("Building rich prompt - showTime: {}, showStats: {}", 
-            uiConfig.isShowTimeInPrompt(), uiConfig.isShowContextStats());
-        
-        // 时间（如果启用）
-        if (uiConfig.isShowTimeInPrompt()) {
-            String time = java.time.LocalTime.now().format(
-                java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss")
-            );
-            promptText.append("[").append(time).append("] ");
-            log.debug("Added time to prompt: {}", time);
-        }
-        
-        // 图标和名称
-        promptText.append(icon).append(" jimi");
-        
-        // 状态标签
-        if (status.startsWith("thinking")) {
-            promptText.append("[🧠]");
-        } else if (status.equals("compacting")) {
-            promptText.append("[🗂️]");
-        } else if (status.equals("interrupted")) {
-            promptText.append("[⚠️]");
-        } else if (status.equals("error")) {
-            promptText.append("[❌]");
-        }
-        
-        // 上下文统计（如果启用）
-        if (uiConfig.isShowContextStats()) {
-            try {
-                int messageCount = soul.getContext().getHistory().size();
-                int tokenCount = soul.getContext().getTokenCount();
-                
-                log.debug("Context stats - messages: {}, tokens: {}", messageCount, tokenCount);
-                
-                promptText.append(" [");
-                promptText.append("💬").append(messageCount);
-                
-                if (tokenCount > 0) {
-                    promptText.append(" 💡");
-                    // Token数格式化（K为单位）
-                    if (tokenCount >= 1000) {
-                        promptText.append(String.format("%.1fK", tokenCount / 1000.0));
-                    } else {
-                        promptText.append(tokenCount);
-                    }
-                }
-                
-                promptText.append("]");
-            } catch (Exception e) {
-                // 忽略错误，不显示统计
-                log.warn("Failed to get context stats", e);
-            }
-        }
-        
-        promptText.append("> ");
-        String result = new AttributedString(promptText.toString(), style).toAnsi();
-        log.debug("Final prompt text: {}", promptText.toString());
-        return result;
-    }
-    
-    /**
-     * 根据状态获取图标
-     */
-    private String getIconForStatus(String status) {
-        if (status.startsWith("thinking")) {
-            return "🧠";
-        }
-        return switch (status) {
-            case "compacting" -> "🗂️";
-            case "interrupted" -> "⚠️";
-            case "error" -> "❌";
-            default -> "✨";
-        };
-    }
-
-    /**
-     * 根据状态获取样式
-     */
-    private AttributedStyle getStyleForStatus(String status) {
-        if (status.startsWith("thinking")) {
-            AttributedStyle style = ColorMapper.createStyle(theme.getThinkingColor());
-            return theme.isBoldPrompt() ? style.bold() : style;
-        }
-        return switch (status) {
-            case "compacting" -> ColorMapper.createStyle(theme.getStatusColor());
-            case "interrupted", "error" -> ColorMapper.createStyle(theme.getErrorColor());
-            default -> {
-                AttributedStyle readyStyle = ColorMapper.createStyle(theme.getPromptColor());
-                yield theme.isBoldPrompt() ? readyStyle.bold() : readyStyle;
-            }
-        };
     }
 
     /**
@@ -661,134 +488,6 @@ public class ShellUI implements AutoCloseable {
         // 如果没有处理器匹配，打印错误
         outputFormatter.printError("无法处理输入: " + input);
         return true;
-    }
-
-    /**
-     * 打印助手文本输出（流式，带智能换行）
-     * 
-     * @param text 要打印的文本
-     * @param isReasoning 是否为推理内容（思考过程）
-     */
-    private void printAssistantText(String text, boolean isReasoning) {
-        if (text == null || text.isEmpty()) {
-            return;
-        }
-        
-        // 防止输出字符串 "null"
-        if ("null".equals(text)) {
-            log.warn("Received 'null' string as content, ignoring");
-            return;
-        }
-        
-        // 标记输出已开始
-        if (!assistantOutputStarted.getAndSet(true)) {
-            // 第一次输出，添加提示
-            terminal.writer().println();
-            terminal.flush();
-            currentLineLength.set(0);
-        }
-        
-        // 检查是否需要切换模式
-        boolean wasInReasoningMode = isInReasoningMode.get();
-        if (isReasoning != wasInReasoningMode) {
-            // 模式切换，添加标记
-            if (currentLineLength.get() > 0) {
-                terminal.writer().println();
-                currentLineLength.set(0);
-            }
-            
-            if (isReasoning) {
-                // 切换到推理模式
-                AttributedStyle labelStyle = AttributedStyle.DEFAULT
-                        .foreground(AttributedStyle.CYAN)
-                        .italic();
-                terminal.writer().println(new AttributedString("💡 [思考过程]", labelStyle).toAnsi());
-            } else {
-                // 切换到正式内容
-                terminal.writer().println(); // 空行分隔
-                AttributedStyle labelStyle = AttributedStyle.DEFAULT
-                        .foreground(AttributedStyle.GREEN)
-                        .bold();
-                terminal.writer().println(new AttributedString("✅ [正式回答]", labelStyle).toAnsi());
-            }
-            terminal.flush();
-            currentLineLength.set(0);
-            isInReasoningMode.set(isReasoning);
-        }
-
-        // 获取终端宽度，默认80，减去一些边距
-        int terminalWidth = terminal.getWidth();
-        int maxLineWidth = terminalWidth > 20 ? terminalWidth - 4 : 76;
-        
-        // 根据是否为推理内容设置不同的样式
-        AttributedStyle style;
-        if (isReasoning) {
-            // 推理内容：使用主题推理颜色
-            style = ColorMapper.createStyle(theme.getReasoningColor());
-            if (theme.isItalicReasoning()) {
-                style = style.italic();
-            }
-        } else {
-            // 正式内容：使用主题助手颜色
-            style = ColorMapper.createStyle(theme.getAssistantColor());
-        }
-        
-        // 逐字符处理，实现智能换行
-        for (int i = 0; i < text.length(); i++) {
-            char ch = text.charAt(i);
-            
-            // 处理换行符
-            if (ch == '\n') {
-                terminal.writer().println();
-                currentLineLength.set(0);
-                continue;
-            }
-            
-            // 检查是否需要自动换行
-            int charWidth = isChineseChar(ch) ? 2 : 1; // 中文字符占2个宽度
-            if (currentLineLength.get() + charWidth > maxLineWidth) {
-                // 如果不是在空格处，尝试找到合适的断点
-                if (ch != ' ' && i > 0 && text.charAt(i - 1) != ' ') {
-                    // 在中文字符或标点符号后可以直接换行
-                    if (isChineseChar(ch) || isChinesePunctuation(ch)) {
-                        terminal.writer().println();
-                        currentLineLength.set(0);
-                    } else {
-                        // 英文单词中间，先换行再输出
-                        terminal.writer().println();
-                        currentLineLength.set(0);
-                    }
-                } else {
-                    terminal.writer().println();
-                    currentLineLength.set(0);
-                    // 跳过行首空格
-                    if (ch == ' ') {
-                        continue;
-                    }
-                }
-            }
-            
-            // 输出字符
-            terminal.writer().print(new AttributedString(String.valueOf(ch), style).toAnsi());
-            currentLineLength.addAndGet(charWidth);
-        }
-        
-        terminal.flush();
-    }
-    
-    /**
-     * 判断是否为中文字符
-     */
-    private boolean isChineseChar(char ch) {
-        return ch >= 0x4E00 && ch <= 0x9FA5;
-    }
-    
-    /**
-     * 判断是否为中文标点符号
-     */
-    private boolean isChinesePunctuation(char ch) {
-        return (ch >= 0x3000 && ch <= 0x303F) || // CJK符号和标点
-               (ch >= 0xFF00 && ch <= 0xFFEF);   // 全角ASCII、全角标点
     }
 
     /**
@@ -892,287 +591,6 @@ public class ShellUI implements AutoCloseable {
     }
 
     /**
-     * 处理审批请求（在 Wire 订阅线程中调用）
-     * 直接在当前线程处理，不再使用队列
-     */
-    private void handleApprovalRequest(ApprovalRequest request) {
-        try {
-            log.info("[ShellUI] Processing approval request for action: {}", request.getAction());
-            
-            // 如果有助手输出，先换行
-            if (assistantOutputStarted.getAndSet(false)) {
-                terminal.writer().println();
-                terminal.flush();
-            }
-
-            // 打印审批请求
-            terminal.writer().println();
-            terminal.flush();
-            outputFormatter.printStatus("\u26a0\ufe0f  需要审批:");
-            outputFormatter.printInfo("  操作类型: " + request.getAction());
-            outputFormatter.printInfo("  操作描述: " + request.getDescription());
-            terminal.writer().println();
-            terminal.flush();
-
-            // 读取用户输入 - 直接在当前线程读取
-            String prompt = new AttributedString("\u2753 是否批准？[y/n/a] (y=批准, n=拒绝, a=本次会话全部批准): ",
-                    AttributedStyle.DEFAULT.foreground(AttributedStyle.YELLOW).bold())
-                    .toAnsi();
-
-            String response = lineReader.readLine(prompt).trim().toLowerCase();
-
-            // 解析响应
-            ApprovalResponse approvalResponse = switch (response) {
-                case "y", "yes" -> {
-                    outputFormatter.printSuccess("\u2705 已批准");
-                    yield ApprovalResponse.APPROVE;
-                }
-                case "a", "all" -> {
-                    outputFormatter.printSuccess("\u2705 已批准（本次会话全部同类操作）");
-                    yield ApprovalResponse.APPROVE_FOR_SESSION;
-                }
-                default -> {
-                    outputFormatter.printError("\u274c 已拒绝");
-                    yield ApprovalResponse.REJECT;
-                }
-            };
-
-            terminal.writer().println();
-            terminal.flush();
-
-            // 发送响应
-            request.resolve(approvalResponse);
-            
-            log.info("[ShellUI] Approval request resolved: {}", approvalResponse);
-
-        } catch (UserInterruptException e) {
-            // 用户按 Ctrl-C，默认拒绝
-            log.info("Approval interrupted by user");
-            outputFormatter.printError("\u274c 审批已取消");
-            request.resolve(ApprovalResponse.REJECT);
-        } catch (Exception e) {
-            log.error("Error handling approval request", e);
-            // 发生错误时默认拒绝
-            request.resolve(ApprovalResponse.REJECT);
-        }
-    }
-
-
-
-    /**
-     * 处理人工交互请求
-     * 显示问题并等待用户输入
-     */
-    private void handleHumanInputRequest(HumanInputRequest request) {
-        try {
-            // 如果有助手输出，先换行
-            if (assistantOutputStarted.getAndSet(false)) {
-                terminal.writer().println();
-                terminal.flush();
-            }
-
-            // 打印问题
-            terminal.writer().println();
-            outputFormatter.printStatus("\ud83e\udd14 Agent 需要您的反馈:");
-            outputFormatter.printInfo(request.getQuestion());
-            terminal.writer().println();
-            terminal.flush();
-
-            HumanInputResponse response;
-
-            switch (request.getInputType()) {
-                case CONFIRM -> {
-                    // 确认型：满意/需要修改/拒绝
-                    String prompt = new AttributedString(
-                            "\u2753 请选择 [y=满意继续 / m=需要修改 / n=拒绝]: ",
-                            AttributedStyle.DEFAULT.foreground(AttributedStyle.YELLOW).bold())
-                            .toAnsi();
-                    String input = lineReader.readLine(prompt).trim().toLowerCase();
-
-                    response = switch (input) {
-                        case "y", "yes", "满意" -> {
-                            outputFormatter.printSuccess("\u2705 已确认");
-                            yield HumanInputResponse.approved();
-                        }
-                        case "m", "modify", "修改" -> {
-                            String modificationPrompt = new AttributedString(
-                                    "\ud83d\udcdd 请输入修改意见: ",
-                                    AttributedStyle.DEFAULT.foreground(AttributedStyle.CYAN))
-                                    .toAnsi();
-                            String modification = lineReader.readLine(modificationPrompt);
-                            outputFormatter.printInfo("\ud83d\udcac 已记录修改意见");
-                            yield HumanInputResponse.needsModification(modification);
-                        }
-                        default -> {
-                            outputFormatter.printError("\u274c 已拒绝");
-                            yield HumanInputResponse.rejected();
-                        }
-                    };
-                }
-                case FREE_INPUT -> {
-                    // 自由输入型
-                    String defaultHint = request.getDefaultValue() != null
-                            ? " (默认: " + request.getDefaultValue() + ")"
-                            : "";
-                    String prompt = new AttributedString(
-                            "\ud83d\udcdd 请输入" + defaultHint + ": ",
-                            AttributedStyle.DEFAULT.foreground(AttributedStyle.CYAN))
-                            .toAnsi();
-                    String input = lineReader.readLine(prompt).trim();
-                    if (input.isEmpty() && request.getDefaultValue() != null) {
-                        input = request.getDefaultValue();
-                    }
-                    outputFormatter.printInfo("\u2705 已记录输入");
-                    response = HumanInputResponse.inputProvided(input);
-                }
-                case CHOICE -> {
-                    // 选择型
-                    List<String> choices = request.getChoices();
-                    if (choices != null && !choices.isEmpty()) {
-                        outputFormatter.printInfo("请从以下选项中选择:");
-                        for (int i = 0; i < choices.size(); i++) {
-                            outputFormatter.printInfo("  " + (i + 1) + ". " + choices.get(i));
-                        }
-                        String prompt = new AttributedString(
-                                "\ud83d\udc49 请输入选项序号: ",
-                                AttributedStyle.DEFAULT.foreground(AttributedStyle.CYAN))
-                                .toAnsi();
-                        String input = lineReader.readLine(prompt).trim();
-                        try {
-                            int index = Integer.parseInt(input) - 1;
-                            if (index >= 0 && index < choices.size()) {
-                                String selected = choices.get(index);
-                                outputFormatter.printSuccess("\u2705 已选择: " + selected);
-                                response = HumanInputResponse.inputProvided(selected);
-                            } else {
-                                outputFormatter.printError("\u274c 无效的选项序号");
-                                response = HumanInputResponse.rejected();
-                            }
-                        } catch (NumberFormatException e) {
-                            outputFormatter.printError("\u274c 请输入有效的序号");
-                            response = HumanInputResponse.rejected();
-                        }
-                    } else {
-                        outputFormatter.printError("\u274c 没有可用的选项");
-                        response = HumanInputResponse.rejected();
-                    }
-                }
-                default -> {
-                    outputFormatter.printError("\u274c 未知的输入类型");
-                    response = HumanInputResponse.rejected();
-                }
-            }
-
-            terminal.writer().println();
-            terminal.flush();
-
-            // 发送响应
-            request.resolve(response);
-
-            log.info("[ShellUI] Human input request resolved: {}", response.getStatus());
-
-        } catch (UserInterruptException e) {
-            // 用户按 Ctrl-C，默认拒绝
-            log.info("Human input interrupted by user");
-            outputFormatter.printError("\u274c 交互已取消");
-            request.resolve(HumanInputResponse.rejected());
-        } catch (Exception e) {
-            log.error("Error handling human input request", e);
-            request.resolve(HumanInputResponse.rejected());
-        }
-    }
-
-    /**
-     * 截断日志输出
-     */
-    private String truncateForLog(String text) {
-        if (text == null) return "null";
-        return text.length() > 100 ? text.substring(0, 100) + "..." : text;
-    }
-    
-    /**
-     * 根据步骤状态字符串返回对应的图标
-     */
-    private String getStatusIcon(String status) {
-        return switch (status) {
-            case "PENDING" -> "⏳";
-            case "IN_PROGRESS", "EXECUTING" -> "🔄";
-            case "DONE", "COMPLETED" -> "✅";
-            case "SKIPPED" -> "⏭️";
-            case "FAILED" -> "❌";
-            default -> "🟠";
-        };
-    }
-    
-    /**
-     * 启动旋转动画
-     */
-    private void startSpinner(String message) {
-        if (spinnerThread != null && spinnerThread.isAlive()) {
-            // 已经有动画在运行
-            return;
-        }
-        
-        showSpinner.set(true);
-        spinnerMessage.set(message);
-        
-        spinnerThread = new Thread(() -> {
-            String[] frames = getSpinnerFrames();
-            int i = 0;
-            
-            try {
-                // 先输出一条空行
-                terminal.writer().println();
-                
-                while (showSpinner.get()) {
-                    // 清除当前行并显示动画
-                    terminal.writer().print("\r" + frames[i % frames.length] + " " + spinnerMessage.get() + "   ");
-                    terminal.flush();
-                    
-                    i++;
-                    Thread.sleep(uiConfig.getSpinnerIntervalMs());
-                }
-                
-                // 清除旋转动画行
-                terminal.writer().print("\r" + " ".repeat(50) + "\r");
-                terminal.flush();
-                
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        });
-        
-        spinnerThread.setDaemon(true);
-        spinnerThread.start();
-    }
-    
-    /**
-     * 停止旋转动画
-     */
-    private void stopSpinner() {
-        showSpinner.set(false);
-        if (spinnerThread != null) {
-            try {
-                spinnerThread.join(500); // 等待最多500ms
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-            spinnerThread = null;
-        }
-    }
-    
-    /**
-     * 获取旋转动画帧
-     */
-    private String[] getSpinnerFrames() {
-        return switch (uiConfig.getSpinnerType()) {
-            case "arrows" -> new String[]{"←", "↖", "↑", "↗", "→", "↘", "↓", "↙"};
-            case "circles" -> new String[]{"◐", "◓", "◑", "◒"};
-            default -> new String[]{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}; // dots
-        };
-    }
-    
-    /**
      * 显示Token消耗统计（在每个步骤结束时调用）
      */
     private void showTokenUsage(ChatCompletionResult.Usage usage) {
@@ -1182,7 +600,6 @@ public class ShellUI implements AutoCloseable {
         
         // 记录当前步骤的Token
         int stepTokens = usage.getTotalTokens();
-        currentStepTokens.set(stepTokens);
         
         // 构建显示消息
         StringBuilder msg = new StringBuilder();
@@ -1268,215 +685,38 @@ public class ShellUI implements AutoCloseable {
         };
     }
 
-    // ==================== 异步子代理消息处理 ====================
-
     /**
-     * 处理异步子代理启动消息
+     * 截断字符串用于日志输出
      */
-    private void handleAsyncSubagentStarted(AsyncSubagentStarted message) {
-        // 如果有助手输出，先换行
-        if (assistantOutputStarted.getAndSet(false)) {
-            terminal.writer().println();
-            terminal.flush();
-        }
-        
-        terminal.writer().println();
-        outputFormatter.printStatus(String.format(
-                "🚀 异步子代理已启动: [%s] %s",
-                message.getSubagentId(),
-                message.getSubagentName()
-        ));
-        outputFormatter.printInfo(String.format(
-                "   模式: %s | 使用 /async status %s 查看状态",
-                message.getMode(),
-                message.getSubagentId()
-        ));
-        terminal.writer().println();
-        terminal.flush();
+    private String truncateForLog(String text) {
+        if (text == null) return null;
+        return text.length() > 100 ? text.substring(0, 100) + "..." : text;
     }
 
     /**
-     * 处理异步子代理进度消息
+     * 从配置中解析当前主题
      */
-    private void handleAsyncSubagentProgress(AsyncSubagentProgress message) {
-        // 进度消息通常较频繁，使用简洁格式
-        log.debug("Async subagent {} progress: {} (step {})",
-                message.getSubagentId(),
-                message.getProgressInfo(),
-                message.getStepNumber());
-        
-        // 只在 debug 模式或特定配置下显示进度
-        // 避免过多刷新干扰用户
-    }
-
-    /**
-     * 处理异步子代理完成消息
-     */
-    private void handleAsyncSubagentCompleted(AsyncSubagentCompleted message) {
-        // 如果有助手输出，先换行
-        if (assistantOutputStarted.getAndSet(false)) {
-            terminal.writer().println();
-            terminal.flush();
-        }
-        
-        terminal.writer().println();
-        
-        // 格式化运行时长
-        String durationStr = formatDuration(message.getDuration());
-        
-        if (message.isSuccess()) {
-            outputFormatter.printSuccess(String.format(
-                    "✅ 异步子代理完成: [%s] (%s)",
-                    message.getSubagentId(),
-                    durationStr
-            ));
-            // 显示结果摘要（截断过长内容）
-            String result = message.getResult();
-            if (result != null && !result.isEmpty()) {
-                String preview = result.length() > 100 
-                        ? result.substring(0, 100) + "..." 
-                        : result;
-                outputFormatter.printInfo("   结果: " + preview.replace("\n", " "));
-            }
-        } else {
-            outputFormatter.printError(String.format(
-                    "❌ 异步子代理失败: [%s] (%s)",
-                    message.getSubagentId(),
-                    durationStr
-            ));
-            if (message.getResult() != null) {
-                outputFormatter.printError("   错误: " + message.getResult());
-            }
-        }
-        
-        outputFormatter.printInfo(String.format(
-                "   使用 /async result %s 查看完整结果",
-                message.getSubagentId()
-        ));
-        terminal.writer().println();
-        terminal.flush();
-        
-        // 发送桌面通知
-        notificationService.notifyAsyncComplete(
-                message.getSubagentId(),
-                message.getResult(),
-                message.isSuccess(),
-                uiConfig
-        );
-        
-        // 播放终端提示音（如果启用）
-        if (uiConfig.isEnableNotificationSound()) {
-            try {
-                terminal.writer().write('\007'); // Bell
-                terminal.flush();
-            } catch (Exception e) {
-                // 忽略提示音错误
-            }
-        }
-    }
-
-    /**
-     * 处理异步子代理触发消息（Watch 模式）
-     */
-    private void handleAsyncSubagentTrigger(AsyncSubagentTrigger message) {
-        // 如果有助手输出，先换行
-        if (assistantOutputStarted.getAndSet(false)) {
-            terminal.writer().println();
-            terminal.flush();
-        }
-        
-        terminal.writer().println();
-        
-        // 用釒铃图标表示触发警报
-        outputFormatter.printWarning(String.format(
-                "🔔 监控触发: [%s]",
-                message.getSubagentId()
-        ));
-        
-        // 显示匹配模式
-        outputFormatter.printInfo(String.format(
-                "   匹配模式: %s",
-                message.getMatchedPattern()
-        ));
-        
-        // 显示匹配内容（截断过长内容）
-        String content = message.getMatchedContent();
-        if (content != null && !content.isEmpty()) {
-            String preview = content.length() > 150 
-                    ? content.substring(0, 150) + "..." 
-                    : content;
-            outputFormatter.printInfo("   触发内容: " + preview.replace("\n", " "));
-        }
-        
-        // 显示触发时间
-        if (message.getTriggerTime() != null) {
-            String timeStr = java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss")
-                    .withZone(java.time.ZoneId.systemDefault())
-                    .format(message.getTriggerTime());
-            outputFormatter.printInfo("   触发时间: " + timeStr);
-        }
-        
-        terminal.writer().println();
-        terminal.flush();
-        
-        // 发送桌面通知
-        notificationService.notifyWatchTrigger(
-                message.getSubagentId(),
-                message.getMatchedPattern(),
-                message.getMatchedContent(),
-                uiConfig
-        );
-        
-        // 播放系统提示音（如果启用）
-        if (uiConfig.isEnableNotificationSound()) {
-            try {
-                terminal.writer().write('\007'); // Bell
-                terminal.flush();
-            } catch (Exception e) {
-                // 忽略提示音错误
-            }
-        }
-    }
-
-    /**
-     * 格式化时长
-     */
-    private String formatDuration(java.time.Duration duration) {
-        if (duration == null) {
-            return "unknown";
-        }
-        long seconds = duration.getSeconds();
-        if (seconds < 60) {
-            return seconds + "s";
-        } else if (seconds < 3600) {
-            return String.format("%dm%ds", seconds / 60, seconds % 60);
-        } else {
-            return String.format("%dh%dm%ds", seconds / 3600, (seconds % 3600) / 60, seconds % 60);
-        }
+    private ThemeConfig resolveTheme() {
+        String themeName = uiConfig.getThemeName();
+        ThemeConfig resolved = (themeName != null && !themeName.isEmpty())
+                ? ThemeConfig.getPresetTheme(themeName)
+                : uiConfig.getTheme();
+        return resolved != null ? resolved : ThemeConfig.defaultTheme();
     }
 
     /**
      * 更新主题（运行时切换）
      */
     public void updateTheme() {
-        // 从配置中重新加载主题
-        String themeName = uiConfig.getThemeName();
-        if (themeName != null && !themeName.isEmpty()) {
-            this.theme = ThemeConfig.getPresetTheme(themeName);
-        } else {
-            this.theme = uiConfig.getTheme();
-        }
-        if (this.theme == null) {
-            this.theme = ThemeConfig.defaultTheme();
-        }
-        
-        // 更新OutputFormatter的主题
+        this.theme = resolveTheme();
         this.outputFormatter.setTheme(this.theme);
+        this.renderer.setTheme(this.theme);
+        this.promptBuilder.setTheme(this.theme);
     }
 
     @Override
     public void close() throws Exception {
-        stopSpinner();
+        spinnerManager.stop();
         if (wireSubscription != null) {
             wireSubscription.dispose();
         }

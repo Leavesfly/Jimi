@@ -108,7 +108,7 @@ public class SkillLoader {
      * @param scope Skill作用域
      * @return 加载的SkillSpec列表
      */
-    public List<SkillSpec> loadSkillsFromClasspath(SkillScope scope) {
+    public List<SkillSpec> loadSkillsFromClasspath(SkillSpec.SkillScope scope) {
         List<SkillSpec> skills = new ArrayList<>();
         
         if (!isRunningFromJar()) {
@@ -158,7 +158,7 @@ public class SkillLoader {
      * @param scope Skill作用域
      * @return 加载的SkillSpec列表
      */
-    public List<SkillSpec> loadSkillsFromDirectory(Path directory, SkillScope scope) {
+    public List<SkillSpec> loadSkillsFromDirectory(Path directory, SkillSpec.SkillScope scope) {
         List<SkillSpec> skills = new ArrayList<>();
         
         if (!Files.exists(directory) || !Files.isDirectory(directory)) {

@@ -62,7 +62,7 @@ public class SkillRegistry {
         int loadedCount = 0;
         
         // 1. 先尝试从类路径加载(JAR包模式)
-        List<SkillSpec> classpathSkills = skillLoader.loadSkillsFromClasspath(SkillScope.GLOBAL);
+        List<SkillSpec> classpathSkills = skillLoader.loadSkillsFromClasspath(SkillSpec.SkillScope.GLOBAL);
         for (SkillSpec skill : classpathSkills) {
             register(skill);
             loadedCount++;
@@ -71,7 +71,7 @@ public class SkillRegistry {
         // 2. 加载全局Skills（从文件系统和用户目录）
         List<Path> globalDirs = skillLoader.getGlobalSkillsDirectories();
         for (Path dir : globalDirs) {
-            List<SkillSpec> skills = skillLoader.loadSkillsFromDirectory(dir, SkillScope.GLOBAL);
+            List<SkillSpec> skills = skillLoader.loadSkillsFromDirectory(dir, SkillSpec.SkillScope.GLOBAL);
             for (SkillSpec skill : skills) {
                 register(skill);
                 loadedCount++;
@@ -97,7 +97,7 @@ public class SkillRegistry {
         
         List<SkillSpec> skills = skillLoader.loadSkillsFromDirectory(
             projectSkillsDir, 
-            SkillScope.PROJECT
+            SkillSpec.SkillScope.PROJECT
         );
         
         for (SkillSpec skill : skills) {
@@ -288,10 +288,10 @@ public class SkillRegistry {
         stats.put("triggers", skillsByTrigger.size());
         
         // 按作用域统计
-        Map<SkillScope, Long> scopeCounts = skillsByName.values().stream()
+        Map<SkillSpec.SkillScope, Long> scopeCounts = skillsByName.values().stream()
             .collect(Collectors.groupingBy(SkillSpec::getScope, Collectors.counting()));
-        stats.put("globalSkills", scopeCounts.getOrDefault(SkillScope.GLOBAL, 0L));
-        stats.put("projectSkills", scopeCounts.getOrDefault(SkillScope.PROJECT, 0L));
+        stats.put("globalSkills", scopeCounts.getOrDefault(SkillSpec.SkillScope.GLOBAL, 0L));
+        stats.put("projectSkills", scopeCounts.getOrDefault(SkillSpec.SkillScope.PROJECT, 0L));
         
         return stats;
     }
@@ -342,7 +342,7 @@ public class SkillRegistry {
         }
         
         // 3. 注册
-        skill.setScope(SkillScope.GLOBAL);
+        skill.setScope(SkillSpec.SkillScope.GLOBAL);
         register(skill);
         
         log.info("Skill installed: {}", skill.getName());
@@ -364,7 +364,7 @@ public class SkillRegistry {
         }
         
         // 只能卸载全局 Skill（用户安装的）
-        if (skill.getScope() != SkillScope.GLOBAL) {
+        if (skill.getScope() != SkillSpec.SkillScope.GLOBAL) {
             throw new IllegalArgumentException("Can only uninstall global skills: " + skillName);
         }
         
@@ -426,6 +426,6 @@ public class SkillRegistry {
         String description,
         String version,
         String category,
-        SkillScope scope
+        SkillSpec.SkillScope scope
     ) {}
 }
