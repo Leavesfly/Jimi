@@ -17,30 +17,41 @@
 
 ## ✨ 核心特性
 
-### 🖥️ 多端支持
-
-- **CLI命令行** - 轻量级终端交互，适合快速开发
-- **JWork桌面应用** - OpenWork风格的JavaFX GUI，可视化AI协作台
-- **IntelliJ插件** - IDE内直接集成，无缝开发体验
-
 ### 🤖 多Agent智能协作
 
-内置10+专业Agent覆盖开发全流程：
+内置6个专业Agent覆盖开发全流程：
 
 | Agent | 职责 |
 |-------|------|
 | **Default** | 通用开发助手 |
-| **Design** | 架构设计 |
+| **Architect** | 架构设计 |
 | **Code** | 编码实现 |
-| **Review** | 代码审查 |
-| **Test** | 测试工程 |
-| **Debug** | 错误诊断 |
+| **Quality** | 代码质量与审查 |
 | **Doc** | 文档编写 |
 | **DevOps** | 部署运维 |
 
 - 异步子代理：后台任务不阻塞主对话
 - 动态切换：智能委派最合适的Agent
 - YAML配置：无需编码自定义Agent
+
+### 🧩 Skills技能包
+
+内置11个开发技能包，领域知识模块化管理：
+
+| 技能包 | 功能 |
+|-------|------|
+| api-design | API设计规范 |
+| backend-dev-suite | 后端开发套件 |
+| code-quality-suite | 代码质量套件 |
+| code-review | 代码审查 |
+| database-design | 数据库设计 |
+| docker-setup | Docker配置 |
+| git-commit-guide | Git提交规范 |
+| java-best-practices | Java最佳实践 |
+| security-checklist | 安全检查清单 |
+| unit-testing | 单元测试 |
+
+关键词自动激活，按需加载到上下文。
 
 ### 🪝 Hooks自动化系统
 
@@ -92,12 +103,6 @@ execution:
 - 结构化恢复：父子Agent语义连续
 - Token优化：节省30-50% Token消耗
 
-[详细文档](docs/ReCAP记忆优化技术方案.md)
-
-### 🧩 Skills技能包
-
-领域知识模块化管理，关键词自动激活。[详细文档](docs/SKILLS_README.md)
-
 ### 🌐 RAG检索增强
 
 本地向量索引，自动检索相关代码注入上下文。[详细文档](docs/RAG配置指南.md)
@@ -112,12 +117,12 @@ execution:
 
 ### 🛠️ 丰富工具生态
 
-- 文件操作：读写、搜索、补丁
-- Shell执行：命令执行、后台任务
-- 网络工具：网页抓取、搜索
-- 任务管理：同步/异步子Agent、待办事项
-- 人机交互：AskHuman暂停等待输入
-- 代码图谱：智能定位、影响分析
+- **文件操作**：读写、搜索、补丁
+- **Shell执行**：命令执行、后台任务
+- **网络工具**：网页抓取、搜索
+- **任务管理**：同步/异步子Agent、待办事项
+- **人机交互**：AskHuman暂停等待输入
+- **代码图谱**：智能定位、影响分析
 
 ### 🔐 企业级特性
 
@@ -127,23 +132,6 @@ execution:
 - 会话管理：持久化与断点恢复
 - 上下文压缩：智能Token优化
 
-### 🖥️ JWork桌面应用
-
-可视化的AI协作台，提供丰富的图形界面：
-
-- 工作区选择与管理
-- 会话管理与流式输出
-- 执行计划时间线
-- Skills管理器
-- Markdown渲染支持
-- 本地嵌入/远程连接模式
-
-```bash
-# 启动JWork
-cd jwork
-mvn javafx:run
-```
-
 ## 🎯 快速开始
 
 ### 环境要求
@@ -152,24 +140,12 @@ mvn javafx:run
 - Maven 3.6+
 - macOS / Linux / Windows
 
-### CLI命令行
+### 快速安装
 
 ```bash
 git clone https://github.com/leavesfly/Jimi.git
 cd Jimi
 ./scripts/quick-install.sh
-```
-
-### JWork桌面应用
-
-```bash
-# 构建并运行
-cd jwork
-mvn clean install
-mvn javafx:run
-
-# 或者使用打包后的jar
-java -jar target/jwork-0.1.0.jar
 ```
 
 ### 分步安装
@@ -188,9 +164,9 @@ java -jar target/jwork-0.1.0.jar
 ./scripts/start.sh
 
 # 指定Agent启动
-./scripts/start.sh --agent design
+./scripts/start.sh --agent architect
 
-# YOLO模式
+# YOLO模式（自动批准所有操作）
 ./scripts/start.sh --yolo
 ```
 
@@ -206,6 +182,8 @@ java -jar target/jwork-0.1.0.jar
 | `/hooks list` | Hooks列表 |
 | `/async list` | 异步任务 |
 | `/reset` | 清除上下文 |
+| `/config` | 查看配置 |
+| `/version` | 版本信息 |
 
 ## 🏛️ 系统架构
 
@@ -213,7 +191,6 @@ java -jar target/jwork-0.1.0.jar
 graph TB
     subgraph 用户交互层
         CLI[CLI命令行]
-        IDE[IntelliJ插件]
     end
     
     subgraph 核心引擎层
@@ -225,7 +202,7 @@ graph TB
     
     subgraph Agent系统
         AgentRegistry[Agent注册表]
-        MultiAgents[10+ 专业Agent]
+        MultiAgents[专业Agent]
         AsyncMgr[异步子代理]
     end
     
@@ -233,6 +210,7 @@ graph TB
         Skills[Skills系统]
         Graph[代码图谱]
         RAG[向量检索]
+        Wiki[知识Wiki]
     end
     
     subgraph 自动化层
@@ -253,7 +231,6 @@ graph TB
     end
     
     CLI --> Engine
-    IDE --> Engine
     Engine --> Executor
     Engine --> Memory
     Engine --> Approval
@@ -275,46 +252,31 @@ graph TB
 
 ### 技术栈
 
-- **核心框架**: Spring Boot 3.2.5, WebFlux
-- **命令行**: Picocli 4.7.6, JLine 3.25.1
-- **数据处理**: Jackson 2.16.2, SnakeYAML 2.2
-- **代码分析**: JavaParser 3.25.5
-- **协议集成**: MCP SDK 0.12.1
+| 类别 | 技术 |
+|------|------|
+| **核心框架** | Spring Boot 3.2.5, WebFlux |
+| **命令行** | Picocli 4.7.6, JLine 3.25.1 |
+| **数据处理** | Jackson 2.16.2, SnakeYAML 2.2 |
+| **代码分析** | JavaParser 3.25.5 |
+| **协议集成** | MCP SDK 0.12.1 |
+| **缓存** | Caffeine 3.1.8 |
 
 ## 📚 使用指南
-
-### CLI命令行使用
-
-```bash
-# 切换Agent
-/switch design
-
-# 查看Agent列表
-/agents
-
-# 构建代码图
-/graph build
-```
-
-### JWork桌面应用使用
-
-1. **选择工作区** - 点击“选择工作区”选择项目目录
-2. **创建会话** - 选择Agent类型，点击“开始会话”
-3. **AI对话** - 在聊天窗口输入问题，实时查看响应
-4. **查看执行计划** - 切换到“执行计划”查看Todo列表
-5. **Skills管理** - 在Skills面板管理技能包
 
 ### Agent使用
 
 ```bash
 # 切换Agent
-/switch design
+/switch architect
 
 # 查看Agent列表
 /agents
+
+# 使用指定Agent启动
+./scripts/start.sh --agent code
 ```
 
-自定义Agent：在`~/.jimi/agents/`创建`agent.yaml`和`system_prompt.md`。[详细文档](docs/SKILLS_README.md)
+自定义Agent：在`~/.jimi/agents/`目录下创建`agent.yaml`和`system_prompt.md`文件。
 
 ### Hooks自动化
 
@@ -342,7 +304,7 @@ execution:
 # 查看统计
 /graph stats
 
-# 查询
+# 自然语言查询
 "找到GraphManager类的定义位置"
 ```
 
@@ -401,35 +363,41 @@ public class MyTool extends AbstractTool<MyTool.Params> {
 
 ### 自定义Agent
 
-在`~/.jimi/agents/my-agent/`创建`agent.yaml`和`system_prompt.md`。
+在`~/.jimi/agents/my-agent/`创建配置文件：
 
+**agent.yaml**
 ```yaml
 name: My Agent
 model: gpt-4
 tools:
   - read_file
+  - write_file
   - my_tool
 ```
 
-### IntelliJ插件
-
-```bash
-cd intellij-plugin
-./gradlew buildPlugin
-./gradlew runIde
+**system_prompt.md**
+```markdown
+你是一个专业的开发助手...
 ```
 
-[详细文档](intellij-plugin/README.md)
+### 自定义命令
+
+在`~/.jimi/commands/`创建YAML配置，支持三种执行类型：
+- **script**: 执行Shell脚本
+- **agent**: 调用Agent执行
+- **composite**: 组合多个命令
 
 ## 📚 文档资源
 
-- [用户使用指南.md](用户使用指南.md) - 完整用户手册
-- [HOOKS.md](docs/HOOKS.md) - Hooks系统指南
-- [GRAPH_GUIDE.md](docs/GRAPH_GUIDE.md) - 代码图谱指南
-- [CUSTOM_COMMANDS.md](docs/CUSTOM_COMMANDS.md) - 自定义命令
-- [ReCAP记忆优化技术方案.md](docs/ReCAP记忆优化技术方案.md) - 记忆优化
-- [async-subagent-design.md](docs/async-subagent-design.md) - 异步子代理
-- [TECHNICAL_ARCHITECTURE.md](docs/TECHNICAL_ARCHITECTURE.md) - 技术架构
+| 文档 | 说明 |
+|------|------|
+| [用户使用指南](用户使用指南.md) | 完整用户手册 |
+| [HOOKS](docs/HOOKS.md) | Hooks系统指南 |
+| [代码图谱](docs/GRAPH_GUIDE.md) | 代码图谱指南 |
+| [自定义命令](docs/CUSTOM_COMMANDS.md) | 命令扩展指南 |
+| [RAG配置](docs/RAG配置指南.md) | 检索增强配置 |
+| [异步子代理](docs/async-subagent-design.md) | 异步任务设计 |
+| [技术架构](docs/TECHNICAL_ARCHITECTURE.md) | 系统架构详解 |
 
 更多文档查看 [docs/](docs/) 目录。
 
@@ -469,7 +437,7 @@ git push origin feature/my-feature
 
 <div align="center">
 
-**[⬆ 回到顶部](#jimi---java开发者的ai编程助手)**
+**[⬆ 回到顶部](#jimi---java程序员专属的ai-cli-agent)**
 
 Made with ❤️ by [Leavesfly](https://github.com/leavesfly)
 
