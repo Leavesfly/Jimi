@@ -1,4 +1,4 @@
-package io.leavesfly.jimi.knowledge.spi;
+package io.leavesfly.jimi.knowledge.search;
 
 import io.leavesfly.jimi.core.engine.runtime.Runtime;
 import io.leavesfly.jimi.knowledge.domain.query.GraphQuery;
@@ -7,7 +7,11 @@ import io.leavesfly.jimi.knowledge.domain.query.RetrievalQuery;
 import io.leavesfly.jimi.knowledge.domain.result.GraphResult;
 import io.leavesfly.jimi.knowledge.domain.result.HybridResult;
 import io.leavesfly.jimi.knowledge.domain.result.RetrievalResult;
+import io.leavesfly.jimi.knowledge.graph.GraphManager;
+import io.leavesfly.jimi.knowledge.rag.RagManager;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
 import java.util.ArrayList;
@@ -19,31 +23,31 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * 混合搜索服务实现
+ * 混合搜索管理器
  * 
- * <p>组合 GraphService 和 RagService 的能力，
+ * <p>组合 GraphManager 和 RagManager 的能力，
  * 实现多种融合策略（RRF、加权平均等）。
  */
 @Slf4j
-public class HybridSearchServiceImpl implements HybridSearchService {
+@Component
+public class HybridSearchManager {
     
     private static final int RRF_K = 60; // RRF 常数 k
     
-    private final GraphService graphService;
-    private final RagService retrievalService;
+    private final GraphManager graphManager;
+    private final RagManager ragManager;
     
-    public HybridSearchServiceImpl(GraphService graphService, RagService retrievalService) {
-        this.graphService = graphService;
-        this.retrievalService = retrievalService;
+    @Autowired
+    public HybridSearchManager(GraphManager graphManager, RagManager ragManager) {
+        this.graphManager = graphManager;
+        this.ragManager = ragManager;
     }
     
-    @Override
     public Mono<Boolean> initialize(Runtime runtime) {
-        log.info("HybridSearchService 初始化完成");
+        log.info("HybridSearchManager 初始化完成");
         return Mono.just(true);
     }
     
-    @Override
     public Mono<HybridResult> search(HybridQuery query) {
         if (!isEnabled()) {
             return Mono.just(HybridResult.error("混合搜索功能未启用"));
@@ -52,11 +56,11 @@ public class HybridSearchServiceImpl implements HybridSearchService {
         long startTime = System.currentTimeMillis();
         
         // 并行执行 Graph 和 Retrieval 搜索
-        Mono<GraphSearchResult> graphMono = query.isIncludeStructured() && graphService.isEnabled()
+        Mono<GraphSearchResult> graphMono = query.isIncludeStructured() && graphManager.isEnabled()
                 ? executeGraphSearch(query)
                 : Mono.just(new GraphSearchResult(Collections.emptyList(), 0));
         
-        Mono<RetrievalSearchResult> retrievalMono = query.isIncludeSemantic() && retrievalService.isEnabled()
+        Mono<RetrievalSearchResult> retrievalMono = query.isIncludeSemantic() && ragManager.isEnabled()
                 ? executeRetrievalSearch(query)
                 : Mono.just(new RetrievalSearchResult(Collections.emptyList(), 0));
         
@@ -91,9 +95,8 @@ public class HybridSearchServiceImpl implements HybridSearchService {
                 });
     }
     
-    @Override
     public Mono<HybridResult> searchGraphOnly(HybridQuery query) {
-        if (!graphService.isEnabled()) {
+        if (!graphManager.isEnabled()) {
             return Mono.just(HybridResult.error("Graph 功能未启用"));
         }
         
@@ -125,9 +128,8 @@ public class HybridSearchServiceImpl implements HybridSearchService {
                 });
     }
     
-    @Override
     public Mono<HybridResult> searchRetrievalOnly(HybridQuery query) {
-        if (!retrievalService.isEnabled()) {
+        if (!ragManager.isEnabled()) {
             return Mono.just(HybridResult.error("Retrieval 功能未启用"));
         }
         
@@ -160,10 +162,9 @@ public class HybridSearchServiceImpl implements HybridSearchService {
                 });
     }
     
-    @Override
     public boolean isEnabled() {
-        return (graphService != null && graphService.isEnabled()) 
-                || (retrievalService != null && retrievalService.isEnabled());
+        return (graphManager != null && graphManager.isEnabled()) 
+                || (ragManager != null && ragManager.isEnabled());
     }
     
     // ==================== 内部方法 ====================
@@ -178,7 +179,7 @@ public class HybridSearchServiceImpl implements HybridSearchService {
                 .filter(query.getGraphFilter())
                 .build();
         
-        return graphService.query(graphQuery)
+        return graphManager.query(graphQuery)
                 .map(result -> {
                     long elapsed = System.currentTimeMillis() - startTime;
                     return new GraphSearchResult(result.getEntities(), elapsed);
@@ -198,7 +199,7 @@ public class HybridSearchServiceImpl implements HybridSearchService {
                 .filter(query.getRetrievalFilter())
                 .build();
         
-        return retrievalService.retrieve(retrievalQuery)
+        return ragManager.retrieve(retrievalQuery)
                 .map(result -> {
                     long elapsed = System.currentTimeMillis() - startTime;
                     return new RetrievalSearchResult(result.getChunks(), elapsed);

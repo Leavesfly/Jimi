@@ -3,7 +3,11 @@ package io.leavesfly.jimi.knowledge;
 import io.leavesfly.jimi.core.engine.runtime.Runtime;
 import io.leavesfly.jimi.knowledge.domain.query.*;
 import io.leavesfly.jimi.knowledge.domain.result.*;
-import io.leavesfly.jimi.knowledge.spi.*;
+import io.leavesfly.jimi.knowledge.graph.GraphManager;
+import io.leavesfly.jimi.knowledge.rag.RagManager;
+import io.leavesfly.jimi.knowledge.memory.MemoryManager;
+import io.leavesfly.jimi.knowledge.wiki.WikiServiceImpl;
+
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -24,28 +28,26 @@ import java.util.List;
 @Service
 public class KnowledgeServiceImpl implements KnowledgeService {
 
-    private final GraphService graphService;
-    private final RagService retrievalService;
-    private final MemoryService memoryService;
-    private final WikiService wikiService;
+    private final GraphManager graphManager;
+    private final RagManager ragManager;
+    private final MemoryManager memoryManager;
+    private final WikiServiceImpl wikiService;
 
     private volatile boolean initialized = false;
 
     @Autowired
     public KnowledgeServiceImpl(
-            @Autowired(required = false) GraphService graphService,
-            @Autowired(required = false) RagService retrievalService,
-            @Autowired(required = false) MemoryService memoryService,
-            @Autowired(required = false) HybridSearchService hybridSearchService,
-            @Autowired(required = false) WikiService wikiService) {
-        this.graphService = graphService;
-        this.retrievalService = retrievalService;
-        this.memoryService = memoryService;
+            @Autowired(required = false) GraphManager graphManager,
+            @Autowired(required = false) RagManager ragManager,
+            @Autowired(required = false) MemoryManager memoryManager,
+            @Autowired(required = false) WikiServiceImpl wikiService) {
+        this.graphManager = graphManager;
+        this.ragManager = ragManager;
+        this.memoryManager = memoryManager;
         this.wikiService = wikiService;
 
-        log.info("KnowledgeService 创建完成, 可用服务: graph={}, rag={}, memory={}, hybrid={}, wiki={}",
-                graphService != null, retrievalService != null, memoryService != null,
-                hybridSearchService != null, wikiService != null);
+        log.info("KnowledgeService 创建完成, 可用服务: graph={}, rag={}, memory={}, wiki={}",
+                graphManager != null, ragManager != null, memoryManager != null, wikiService != null);
     }
 
 
@@ -60,9 +62,9 @@ public class KnowledgeServiceImpl implements KnowledgeService {
 
         // 并行初始化所有子服务
         return Mono.zip(
-                initializeServiceSafely("GraphService", graphService, runtime, graphService::initialize),
-                initializeServiceSafely("RagService", retrievalService, runtime, retrievalService::initialize),
-                initializeServiceSafely("MemoryService", memoryService, runtime, memoryService::initialize),
+                initializeServiceSafely("GraphManager", graphManager, runtime, graphManager::initialize),
+                initializeServiceSafely("RagManager", ragManager, runtime, ragManager::initialize),
+                initializeMemoryServiceSafely("MemoryManager", memoryManager, runtime),
                 initializeServiceSafely("WikiService", wikiService, runtime, wikiService::initialize)
         ).map(tuple -> {
             boolean graphOk = tuple.getT1();
@@ -98,6 +100,28 @@ public class KnowledgeServiceImpl implements KnowledgeService {
             return Mono.just(true);
         }
         return initializer.apply(runtime)
+                .doOnSuccess(ok -> log.debug("{} 初始化成功: {}", serviceName, ok))
+                .onErrorResume(e -> {
+                    log.warn("{} 初始化失败: {}", serviceName, e.getMessage());
+                    return Mono.just(false);
+                });
+    }
+
+    /**
+     * MemoryManager 专用初始化方法（包装 void 返回值为 Mono<Boolean>）
+     *
+     * @param serviceName 服务名称，用于日志
+     * @param service 服务实例，如果为 null 则跳过初始化
+     * @param runtime 运行时环境
+     * @return 初始化结果
+     */
+    private Mono<Boolean> initializeMemoryServiceSafely(String serviceName, MemoryManager service, Runtime runtime) {
+        if (service == null) {
+            log.debug("{} 未启用，跳过初始化", serviceName);
+            return Mono.just(true);
+        }
+        return Mono.fromRunnable(() -> service.initialize(runtime))
+                .thenReturn(true)
                 .doOnSuccess(ok -> log.debug("{} 初始化成功: {}", serviceName, ok))
                 .onErrorResume(e -> {
                     log.warn("{} 初始化失败: {}", serviceName, e.getMessage());
@@ -157,7 +181,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
      * 搜索 Graph（如果启用）
      */
     private Mono<GraphResult> searchGraphIfEnabled(UnifiedKnowledgeQuery query) {
-        if (!query.getScope().isIncludeGraph() || graphService == null) {
+        if (!query.getScope().isIncludeGraph() || graphManager == null) {
             return Mono.just(GraphResult.builder().success(true).build());
         }
 
@@ -167,7 +191,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
                 .limit(query.getLimit().getGraphLimit())
                 .build();
 
-        return graphService.query(graphQuery)
+        return graphManager.query(graphQuery)
                 .onErrorResume(e -> {
                     log.warn("Graph 搜索失败: {}", e.getMessage());
                     return Mono.just(GraphResult.builder().success(true).build());
@@ -178,7 +202,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
      * 搜索 Memory（如果启用）
      */
     private Mono<MemoryResult> searchMemoryIfEnabled(UnifiedKnowledgeQuery query) {
-        if (!query.getScope().isIncludeMemory() || memoryService == null) {
+        if (!query.getScope().isIncludeMemory() || memoryManager == null) {
             return Mono.just(MemoryResult.builder().success(true).build());
         }
 
@@ -188,7 +212,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
                 .limit(query.getLimit().getMemoryLimit())
                 .build();
 
-        return memoryService.query(memoryQuery)
+        return memoryManager.query(memoryQuery)
                 .onErrorResume(e -> {
                     log.warn("Memory 搜索失败: {}", e.getMessage());
                     return Mono.just(MemoryResult.builder().success(true).build());
@@ -199,7 +223,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
      * 搜索 Retrieval（如果启用）
      */
     private Mono<RetrievalResult> searchRetrievalIfEnabled(UnifiedKnowledgeQuery query) {
-        if (!query.getScope().isIncludeRetrieval() || retrievalService == null) {
+        if (!query.getScope().isIncludeRetrieval() || ragManager == null) {
             return Mono.just(RetrievalResult.builder().success(true).build());
         }
 
@@ -208,7 +232,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
                 .topK(query.getLimit().getRetrievalLimit())
                 .build();
 
-        return retrievalService.retrieve(retrievalQuery)
+        return ragManager.retrieve(retrievalQuery)
                 .onErrorResume(e -> {
                     log.warn("Retrieval 搜索失败: {}", e.getMessage());
                     return Mono.just(RetrievalResult.builder().success(true).build());

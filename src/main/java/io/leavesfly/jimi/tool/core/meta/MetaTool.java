@@ -57,45 +57,73 @@ public class MetaTool extends AbstractTool<MetaTool.Params> {
      */
     private static String buildDescription() {
         return """
-                Execute Java code to orchestrate multiple tool calls programmatically.
+                执行 Java 代码以编程方式编排多个工具调用，用一次工具调用替代多轮对话，大幅节省 token 消耗。
                 
-                Use this tool when you need to:
-                - Process multiple files in a loop
-                - Make conditional tool calls based on previous results
-                - Perform batch operations
-                - Transform data across multiple steps
+                ## 何时使用此工具（重要）
                 
-                The code executes in an isolated JShell environment with access to a callTool() method.
+                当你发现需要执行以下操作时，**应该优先选择 MetaTool 而不是逐个调用其他工具**：
                 
-                Available helper method:
-                - String callTool(String toolName, String arguments) - Call a tool and get JSON result
+                1. **批量处理多个文件**：需要读取、编辑、删除 3 个及以上文件时
+                2. **循环操作**：需要对列表中的每个元素执行相同操作时
+                3. **条件分支执行**：需要根据前一步结果决定下一步调用哪个工具时
+                4. **多步骤数据转换**：需要将数据在多个工具间传递、转换时
+                5. **减少对话轮次**：预计需要 3 次以上工具调用才能完成任务时
                 
-                Example 1 - Loop through files:
+                ## 何时不适合使用此工具
+                
+                - 只需调用 1-2 个工具即可完成的简单任务
+                - 任务逻辑过于复杂，生成代码反而不如直接调用清晰时
+                - 需要中间结果展示给用户确认时
+                
+                ## 工作原理
+                
+                代码在隔离的 JShell 环境中执行，可通过 callTool() 方法调用其他已注册的工具。
+                
+                ## 可用辅助方法
+                
+                - String callTool(String toolName, String arguments) - 调用指定工具，arguments 为 JSON 格式参数字符串，返回工具执行结果
+                
+                ## 示例 1：批量读取多个文件
+                
                 ```java
-                String[] files = {"file1.txt", "file2.txt"};
+                String[] files = {"file1.txt", "file2.txt", "file3.txt"};
                 StringBuilder result = new StringBuilder();
                 for (String file : files) {
                     String content = callTool("ReadFile", "{\\"path\\":\\"" + file + "\\"}");
-                    result.append(content).append("\\n---\\n");
+                    result.append("=== ").append(file).append(" ===\\n");
+                    result.append(content).append("\\n\\n");
                 }
                 return result.toString();
                 ```
                 
-                Example 2 - Conditional execution:
+                ## 示例 2：条件执行不同命令
+                
                 ```java
                 String osInfo = callTool("Bash", "{\\"command\\":\\"uname -s\\"}");
                 if (osInfo.contains("Linux")) {
                     return callTool("Bash", "{\\"command\\":\\"apt list --installed\\"}");
-                } else {
+                } else if (osInfo.contains("Darwin")) {
                     return callTool("Bash", "{\\"command\\":\\"brew list\\"}");
+                } else {
+                    return "Unsupported OS: " + osInfo;
                 }
                 ```
                 
-                IMPORTANT:
-                - The last expression value in your code will be returned as the result
-                - Intermediate tool call results are NOT added to conversation history
-                - Code execution timeout: 30 seconds
-                - Use return statement to explicitly return a value
+                ## 示例 3：链式数据处理
+                
+                ```java
+                // 读取配置 -> 解析 -> 根据配置执行操作
+                String config = callTool("ReadFile", "{\\"path\\":\\"config.json\\"}");
+                String filtered = callTool("Bash", "{\\"command\\":\\"echo '" + config + "' | jq '.items[]'\"}");
+                return callTool("WriteFile", "{\\"path\\":\\"output.txt\\", \\"content\\":\\"" + filtered + "\"}");
+                ```
+                
+                ## 重要说明
+                
+                - 使用 return 语句显式返回最终结果
+                - 中间工具调用结果不会添加到对话历史，节省 token
+                - 代码执行超时：30 秒（最大 60 秒）
+                - 可通过 allowed_tools 参数限制可调用的工具范围
                 """;
     }
     

@@ -3,7 +3,6 @@ package io.leavesfly.jimi.knowledge.wiki;
 import io.leavesfly.jimi.core.engine.runtime.Runtime;
 import io.leavesfly.jimi.knowledge.domain.query.WikiQuery;
 import io.leavesfly.jimi.knowledge.domain.result.WikiResult;
-import io.leavesfly.jimi.knowledge.spi.WikiService;
 import io.leavesfly.jimi.llm.LLM;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Mono;
@@ -21,7 +20,7 @@ import java.util.stream.Stream;
  * <p>复用现有的 WikiGenerator 实现，提供 SPI 接口适配。
  */
 @Slf4j
-public class WikiServiceImpl implements WikiService {
+public class WikiServiceImpl {
     
     private final WikiGenerator wikiGenerator;
     private final ChangeDetector changeDetector;
@@ -42,7 +41,6 @@ public class WikiServiceImpl implements WikiService {
         this.wikiIndexManager = wikiIndexManager;
     }
     
-    @Override
     public Mono<Boolean> initialize(Runtime runtime) {
         return Mono.fromRunnable(() -> {
             this.runtime = runtime;
@@ -51,7 +49,6 @@ public class WikiServiceImpl implements WikiService {
         }).thenReturn(true);
     }
     
-    @Override
     public Mono<WikiResult> generate(WikiQuery query) {
         if (!isEnabled()) {
             return Mono.just(WikiResult.error("Wiki 功能未启用"));
@@ -127,7 +124,6 @@ public class WikiServiceImpl implements WikiService {
         });
     }
     
-    @Override
     public Mono<WikiResult> detectAndUpdate(Path projectRoot) {
         if (!isEnabled()) {
             return Mono.just(WikiResult.error("Wiki 功能未启用"));
@@ -182,7 +178,6 @@ public class WikiServiceImpl implements WikiService {
         });
     }
     
-    @Override
     public Mono<WikiResult> search(WikiQuery query) {
         if (!isEnabled()) {
             return Mono.just(WikiResult.error("Wiki 功能未启用"));
@@ -245,7 +240,6 @@ public class WikiServiceImpl implements WikiService {
         });
     }
     
-    @Override
     public Mono<WikiResult> validate(WikiQuery query) {
         if (!isEnabled() || wikiValidator == null) {
             return Mono.just(WikiResult.error("Wiki 验证功能未启用"));
@@ -289,7 +283,6 @@ public class WikiServiceImpl implements WikiService {
         });
     }
     
-    @Override
     public boolean isEnabled() {
         return enabled && wikiGenerator != null;
     }

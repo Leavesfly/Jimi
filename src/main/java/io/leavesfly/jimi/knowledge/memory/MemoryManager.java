@@ -3,6 +3,8 @@ package io.leavesfly.jimi.knowledge.memory;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.leavesfly.jimi.config.info.MemoryConfig;
 import io.leavesfly.jimi.core.engine.runtime.Runtime;
+import io.leavesfly.jimi.knowledge.domain.query.MemoryQuery;
+import io.leavesfly.jimi.knowledge.domain.result.MemoryResult;
 import io.leavesfly.jimi.knowledge.rag.VectorStore;
 import io.leavesfly.jimi.knowledge.rag.CodeChunk;
 import io.leavesfly.jimi.knowledge.rag.EmbeddingProvider;
@@ -15,6 +17,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -734,5 +738,241 @@ public class MemoryManager {
      */
     public Path getMemoryDir() {
         return memoryDir;
+    }
+    
+    // ==================== SPI 接口方法（来自 MemoryServiceImpl） ====================
+    
+    /**
+     * 统一查询接口
+     */
+    public Mono<MemoryResult> query(MemoryQuery query) {
+        if (!isEnabled()) {
+            return Mono.just(MemoryResult.error("Memory 功能未启用"));
+        }
+        
+        return executeQuery(query)
+                .onErrorResume(e -> {
+                    log.error("查询记忆失败", e);
+                    return Mono.just(MemoryResult.error(e.getMessage()));
+                });
+    }
+    
+    /**
+     * 执行查询（按类型路由）
+     */
+    private Mono<MemoryResult> executeQuery(MemoryQuery query) {
+        switch (query.getType()) {
+            case PROJECT_INSIGHT:
+                return queryInsights(query.getQuery(), query.getLimit())
+                        .map(insights -> {
+                            List<MemoryResult.MemoryEntry> entries = insights.stream()
+                                    .map(this::convertInsightToResultEntry)
+                                    .collect(Collectors.toList());
+                            return MemoryResult.success(entries);
+                        });
+                
+            case TASK_HISTORY:
+                if (query.getTimeRange() != null) {
+                    return getTasksByTimeRange(
+                            query.getTimeRange().getFrom(),
+                            query.getTimeRange().getTo())
+                            .map(tasks -> {
+                                List<MemoryResult.MemoryEntry> entries = tasks.stream()
+                                        .map(this::convertTaskHistoryToResultEntry)
+                                        .collect(Collectors.toList());
+                                return MemoryResult.success(entries);
+                            });
+                } else if (query.getQuery() != null && !query.getQuery().isEmpty()) {
+                    return searchTaskHistory(query.getQuery(), query.getLimit())
+                            .map(tasks -> {
+                                List<MemoryResult.MemoryEntry> entries = tasks.stream()
+                                        .map(this::convertTaskHistoryToResultEntry)
+                                        .collect(Collectors.toList());
+                                return MemoryResult.success(entries);
+                            });
+                } else {
+                    return getRecentTasks(query.getLimit())
+                            .map(tasks -> {
+                                List<MemoryResult.MemoryEntry> entries = tasks.stream()
+                                        .map(this::convertTaskHistoryToResultEntry)
+                                        .collect(Collectors.toList());
+                                return MemoryResult.success(entries);
+                            });
+                }
+                
+            case ERROR_PATTERN:
+                if (query.getQuery() != null && !query.getQuery().isEmpty()) {
+                    return findErrorPattern(query.getQuery(), null)
+                            .map(pattern -> {
+                                List<MemoryResult.MemoryEntry> entries = new ArrayList<>();
+                                entries.add(convertErrorPatternToResultEntry(pattern));
+                                return MemoryResult.success(entries);
+                            })
+                            .defaultIfEmpty(MemoryResult.success(new ArrayList<>()));
+                } else {
+                    return getMostFrequentErrors(query.getLimit())
+                            .map(patterns -> {
+                                List<MemoryResult.MemoryEntry> entries = patterns.stream()
+                                        .map(this::convertErrorPatternToResultEntry)
+                                        .collect(Collectors.toList());
+                                return MemoryResult.success(entries);
+                            });
+                }
+                
+            case SESSION_SUMMARY:
+                if (query.getQuery() != null && !query.getQuery().isEmpty()) {
+                    return searchSessions(query.getQuery(), query.getLimit())
+                            .map(sessions -> {
+                                List<MemoryResult.MemoryEntry> entries = sessions.stream()
+                                        .map(this::convertSessionToResultEntry)
+                                        .collect(Collectors.toList());
+                                return MemoryResult.success(entries);
+                            });
+                } else {
+                    return getRecentSessions(query.getLimit())
+                            .map(sessions -> {
+                                List<MemoryResult.MemoryEntry> entries = sessions.stream()
+                                        .map(this::convertSessionToResultEntry)
+                                        .collect(Collectors.toList());
+                                return MemoryResult.success(entries);
+                            });
+                }
+                
+            case ALL:
+            default:
+                // 查询所有类型的记忆（使用语义检索）
+                return queryInsights(query.getQuery(), query.getLimit())
+                        .map(insights -> {
+                            List<MemoryResult.MemoryEntry> entries = insights.stream()
+                                    .map(this::convertInsightToResultEntry)
+                                    .collect(Collectors.toList());
+                            return MemoryResult.success(entries);
+                        });
+        }
+    }
+    
+    /**
+     * 添加记忆
+     */
+    public Mono<MemoryResult> add(MemoryQuery query) {
+        if (!isEnabled()) {
+            return Mono.just(MemoryResult.error("Memory 功能未启用"));
+        }
+        
+        switch (query.getType()) {
+            case PROJECT_INSIGHT:
+                ProjectInsight insight = ProjectInsight.builder()
+                        .content(query.getContent())
+                        .category("user_added")
+                        .source("api")
+                        .timestamp(Instant.now())
+                        .confidence(1.0)
+                        .build();
+                return addInsight(insight)
+                        .thenReturn(MemoryResult.operationSuccess(insight.getId()));
+                
+            case ERROR_PATTERN:
+                ErrorPattern pattern = ErrorPattern.builder()
+                        .errorMessage(query.getContent())
+                        .firstSeen(Instant.now())
+                        .lastSeen(Instant.now())
+                        .build();
+                return addOrUpdateErrorPattern(pattern)
+                        .thenReturn(MemoryResult.operationSuccess(pattern.getId()));
+                
+            case TASK_HISTORY:
+                TaskHistory task = TaskHistory.builder()
+                        .userQuery(query.getContent())
+                        .summary(query.getContent())
+                        .timestamp(Instant.now())
+                        .build();
+                return addTaskHistory(task)
+                        .thenReturn(MemoryResult.operationSuccess(task.getId()));
+                
+            default:
+                return Mono.just(MemoryResult.error("不支持添加此类型的记忆: " + query.getType()));
+        }
+    }
+    
+    /**
+     * 从会话中提取记忆
+     */
+    public Mono<MemoryResult> extractFromSession(Runtime runtime) {
+        // 暂时返回空操作，可以后续扩展
+        return Mono.just(MemoryResult.builder()
+                .success(true)
+                .totalCount(0)
+                .build());
+    }
+    
+    /**
+     * 删除记忆
+     */
+    public Mono<MemoryResult> delete(String memoryId) {
+        // MemoryManager 目前没有直接的删除 API
+        // 可以后续扩展
+        return Mono.just(MemoryResult.error("删除功能暂未实现"));
+    }
+    
+    /**
+     * 检查是否启用
+     */
+    public boolean isEnabled() {
+        return config != null && config.isLongTermEnabled();
+    }
+    
+    // ==================== 转换方法（用于 MemoryResult） ====================
+    
+    /**
+     * 将 ProjectInsight 转换为 MemoryResult.MemoryEntry
+     */
+    private MemoryResult.MemoryEntry convertInsightToResultEntry(ProjectInsight insight) {
+        return MemoryResult.MemoryEntry.builder()
+                .id(insight.getId())
+                .type("PROJECT_INSIGHT")
+                .content(insight.getContent())
+                .createdAt(insight.getTimestamp())
+                .accessCount(insight.getAccessCount())
+                .relevanceScore(insight.getConfidence())
+                .build();
+    }
+    
+    /**
+     * 将 TaskHistory 转换为 MemoryResult.MemoryEntry
+     */
+    private MemoryResult.MemoryEntry convertTaskHistoryToResultEntry(TaskHistory task) {
+        return MemoryResult.MemoryEntry.builder()
+                .id(task.getId())
+                .type("TASK_HISTORY")
+                .content(task.getSummary())
+                .createdAt(task.getTimestamp())
+                .build();
+    }
+    
+    /**
+     * 将 ErrorPattern 转换为 MemoryResult.MemoryEntry
+     */
+    private MemoryResult.MemoryEntry convertErrorPatternToResultEntry(ErrorPattern pattern) {
+        return MemoryResult.MemoryEntry.builder()
+                .id(pattern.getId())
+                .type("ERROR_PATTERN")
+                .content(pattern.getSolution())
+                .createdAt(pattern.getFirstSeen())
+                .updatedAt(pattern.getLastSeen())
+                .accessCount(pattern.getOccurrenceCount())
+                .build();
+    }
+    
+    /**
+     * 将 SessionSummary 转换为 MemoryResult.MemoryEntry
+     */
+    private MemoryResult.MemoryEntry convertSessionToResultEntry(SessionSummary session) {
+        return MemoryResult.MemoryEntry.builder()
+                .id(session.getSessionId())
+                .type("SESSION_SUMMARY")
+                .content(session.getOutcome())
+                .createdAt(session.getStartTime())
+                .updatedAt(session.getEndTime())
+                .build();
     }
 }

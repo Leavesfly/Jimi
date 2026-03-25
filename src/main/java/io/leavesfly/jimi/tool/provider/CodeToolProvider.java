@@ -2,8 +2,8 @@ package io.leavesfly.jimi.tool.provider;
 
 import io.leavesfly.jimi.core.agent.AgentSpec;
 import io.leavesfly.jimi.core.engine.runtime.Runtime;
-import io.leavesfly.jimi.knowledge.spi.GraphService;
-import io.leavesfly.jimi.knowledge.spi.HybridSearchService;
+import io.leavesfly.jimi.knowledge.graph.GraphManager;
+import io.leavesfly.jimi.knowledge.search.HybridSearchManager;
 import io.leavesfly.jimi.tool.Tool;
 import io.leavesfly.jimi.tool.ToolProvider;
 import io.leavesfly.jimi.tool.core.graph.CallGraphTool;
@@ -26,10 +26,10 @@ import java.util.List;
 public class CodeToolProvider implements ToolProvider {
     
     @Autowired(required = false)
-    private GraphService graphService;
+    private GraphManager graphManager;
     
     @Autowired(required = false)
-    private HybridSearchService hybridSearchService;
+    private HybridSearchManager hybridSearchManager;
     
     @Override
     public String getName() {
@@ -44,10 +44,10 @@ public class CodeToolProvider implements ToolProvider {
     @Override
     public boolean supports(AgentSpec agentSpec, Runtime runtime) {
         // 只有在图服务可用时才提供工具
-        boolean isAvailable = graphService != null && graphService.isEnabled();
+        boolean isAvailable = graphManager != null && graphManager.isEnabled();
         
         if (!isAvailable) {
-            log.debug("GraphService not available, graph tools will not be provided");
+            log.debug("GraphManager not available, graph tools will not be provided");
         }
         
         return isAvailable;
@@ -61,20 +61,20 @@ public class CodeToolProvider implements ToolProvider {
         
         try {
             // 1. CodeLocateTool - 代码定位工具
-            if (hybridSearchService != null && hybridSearchService.isEnabled()) {
-                tools.add(new CodeLocateTool(hybridSearchService));
-                log.info("Registered CodeLocateTool (with hybrid search service)");
+            if (hybridSearchManager != null && hybridSearchManager.isEnabled()) {
+                tools.add(new CodeLocateTool(hybridSearchManager));
+                log.info("Registered CodeLocateTool (with hybrid search manager)");
             } else {
-                log.info("HybridSearchService not available, CodeLocateTool not registered");
+                log.info("HybridSearchManager not available, CodeLocateTool not registered");
             }
             
             // 2. ImpactAnalysisTool - 影响分析工具
-            if (graphService != null && graphService.isEnabled()) {
-                tools.add(new ImpactAnalysisTool(graphService));
+            if (graphManager != null && graphManager.isEnabled()) {
+                tools.add(new ImpactAnalysisTool(graphManager));
                 log.info("Registered ImpactAnalysisTool");
                 
                 // 3. CallGraphTool - 调用图查询工具
-                tools.add(new CallGraphTool(graphService));
+                tools.add(new CallGraphTool(graphManager));
                 log.info("Registered CallGraphTool");
             }
             

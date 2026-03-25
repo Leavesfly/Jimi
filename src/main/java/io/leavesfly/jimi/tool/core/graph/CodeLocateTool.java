@@ -3,7 +3,7 @@ package io.leavesfly.jimi.tool.core.graph;
 import com.fasterxml.jackson.annotation.JsonPropertyDescription;
 import io.leavesfly.jimi.knowledge.domain.query.HybridQuery;
 import io.leavesfly.jimi.knowledge.domain.result.HybridResult;
-import io.leavesfly.jimi.knowledge.spi.HybridSearchService;
+import io.leavesfly.jimi.knowledge.search.HybridSearchManager;
 import io.leavesfly.jimi.tool.AbstractTool;
 import io.leavesfly.jimi.tool.ToolResult;
 import lombok.AllArgsConstructor;
@@ -27,15 +27,15 @@ import java.util.stream.Collectors;
 @Slf4j
 public class CodeLocateTool extends AbstractTool<CodeLocateTool.Params> {
     
-    private final HybridSearchService hybridSearchService;
+    private final HybridSearchManager hybridSearchManager;
     
-    public CodeLocateTool(HybridSearchService hybridSearchService) {
+    public CodeLocateTool(HybridSearchManager hybridSearchManager) {
         super(
             "CodeLocateTool",
             "精准代码定位工具。支持符号名称、文件路径、自然语言描述等多种查询方式，自动选择最佳检索策略。",
             Params.class
         );
-        this.hybridSearchService = hybridSearchService;
+        this.hybridSearchManager = hybridSearchManager;
     }
     
     @Override
@@ -60,15 +60,15 @@ public class CodeLocateTool extends AbstractTool<CodeLocateTool.Params> {
         Mono<HybridResult> resultMono;
         switch (params.getMode()) {
             case GRAPH_ONLY:
-                resultMono = hybridSearchService.searchGraphOnly(query);
+                resultMono = hybridSearchManager.searchGraphOnly(query);
                 break;
             case VECTOR_ONLY:
-                resultMono = hybridSearchService.searchRetrievalOnly(query);
+                resultMono = hybridSearchManager.searchRetrievalOnly(query);
                 break;
             case HYBRID:
             case SMART:
             default:
-                resultMono = hybridSearchService.search(query);
+                resultMono = hybridSearchManager.search(query);
                 break;
         }
         

@@ -5,6 +5,7 @@ import io.leavesfly.jimi.core.agent.AgentSpec;
 import io.leavesfly.jimi.core.interaction.approval.Approval;
 import io.leavesfly.jimi.core.engine.runtime.BuiltinSystemPromptArgs;
 import io.leavesfly.jimi.core.engine.runtime.Runtime;
+import io.leavesfly.jimi.core.sandbox.SandboxValidator;
 import io.leavesfly.jimi.core.session.Session;
 import io.leavesfly.jimi.tool.core.bash.Bash;
 import io.leavesfly.jimi.tool.core.file.*;
@@ -121,6 +122,21 @@ public class ToolRegistryFactory {
     }
 
     /**
+     * 内置工具类型列表（新增内置工具只需在此添加）
+     */
+    private static final List<Class<? extends Tool<?>>> BUILTIN_TOOL_TYPES = List.of(
+            ReadFile.class,
+            WriteFile.class,
+            StrReplaceFile.class,
+            Glob.class,
+            Grep.class,
+            Bash.class,
+            FetchURL.class,
+            WebSearch.class,
+            SetTodoList.class
+    );
+
+    /**
      * 创建标准工具注册表（带 Session）
      * 包含所有内置工具
      *
@@ -140,121 +156,52 @@ public class ToolRegistryFactory {
             log.debug("SandboxValidator not available, tools will run without sandbox validation");
         }
 
-        // 注册文件工具
-        registry.register(createReadFile(builtinArgs));
-        registry.register(createWriteFile(builtinArgs, approval, sandboxValidator));
-        registry.register(createStrReplaceFile(builtinArgs, approval, sandboxValidator));
-        registry.register(createGlob(builtinArgs));
-        registry.register(createGrep(builtinArgs));
-        // PatchFile 已弃用，统一使用 StrReplaceFile（参数更简单，LLM 更容易生成正确格式）
-
-        // 注册 Bash 工具
-        registry.register(createBash(approval, sandboxValidator));
-
-        // 注册 Web 工具
-        registry.register(createFetchURL());
-
-        registry.register(createWebSearch());
-
-        // 注册 Todo 工具
-        registry.register(createSetTodoList(session));
+        // 统一创建并注册所有内置工具
+        for (Class<? extends Tool<?>> toolType : BUILTIN_TOOL_TYPES) {
+            Tool<?> tool = createAndInitializeTool(toolType, builtinArgs, approval, sandboxValidator, session);
+            registry.register(tool);
+        }
 
         log.info("Created standard tool registry with {} tools", registry.getToolNames().size());
         return registry;
     }
 
     /**
-     * 创建 ReadFile 工具实例
+     * 统一创建并初始化工具实例
+     * 从 Spring 容器获取原型 Bean，然后根据工具类型注入运行时依赖
      */
-    private ReadFile createReadFile(BuiltinSystemPromptArgs builtinArgs) {
-        ReadFile tool = applicationContext.getBean(ReadFile.class);
-        tool.setBuiltinArgs(builtinArgs);
-        return tool;
-    }
+    private Tool<?> createAndInitializeTool(
+            Class<? extends Tool<?>> toolType,
+            BuiltinSystemPromptArgs builtinArgs,
+            Approval approval,
+            SandboxValidator sandboxValidator,
+            Session session) {
 
-    /**
-     * 创建 WriteFile 工具实例
-     */
-    private WriteFile createWriteFile(BuiltinSystemPromptArgs builtinArgs, Approval approval, 
-                                       io.leavesfly.jimi.core.sandbox.SandboxValidator sandboxValidator) {
-        WriteFile tool = applicationContext.getBean(WriteFile.class);
-        tool.setBuiltinArgs(builtinArgs);
-        tool.setApproval(approval);
-        if (sandboxValidator != null) {
-            tool.setSandboxValidator(sandboxValidator);
+        Tool<?> tool = applicationContext.getBean(toolType);
+
+        // 注入 builtinArgs（文件类工具需要工作目录）
+        if (tool instanceof ReadFile readFile) {
+            readFile.setBuiltinArgs(builtinArgs);
+        } else if (tool instanceof WriteFile writeFile) {
+            writeFile.setBuiltinArgs(builtinArgs);
+            writeFile.setApproval(approval);
+            if (sandboxValidator != null) writeFile.setSandboxValidator(sandboxValidator);
+        } else if (tool instanceof StrReplaceFile strReplaceFile) {
+            strReplaceFile.setBuiltinArgs(builtinArgs);
+            strReplaceFile.setApproval(approval);
+            if (sandboxValidator != null) strReplaceFile.setSandboxValidator(sandboxValidator);
+        } else if (tool instanceof Glob glob) {
+            glob.setBuiltinArgs(builtinArgs);
+        } else if (tool instanceof Grep grep) {
+            grep.setBuiltinArgs(builtinArgs);
+        } else if (tool instanceof Bash bash) {
+            bash.setApproval(approval);
+            if (sandboxValidator != null) bash.setSandboxValidator(sandboxValidator);
+        } else if (tool instanceof SetTodoList todoList && session != null) {
+            todoList.setSession(session);
         }
-        return tool;
-    }
+        // FetchURL、WebSearch 无需额外初始化
 
-    /**
-     * 创建 StrReplaceFile 工具实例
-     */
-    private StrReplaceFile createStrReplaceFile(BuiltinSystemPromptArgs builtinArgs, Approval approval,
-                                                 io.leavesfly.jimi.core.sandbox.SandboxValidator sandboxValidator) {
-        StrReplaceFile tool = applicationContext.getBean(StrReplaceFile.class);
-        tool.setBuiltinArgs(builtinArgs);
-        tool.setApproval(approval);
-        if (sandboxValidator != null) {
-            tool.setSandboxValidator(sandboxValidator);
-        }
-        return tool;
-    }
-
-    /**
-     * 创建 Glob 工具实例
-     */
-    private Glob createGlob(BuiltinSystemPromptArgs builtinArgs) {
-        Glob tool = applicationContext.getBean(Glob.class);
-        tool.setBuiltinArgs(builtinArgs);
-        return tool;
-    }
-
-    /**
-     * 创建 Grep 工具实例
-     */
-    private Grep createGrep(BuiltinSystemPromptArgs builtinArgs) {
-        Grep tool = applicationContext.getBean(Grep.class);
-        tool.setBuiltinArgs(builtinArgs);
-        return tool;
-    }
-
-    /**
-     * 创建 Bash 工具实例
-     */
-    private Bash createBash(Approval approval, io.leavesfly.jimi.core.sandbox.SandboxValidator sandboxValidator) {
-        Bash tool = applicationContext.getBean(Bash.class);
-        tool.setApproval(approval);
-        if (sandboxValidator != null) {
-            tool.setSandboxValidator(sandboxValidator);
-        }
-        return tool;
-    }
-
-    /**
-     * 创建 SetTodoList 工具实例
-     */
-    private SetTodoList createSetTodoList(Session session) {
-        SetTodoList tool = applicationContext.getBean(SetTodoList.class);
-        if (session != null) {
-            tool.setSession(session);
-        }
-        return tool;
-    }
-
-    /**
-     * 创建 FetchURL 工具实例
-     */
-    private FetchURL createFetchURL() {
-        return applicationContext.getBean(FetchURL.class);
-    }
-
-    /**
-     * 创建 WebSearch 工具实例
-     * WebSearch 需要搜索服务配置，如果未配置则使用空参数创建
-     * 工具在执行时会检查配置并返回相应错误
-     */
-    private WebSearch createWebSearch() {
-        WebSearch tool = applicationContext.getBean(WebSearch.class);
         return tool;
     }
 

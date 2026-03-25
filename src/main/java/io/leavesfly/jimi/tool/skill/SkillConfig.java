@@ -45,11 +45,7 @@ public class SkillConfig {
      */
     private LoggingConfig logging = new LoggingConfig();
     
-    /**
-     * 脚本执行相关配置
-     */
-    private ScriptExecutionConfig scriptExecution = new ScriptExecutionConfig();
-    
+
     /**
      * 匹配配置
      */
@@ -136,31 +132,7 @@ public class SkillConfig {
         private boolean logPerformanceMetrics = false;
     }
     
-    /**
-     * 脚本执行配置
-     */
-    @Data
-    public static class ScriptExecutionConfig {
-        /**
-         * 是否启用脚本执行
-         * 默认：true
-         */
-        private boolean enabled = true;
-        
-        /**
-         * 脚本执行超时时间（秒）
-         * 默认：60
-         */
-        private int timeout = 60;
-        
-        /**
-         * 是否需要审批
-         * 如果为 true，则执行脚本前需要用户确认
-         * 默认：false
-         */
-        private boolean requireApproval = false;
-    }
-    
+
     /**
      * 验证配置有效性
      * 
@@ -192,9 +164,6 @@ public class SkillConfig {
                     "cache maxSize must be at least 1, got: " + cache.maxSize);
         }
         
-        if (scriptExecution.timeout < 1) {
-            throw new IllegalArgumentException(
-                    "script timeout must be at least 1, got: " + scriptExecution.timeout);
-        }
+
     }
 }

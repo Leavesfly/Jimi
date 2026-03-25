@@ -179,18 +179,7 @@ public class SkillLoader {
                                 skill.setScope(scope);
                                 skill.setSkillFilePath(skillFile);
                                 
-                                // 检查是否有resources目录
-                                Path resourcesDir = skillDir.resolve("resources");
-                                if (Files.exists(resourcesDir) && Files.isDirectory(resourcesDir)) {
-                                    skill.setResourcesPath(resourcesDir);
-                                }
-                                
-                                // 检查是否有scripts目录（兼容Claude Code Skills）
-                                Path scriptsDir = skillDir.resolve("scripts");
-                                if (Files.exists(scriptsDir) && Files.isDirectory(scriptsDir)) {
-                                    skill.setScriptsPath(scriptsDir);
-                                    log.debug("Found scripts directory for skill: {}", skill.getName());
-                                }
+
                                 
                                 skills.add(skill);
                                 log.debug("Loaded skill: {} from {}", skill.getName(), skillFile);
@@ -326,9 +315,7 @@ public class SkillLoader {
                     if (metadata.containsKey("category")) {
                         builder.category((String) metadata.get("category"));
                     }
-                    if (metadata.containsKey("license")) {
-                        builder.license((String) metadata.get("license"));
-                    }
+
                     if (metadata.containsKey("triggers")) {
                         builder.triggers((List<String>) metadata.get("triggers"));
                     }
@@ -347,24 +334,7 @@ public class SkillLoader {
                             log.debug("Ignoring Claude Code specific field '{}' in skill '{}'", key, metadata.get("name"));
                         }
                     }
-                    if (metadata.containsKey("scriptPath")) {
-                        builder.scriptPath((String) metadata.get("scriptPath"));
-                    }
-                    if (metadata.containsKey("scriptType")) {
-                        builder.scriptType((String) metadata.get("scriptType"));
-                    }
-                    if (metadata.containsKey("autoExecute")) {
-                        builder.autoExecute((Boolean) metadata.get("autoExecute"));
-                    }
-                    if (metadata.containsKey("scriptEnv")) {
-                        builder.scriptEnv((Map<String, String>) metadata.get("scriptEnv"));
-                    }
-                    if (metadata.containsKey("scriptTimeout")) {
-                        Object timeout = metadata.get("scriptTimeout");
-                        if (timeout instanceof Integer) {
-                            builder.scriptTimeout((Integer) timeout);
-                        }
-                    }
+
                     
                 } catch (Exception e) {
                     log.warn("Failed to parse YAML Front Matter in {}, using defaults", filePath, e);
@@ -526,18 +496,7 @@ public class SkillLoader {
         if (skill != null) {
             skill.setSkillFilePath(skillFile);
             
-            // 检查 resources 目录
-            Path skillDir = Files.isDirectory(skillPath) ? skillPath : skillPath.getParent();
-            Path resourcesDir = skillDir.resolve("resources");
-            if (Files.exists(resourcesDir) && Files.isDirectory(resourcesDir)) {
-                skill.setResourcesPath(resourcesDir);
-            }
-            
-            // 检查 scripts 目录
-            Path scriptsDir = skillDir.resolve("scripts");
-            if (Files.exists(scriptsDir) && Files.isDirectory(scriptsDir)) {
-                skill.setScriptsPath(scriptsDir);
-            }
+
         }
         
         return skill;

@@ -4,8 +4,9 @@ import io.leavesfly.jimi.config.info.VectorIndexConfig;
 import io.leavesfly.jimi.core.engine.runtime.Runtime;
 import io.leavesfly.jimi.knowledge.domain.query.RetrievalQuery;
 import io.leavesfly.jimi.knowledge.domain.result.RetrievalResult;
-import io.leavesfly.jimi.knowledge.spi.RagService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -19,12 +20,13 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
- * 向量检索服务实现（适配 VectorStore 和 EmbeddingProvider）
+ * 向量检索管理器（组合 VectorStore、EmbeddingProvider、Chunker）
  * 
- * <p>复用现有的检索组件，提供 SPI 接口适配。
+ * <p>负责协调检索相关的组件，提供统一的检索接口。
  */
 @Slf4j
-public class RagServiceImpl implements RagService {
+@Component
+public class RagManager {
     
     private final VectorStore vectorStore;
     private final EmbeddingProvider embeddingProvider;
@@ -33,25 +35,24 @@ public class RagServiceImpl implements RagService {
     
     private volatile Path workDir;
     
-    public RagServiceImpl(VectorStore vectorStore,
-                          EmbeddingProvider embeddingProvider,
-                          Chunker chunker,
-                          VectorIndexConfig config) {
+    @Autowired
+    public RagManager(@Autowired(required = false) VectorStore vectorStore,
+                      @Autowired(required = false) EmbeddingProvider embeddingProvider,
+                      @Autowired(required = false) Chunker chunker,
+                      @Autowired(required = false) VectorIndexConfig config) {
         this.vectorStore = vectorStore;
         this.embeddingProvider = embeddingProvider;
         this.chunker = chunker;
         this.config = config;
     }
     
-    @Override
     public Mono<Boolean> initialize(Runtime runtime) {
         return Mono.fromRunnable(() -> {
             this.workDir = runtime.getWorkDir();
-            log.info("RagService 初始化完成, workDir={}", workDir);
+            log.info("RagManager 初始化完成, workDir={}", workDir);
         }).thenReturn(true);
     }
     
-    @Override
     public Mono<RetrievalResult> retrieve(RetrievalQuery query) {
         if (!isEnabled()) {
             return Mono.just(RetrievalResult.error("Retrieval 功能未启用"));
@@ -99,7 +100,6 @@ public class RagServiceImpl implements RagService {
                 });
     }
     
-    @Override
     public Mono<RetrievalResult> buildIndex(Path projectRoot) {
         if (!isEnabled()) {
             return Mono.just(RetrievalResult.error("Retrieval 功能未启用"));
@@ -191,17 +191,14 @@ public class RagServiceImpl implements RagService {
         return false;
     }
     
-    @Override
     public Mono<Boolean> save() {
         return vectorStore.save();
     }
     
-    @Override
     public Mono<Boolean> load(Path indexPath) {
         return vectorStore.load(indexPath);
     }
     
-    @Override
     public Mono<RetrievalResult.IndexStats> getStats() {
         return vectorStore.getStats()
                 .map(stats -> RetrievalResult.IndexStats.builder()
@@ -212,12 +209,10 @@ public class RagServiceImpl implements RagService {
                         .build());
     }
     
-    @Override
     public boolean isEnabled() {
         return config != null && config.isEnabled();
     }
     
-    @Override
     public Mono<Boolean> clear() {
         return vectorStore.clear().thenReturn(true);
     }

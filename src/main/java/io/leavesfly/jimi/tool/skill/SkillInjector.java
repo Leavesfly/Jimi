@@ -7,7 +7,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -40,9 +39,7 @@ public class SkillInjector {
     @Autowired
     private SkillRegistry skillRegistry;
     
-    @Autowired(required = false)
-    private SkillScriptExecutor scriptExecutor;
-    
+
     /**
      * 将匹配的 Skills 注入到上下文
      * 
@@ -59,7 +56,7 @@ public class SkillInjector {
      * 
      * @param context 上下文对象
      * @param matchedSkills 匹配的 Skills 列表
-     * @param workDir 工作目录（用于解析脚本路径）
+     * @param workDir 工作目录
      * @return 注入完成的 Mono
      */
     public Mono<Void> injectSkills(Context context, List<SkillSpec> matchedSkills, Path workDir) {
@@ -102,7 +99,7 @@ public class SkillInjector {
         // 添加到上下文并记录激活的 Skills
         return context.appendMessage(skillsMessage)
                 .then(context.addActiveSkills(newSkills))
-                .then(executeSkillScripts(newSkills, workDir))  // 执行 Skills 脚本
+
                 .doOnSuccess(v -> {
                     if (logPerformanceMetrics()) {
                         long elapsed = System.currentTimeMillis() - startTime;
@@ -202,22 +199,6 @@ public class SkillInjector {
                 sb.append(skill.getContent()).append("\n\n");
             }
             
-            // 提示可用的 scripts 目录（兼容 Claude Code Skills）
-            if (skill.getScriptsPath() != null) {
-                try {
-                    long scriptCount = Files.list(skill.getScriptsPath()).count();
-                    if (scriptCount > 0) {
-                        sb.append("**可用脚本**: 此 Skill 包含 ")
-                          .append(scriptCount)
-                          .append(" 个实用脚本，位于 `")
-                          .append(skill.getScriptsPath().getFileName())
-                          .append("`，可通过 Bash 工具调用\n\n");
-                    }
-                } catch (Exception e) {
-                    log.debug("Failed to list scripts for skill: {}", skill.getName(), e);
-                }
-            }
-            
             // 分隔线（最后一个 Skill 不需要）
             if (i < skills.size() - 1) {
                 sb.append("---\n\n");
@@ -283,69 +264,5 @@ public class SkillInjector {
         return false;
     }
     
-    /**
-     * 执行 Skills 的脚本（如果有）
-     * 
-     * @param skills Skills 列表
-     * @param workDir 工作目录
-     * @return 执行完成的 Mono
-     */
-    private Mono<Void> executeSkillScripts(List<SkillSpec> skills, Path workDir) {
-        // 如果没有脚本执行器，跳过
-        if (scriptExecutor == null) {
-            log.debug("SkillScriptExecutor not available, skipping script execution");
-            return Mono.empty();
-        }
-        
-        // 过滤出需要执行脚本的 Skills
-        List<SkillSpec> skillsWithScripts = skills.stream()
-                .filter(skill -> skill.getScriptPath() != null && !skill.getScriptPath().isEmpty())
-                .filter(SkillSpec::isAutoExecute)
-                .collect(Collectors.toList());
-        
-        if (skillsWithScripts.isEmpty()) {
-            return Mono.empty();
-        }
-        
-        log.info("Executing scripts for {} skills", skillsWithScripts.size());
-        
-        // 使用当前目录作为默认工作目录
-        Path effectiveWorkDir = workDir != null ? workDir : Path.of(".");
-        
-        // 串行执行所有脚本（避免并发问题）
-        Mono<Void> chain = Mono.empty();
-        for (SkillSpec skill : skillsWithScripts) {
-            chain = chain.then(executeSkillScript(skill, effectiveWorkDir));
-        }
-        
-        return chain;
-    }
-    
-    /**
-     * 执行单个 Skill 的脚本
-     */
-    private Mono<Void> executeSkillScript(SkillSpec skill, Path workDir) {
-        return scriptExecutor.executeScript(skill, workDir)
-                .doOnNext(result -> {
-                    if (result.isOk()) {
-                        log.info("Script execution succeeded for skill '{}': {}", 
-                                skill.getName(), result.getMessage());
-                        if (!result.getOutput().isEmpty()) {
-                            log.debug("Script output:\n{}", result.getOutput());
-                        }
-                    } else if (result.isError()) {
-                        log.warn("Script execution failed for skill '{}': {}", 
-                                skill.getName(), result.getMessage());
-                        if (!result.getOutput().isEmpty()) {
-                            log.debug("Script error output:\n{}", result.getOutput());
-                        }
-                    }
-                })
-                .onErrorResume(e -> {
-                    log.error("Error executing script for skill '{}'", skill.getName(), e);
-                    // 脚本执行失败不影响 Skill 注入
-                    return Mono.empty();
-                })
-                .then();
-    }
+
 }

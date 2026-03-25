@@ -292,25 +292,13 @@ class AgentSpecLoader {
     }
 
     /**
-     * 从资源解析AgentSpec对象(JAR包模式)
+     * 填充公共字段到 AgentSpecBuilder
+     * 处理 name、system_prompt_args、tools、exclude_tools、model 等通用字段
      */
-    private AgentSpec parseAgentSpecFromResource(Map<String, Object> data, String agentName) {
-        AgentSpec.AgentSpecBuilder builder = AgentSpec.builder();
-
+    private void populateCommonFields(AgentSpec.AgentSpecBuilder builder, Map<String, Object> data) {
         // 处理名称
         if (data.containsKey("name")) {
             builder.name((String) data.get("name"));
-        }
-
-        // 处理系统提示词路径 - 使用虚拟路径标识资源
-        if (data.containsKey("system_prompt")) {
-            String promptFile = (String) data.get("system_prompt");
-            Path virtualPath = Paths.get("classpath:agents/" + agentName + "/" + promptFile);
-            builder.systemPromptPath(virtualPath);
-        } else if (data.containsKey("system_prompt_path")) {
-            String promptFile = (String) data.get("system_prompt_path");
-            Path virtualPath = Paths.get("classpath:agents/" + agentName + "/" + promptFile);
-            builder.systemPromptPath(virtualPath);
         }
 
         // 处理系统提示词参数
@@ -331,6 +319,27 @@ class AgentSpecLoader {
         // 处理模型名称
         if (data.containsKey("model")) {
             builder.model((String) data.get("model"));
+        }
+    }
+
+    /**
+     * 从资源解析AgentSpec对象(JAR包模式)
+     */
+    private AgentSpec parseAgentSpecFromResource(Map<String, Object> data, String agentName) {
+        AgentSpec.AgentSpecBuilder builder = AgentSpec.builder();
+
+        // 填充公共字段
+        populateCommonFields(builder, data);
+
+        // 处理系统提示词路径 - 使用虚拟路径标识资源
+        if (data.containsKey("system_prompt")) {
+            String promptFile = (String) data.get("system_prompt");
+            Path virtualPath = Paths.get("classpath:agents/" + agentName + "/" + promptFile);
+            builder.systemPromptPath(virtualPath);
+        } else if (data.containsKey("system_prompt_path")) {
+            String promptFile = (String) data.get("system_prompt_path");
+            Path virtualPath = Paths.get("classpath:agents/" + agentName + "/" + promptFile);
+            builder.systemPromptPath(virtualPath);
         }
 
         // JAR包模式下也支持subagents
@@ -355,18 +364,14 @@ class AgentSpecLoader {
 
         return builder.build();
     }
-
     /**
      * 解析AgentSpec对象
      */
     private AgentSpec parseAgentSpec(Map<String, Object> data, Path agentFile) {
         AgentSpec.AgentSpecBuilder builder = AgentSpec.builder();
 
-
-        // 处理名称
-        if (data.containsKey("name")) {
-            builder.name((String) data.get("name"));
-        }
+        // 填充公共字段
+        populateCommonFields(builder, data);
 
         // 处理系统提示词路径（支持 system_prompt 和 system_prompt_path）
         Path systemPromptPath = null;
@@ -377,26 +382,6 @@ class AgentSpecLoader {
         }
         if (systemPromptPath != null) {
             builder.systemPromptPath(systemPromptPath);
-        }
-
-        // 处理系统提示词参数
-        if (data.containsKey("system_prompt_args")) {
-            builder.systemPromptArgs((Map<String, String>) data.get("system_prompt_args"));
-        }
-
-        // 处理工具列表
-        if (data.containsKey("tools")) {
-            builder.tools((List<String>) data.get("tools"));
-        }
-
-        // 处理排除工具列表
-        if (data.containsKey("exclude_tools")) {
-            builder.excludeTools((List<String>) data.get("exclude_tools"));
-        }
-
-        // 处理模型名称
-        if (data.containsKey("model")) {
-            builder.model((String) data.get("model"));
         }
 
         // 处理子Agent

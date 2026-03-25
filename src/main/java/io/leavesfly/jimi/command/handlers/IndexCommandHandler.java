@@ -4,7 +4,7 @@ import io.leavesfly.jimi.command.CommandContext;
 import io.leavesfly.jimi.command.CommandHandler;
 import io.leavesfly.jimi.knowledge.domain.query.RetrievalQuery;
 import io.leavesfly.jimi.knowledge.domain.result.RetrievalResult;
-import io.leavesfly.jimi.knowledge.spi.RagService;
+import io.leavesfly.jimi.knowledge.rag.RagManager;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,7 +33,7 @@ import java.nio.file.Paths;
 public class IndexCommandHandler implements CommandHandler {
 
     @Autowired(required = false)
-    private RagService retrievalService;
+    private RagManager ragManager;
 
     @Override
     public String getName() {
@@ -54,8 +54,8 @@ public class IndexCommandHandler implements CommandHandler {
     public void execute(CommandContext context) {
         String[] args = context.getArgs();
         
-        if (retrievalService == null || !retrievalService.isEnabled()) {
-            context.getOutputFormatter().printWarning("向量索引未启用（RetrievalService未配置）");
+        if (ragManager == null || !ragManager.isEnabled()) {
+            context.getOutputFormatter().printWarning("向量索引未启用（RagManager未配置）");
             return;
         }
 
@@ -105,8 +105,8 @@ public class IndexCommandHandler implements CommandHandler {
                 return;
             }
     
-            // 通过 RagService 构建索引
-            RetrievalResult result = retrievalService.buildIndex(basePath).block();
+            // 通过 RagManager 构建索引
+            RetrievalResult result = ragManager.buildIndex(basePath).block();
             
             if (result == null || !result.isSuccess()) {
                 context.getOutputFormatter().printError("构建失败: " + 
@@ -115,7 +115,7 @@ public class IndexCommandHandler implements CommandHandler {
             }
     
             // 保存索引
-            Boolean saved = retrievalService.save().block();
+            Boolean saved = ragManager.save().block();
             if (Boolean.TRUE.equals(saved)) {
                 context.getOutputFormatter().printSuccess("✅ 索引已保存");
             }
@@ -150,7 +150,7 @@ public class IndexCommandHandler implements CommandHandler {
                     .includeContent(true)
                     .build();
             
-            RetrievalResult result = retrievalService.retrieve(query).block();
+            RetrievalResult result = ragManager.retrieve(query).block();
 
             if (result == null || !result.isSuccess()) {
                 context.getOutputFormatter().printError("查询失败: " + 
@@ -189,7 +189,7 @@ public class IndexCommandHandler implements CommandHandler {
         context.getOutputFormatter().printInfo("📊 获取索引统计...");
         
         try {
-            RetrievalResult.IndexStats stats = retrievalService.getStats().block();
+            RetrievalResult.IndexStats stats = ragManager.getStats().block();
             
             if (stats == null) {
                 context.getOutputFormatter().printWarning("无法获取统计信息");
@@ -220,13 +220,13 @@ public class IndexCommandHandler implements CommandHandler {
         
         try {
             // 获取当前统计
-            RetrievalResult.IndexStats statsBefore = retrievalService.getStats().block();
+            RetrievalResult.IndexStats statsBefore = ragManager.getStats().block();
             
             // 清空索引
-            retrievalService.clear().block();
+            ragManager.clear().block();
             
             // 保存空索引
-            retrievalService.save().block();
+            ragManager.save().block();
             
             context.getOutputFormatter().printSuccess(
                 String.format("✅ 索引已清空（删除了 %d 个片段）", 

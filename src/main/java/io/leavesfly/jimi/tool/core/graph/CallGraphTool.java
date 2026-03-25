@@ -1,7 +1,7 @@
 package io.leavesfly.jimi.tool.core.graph;
 
 import com.fasterxml.jackson.annotation.JsonPropertyDescription;
-import io.leavesfly.jimi.knowledge.spi.GraphService;
+import io.leavesfly.jimi.knowledge.graph.GraphManager;
 import io.leavesfly.jimi.tool.AbstractTool;
 import io.leavesfly.jimi.tool.ToolResult;
 import lombok.AllArgsConstructor;
@@ -21,15 +21,15 @@ import java.util.List;
 @Slf4j
 public class CallGraphTool extends AbstractTool<CallGraphTool.Params> {
     
-    private final GraphService graphService;
+    private final GraphManager graphManager;
     
-    public CallGraphTool(GraphService graphService) {
+    public CallGraphTool(GraphManager graphManager) {
         super(
             "CallGraphTool",
             "查询方法调用图。可查找调用链、调用者、被调用者,并支持 Mermaid 可视化。",
             Params.class
         );
-        this.graphService = graphService;
+        this.graphManager = graphManager;
     }
     
     @Override
@@ -51,13 +51,13 @@ public class CallGraphTool extends AbstractTool<CallGraphTool.Params> {
     }
     
     private Mono<ToolResult> findCallers(Params params) {
-        return graphService.findCallers(params.getMethodEntityId(), params.getMaxDepth())
+        return graphManager.findCallers(params.getMethodEntityId(), params.getMaxDepth())
                 .map(callers -> {
                     StringBuilder sb = new StringBuilder();
                     sb.append("# 调用者列表\n\n");
                     sb.append(String.format("找到 %d 个调用者:\n\n", callers.size()));
                     
-                    for (GraphService.EntityInfo caller : callers) {
+                    for (GraphManager.EntityInfo caller : callers) {
                         sb.append(String.format("- `%s` (%s:%d)\n", 
                             caller.getName(), 
                             caller.getFilePath(),
@@ -71,13 +71,13 @@ public class CallGraphTool extends AbstractTool<CallGraphTool.Params> {
     }
     
     private Mono<ToolResult> findCallees(Params params) {
-        return graphService.findCallees(params.getMethodEntityId(), params.getMaxDepth())
+        return graphManager.findCallees(params.getMethodEntityId(), params.getMaxDepth())
                 .map(callees -> {
                     StringBuilder sb = new StringBuilder();
                     sb.append("# 被调用方法列表\n\n");
                     sb.append(String.format("找到 %d 个被调用方法:\n\n", callees.size()));
                     
-                    for (GraphService.EntityInfo callee : callees) {
+                    for (GraphManager.EntityInfo callee : callees) {
                         sb.append(String.format("- `%s` (%s:%d)\n", 
                             callee.getName(), 
                             callee.getFilePath(),
@@ -95,14 +95,14 @@ public class CallGraphTool extends AbstractTool<CallGraphTool.Params> {
             return Mono.just(ToolResult.error("错误: targetMethodId 参数为空", "Missing parameter"));
         }
         
-        return graphService.findCallChains(params.getMethodEntityId(), params.getTargetMethodId(), params.getMaxDepth())
+        return graphManager.findCallChains(params.getMethodEntityId(), params.getTargetMethodId(), params.getMaxDepth())
                 .map(chains -> {
                     StringBuilder sb = new StringBuilder();
                     sb.append("# 调用链\n\n");
                     sb.append(String.format("找到 %d 条调用链:\n\n", chains.size()));
                     
                     int index = 1;
-                    for (GraphService.CallChainInfo chain : chains) {
+                    for (GraphManager.CallChainInfo chain : chains) {
                         sb.append(String.format("%d. %s (深度: %d)\n", index++, chain.getPathString(), chain.getDepth()));
                     }
                     
@@ -113,7 +113,7 @@ public class CallGraphTool extends AbstractTool<CallGraphTool.Params> {
     }
     
     private Mono<ToolResult> visualizeCallGraph(Params params) {
-        return graphService.exportCallGraphToMermaid(params.getMethodEntityId(), params.getMaxDepth())
+        return graphManager.exportCallGraphToMermaid(params.getMethodEntityId(), params.getMaxDepth())
                 .map(mermaid -> {
                     StringBuilder sb = new StringBuilder();
                     sb.append("# 调用图可视化\n\n");

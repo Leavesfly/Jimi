@@ -1,7 +1,7 @@
 package io.leavesfly.jimi.tool.core.graph;
 
 import com.fasterxml.jackson.annotation.JsonPropertyDescription;
-import io.leavesfly.jimi.knowledge.spi.GraphService;
+import io.leavesfly.jimi.knowledge.graph.GraphManager;
 import io.leavesfly.jimi.tool.AbstractTool;
 import io.leavesfly.jimi.tool.ToolResult;
 import lombok.AllArgsConstructor;
@@ -19,15 +19,15 @@ import reactor.core.publisher.Mono;
 @Slf4j
 public class ImpactAnalysisTool extends AbstractTool<ImpactAnalysisTool.Params> {
     
-    private final GraphService graphService;
+    private final GraphManager graphManager;
     
-    public ImpactAnalysisTool(GraphService graphService) {
+    public ImpactAnalysisTool(GraphManager graphManager) {
         super(
             "ImpactAnalysisTool",
             "分析代码变更的影响范围。可分析修改某个类、方法、文件后会影响哪些代码。",
             Params.class
         );
-        this.graphService = graphService;
+        this.graphManager = graphManager;
     }
     
     @Override
@@ -35,7 +35,7 @@ public class ImpactAnalysisTool extends AbstractTool<ImpactAnalysisTool.Params> 
         log.info("ImpactAnalysis tool called: entityId='{}', analysisType={}, maxDepth={}", 
                 params.getEntityId(), params.getAnalysisType(), params.getMaxDepth());
         
-        return graphService.analyzeImpact(params.getEntityId(), params.getAnalysisType(), params.getMaxDepth())
+        return graphManager.analyzeImpact(params.getEntityId(), params.getAnalysisType(), params.getMaxDepth())
                 .map(result -> {
                     if (!result.isSuccess()) {
                         return ToolResult.error(
@@ -56,7 +56,7 @@ public class ImpactAnalysisTool extends AbstractTool<ImpactAnalysisTool.Params> 
                 });
     }
     
-    private String formatAnalysisResult(GraphService.ImpactAnalysisResult result) {
+    private String formatAnalysisResult(GraphManager.ImpactAnalysisResult result) {
         StringBuilder sb = new StringBuilder();
         
         sb.append("# 影响分析结果\n\n");
