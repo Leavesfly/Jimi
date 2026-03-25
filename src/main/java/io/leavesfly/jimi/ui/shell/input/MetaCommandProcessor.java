@@ -59,7 +59,7 @@ public class MetaCommandProcessor implements InputProcessor {
         
         // 构建命令上下文
         CommandContext cmdContext = CommandContext.builder()
-            .soul(context.getSoul())
+            .engineClient(context.getEngineClient())
             .terminal(context.getTerminal())
             .lineReader(context.getLineReader())
             .rawInput(input)

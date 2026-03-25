@@ -2,7 +2,7 @@ package io.leavesfly.jimi.ui.shell;
 
 import io.leavesfly.jimi.config.info.ShellUIConfig;
 import io.leavesfly.jimi.config.info.ThemeConfig;
-import io.leavesfly.jimi.core.JimiEngine;
+import io.leavesfly.jimi.client.EngineClient;
 import lombok.extern.slf4j.Slf4j;
 import org.jline.utils.AttributedString;
 import org.jline.utils.AttributedStyle;
@@ -18,17 +18,17 @@ public class PromptBuilder {
 
     private final AtomicReference<String> currentStatus;
     private final ShellUIConfig uiConfig;
-    private final JimiEngine soul;
+    private final EngineClient engineClient;
     private ThemeConfig theme;
 
     public PromptBuilder(AtomicReference<String> currentStatus,
                          ShellUIConfig uiConfig,
                          ThemeConfig theme,
-                         JimiEngine soul) {
+                         EngineClient engineClient) {
         this.currentStatus = currentStatus;
         this.uiConfig = uiConfig;
         this.theme = theme;
-        this.soul = soul;
+        this.engineClient = engineClient;
     }
 
     public void setTheme(ThemeConfig theme) {
@@ -87,8 +87,8 @@ public class PromptBuilder {
 
         if (uiConfig.isShowContextStats()) {
             try {
-                int messageCount = soul.getContext().getHistory().size();
-                int tokenCount = soul.getContext().getTokenCount();
+                int messageCount = engineClient.getHistorySize();
+                int tokenCount = engineClient.getTokenCount();
                 promptText.append(" [💬").append(messageCount);
                 if (tokenCount > 0) {
                     promptText.append(" 💡");

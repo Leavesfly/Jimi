@@ -1,7 +1,6 @@
 package io.leavesfly.jimi.ui.shell.input;
 
 import io.leavesfly.jimi.tool.ToolResult;
-import io.leavesfly.jimi.command.CommandContext;
 import io.leavesfly.jimi.ui.shell.ShellContext;
 import io.leavesfly.jimi.ui.shell.output.OutputFormatter;
 import lombok.extern.slf4j.Slf4j;
@@ -38,7 +37,7 @@ public class ShellShortcutProcessor implements InputProcessor {
         
         try {
             // 检查 Bash 工具是否可用
-            if (!context.getSoul().getToolRegistry().hasTool("Bash")) {
+            if (!context.getEngineClient().hasTool("Bash")) {
                 out.printError("Bash 工具不可用");
                 return true;
             }
@@ -50,8 +49,8 @@ public class ShellShortcutProcessor implements InputProcessor {
             );
             
             // 执行 Bash 工具
-            ToolResult result = context.getSoul().getToolRegistry()
-                .execute("Bash", arguments)
+            ToolResult result = context.getEngineClient()
+                .executeTool("Bash", arguments)
                 .block();
             
             if (result == null) {

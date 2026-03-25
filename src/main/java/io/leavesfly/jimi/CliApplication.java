@@ -1,14 +1,17 @@
-package io.leavesfly.jimi.ui;
+package io.leavesfly.jimi;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.leavesfly.jimi.command.CommandRegistry;
 import io.leavesfly.jimi.core.JimiFactory;
 import io.leavesfly.jimi.config.JimiConfig;
 import io.leavesfly.jimi.core.JimiEngine;
+import io.leavesfly.jimi.core.engine.hook.HookRegistry;
 import io.leavesfly.jimi.core.session.Session;
 import io.leavesfly.jimi.core.session.SessionManager;
 import io.leavesfly.jimi.mcp.server.SimpleJimiServer;
+import io.leavesfly.jimi.ui.DebugLogger;
 import io.leavesfly.jimi.ui.shell.ShellUI;
+import io.leavesfly.jimi.client.EngineClient;
+import io.leavesfly.jimi.client.WireEngineClient;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -27,7 +30,7 @@ import java.util.Optional;
 
 /**
  * CLI 应用入口
- * 使用 Picocli 实现命令行参数解析
+ * 负责命令行参数解析和系统初始化
  */
 @Slf4j
 @Component
@@ -44,7 +47,7 @@ public class CliApplication implements CommandLineRunner, Runnable {
     private final ObjectMapper objectMapper;
     private final ApplicationContext applicationContext;
     private final JimiFactory jimiFactory;
-    private final CommandRegistry commandRegistry;
+
 
     @Value("${jimi.embedded:false}")
     private boolean embeddedMode;
@@ -52,13 +55,13 @@ public class CliApplication implements CommandLineRunner, Runnable {
     @Autowired
     public CliApplication(JimiConfig jimiConfig, SessionManager sessionManager,
                           ObjectMapper objectMapper, ApplicationContext applicationContext,
-                          JimiFactory jimiFactory, CommandRegistry commandRegistry) {
+                          JimiFactory jimiFactory) {
         this.jimiConfig = jimiConfig;
         this.sessionManager = sessionManager;
         this.objectMapper = objectMapper;
         this.applicationContext = applicationContext;
         this.jimiFactory = jimiFactory;
-        this.commandRegistry = commandRegistry;
+
     }
 
     @Option(names = {"--verbose"}, description = "Print verbose information")
@@ -180,8 +183,13 @@ public class CliApplication implements CommandLineRunner, Runnable {
                 return;
             }
 
-            // 否则启动 Shell UI
-            try (ShellUI shellUI = new ShellUI(soul, applicationContext)) {
+            // 初始化阶段：创建WireEngineClient（内部完成所有配置缓存）
+            HookRegistry hookRegistry = applicationContext.getBean(HookRegistry.class);
+            EngineClient engineClient = new WireEngineClient(soul, hookRegistry, sessionManager);
+
+            // 初始化阶段：创建ShellUI（注入EngineClient）
+            try (ShellUI shellUI = new ShellUI(engineClient, applicationContext)) {
+                // 运行阶段：启动主循环
                 shellUI.run().block();
             }
 

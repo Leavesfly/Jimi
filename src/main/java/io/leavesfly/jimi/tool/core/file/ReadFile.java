@@ -14,6 +14,7 @@ import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
+import java.io.BufferedReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -110,48 +111,71 @@ public class ReadFile extends AbstractTool<ReadFile.Params> {
                     );
                 }
                 
-                // 读取文件
-                List<String> allLines = Files.readAllLines(path);
-                int startLine = params.getLineOffset() - 1; // 转为0-based索引
-                
-                // 检查起始行是否超出文件范围
-                if (startLine >= allLines.size()) {
+                // 文件大小检查，防止超大文件导致问题
+                long fileSize = Files.size(path);
+                if (fileSize > 50 * 1024 * 1024) { // 50MB
                     return ToolResult.error(
-                            String.format("起始行号 %d 超出文件范围（文件共 %d 行）。", 
-                                    params.getLineOffset(), allLines.size()),
-                            "行号超出范围"
+                            String.format("文件过大（%d MB），超过 50MB 限制。", fileSize / (1024 * 1024)),
+                            "文件过大"
                     );
                 }
                 
-                int endLine = Math.min(startLine + params.getNLines(), allLines.size());
-                endLine = Math.min(endLine, startLine + MAX_LINES);
-                
+                // 使用 BufferedReader 流式读取，避免大文件 OOM
                 List<String> lines = new ArrayList<>();
                 List<Integer> truncatedLineNumbers = new ArrayList<>();
                 int nBytes = 0;
                 boolean maxLinesReached = false;
                 boolean maxBytesReached = false;
+                boolean startLineExceeded = false;
+                int totalLineCount = 0;
                 
-                for (int i = startLine; i < endLine; i++) {
-                    String line = allLines.get(i);
-                    String truncated = truncateLine(line, MAX_LINE_LENGTH);
-                    
-                    if (!truncated.equals(line)) {
-                        truncatedLineNumbers.add(i + 1); // 转回1-based
+                int startLine = params.getLineOffset(); // 1-based
+                int maxLinesToRead = Math.min(params.getNLines(), MAX_LINES);
+                
+                try (BufferedReader reader = Files.newBufferedReader(path)) {
+                    String line;
+                    int currentLine = 0;
+                    while ((line = reader.readLine()) != null) {
+                        currentLine++;
+                        totalLineCount = currentLine;
+                        
+                        // 跳过起始行之前的行
+                        if (currentLine < startLine) {
+                            continue;
+                        }
+                        
+                        // 已经读够了就停止
+                        if (lines.size() >= maxLinesToRead) {
+                            maxLinesReached = true;
+                            break;
+                        }
+                        
+                        String truncated = truncateLine(line, MAX_LINE_LENGTH);
+                        if (!truncated.equals(line)) {
+                            truncatedLineNumbers.add(currentLine);
+                        }
+                        
+                        lines.add(truncated);
+                        nBytes += truncated.getBytes().length;
+                        
+                        if (nBytes >= MAX_BYTES) {
+                            maxBytesReached = true;
+                            break;
+                        }
                     }
                     
-                    lines.add(truncated);
-                    nBytes += truncated.getBytes().length;
-                    
-                    if (lines.size() >= MAX_LINES) {
-                        maxLinesReached = true;
-                        break;
+                    // 检查起始行是否超出文件范围
+                    if (lines.isEmpty() && startLine > totalLineCount) {
+                        startLineExceeded = true;
                     }
-                    
-                    if (nBytes >= MAX_BYTES) {
-                        maxBytesReached = true;
-                        break;
-                    }
+                }
+                
+                if (startLineExceeded) {
+                    return ToolResult.error(
+                            String.format("起始行号 %d 超出文件范围（文件共 %d 行）。",
+                                    params.getLineOffset(), totalLineCount),
+                            "行号超出范围"
+                    );
                 }
                 
                 // 格式化输出（带行号）

@@ -152,7 +152,6 @@ class MetaCommandsDemo {
         System.out.println("  • ReadFile");
         System.out.println("  • WriteFile");
         System.out.println("  • StrReplaceFile");
-        System.out.println("  • PatchFile");
         System.out.println("  • Glob");
         System.out.println("  • Grep");
         System.out.println("");

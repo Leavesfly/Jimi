@@ -1,8 +1,6 @@
 package io.leavesfly.jimi.ui.shell;
 
-import io.leavesfly.jimi.core.JimiEngine;
 import io.leavesfly.jimi.core.engine.hook.HookContext;
-import io.leavesfly.jimi.core.engine.hook.HookRegistry;
 import io.leavesfly.jimi.core.engine.hook.HookType;
 import io.leavesfly.jimi.core.interaction.approval.ApprovalRequest;
 import io.leavesfly.jimi.core.interaction.HumanInputRequest;
@@ -22,7 +20,7 @@ import io.leavesfly.jimi.ui.shell.input.ShellShortcutProcessor;
 import io.leavesfly.jimi.ui.shell.output.AssistantTextRenderer;
 import io.leavesfly.jimi.ui.shell.output.OutputFormatter;
 import io.leavesfly.jimi.ui.ToolVisualization;
-import io.leavesfly.jimi.wire.Wire;
+import io.leavesfly.jimi.client.EngineClient;
 import io.leavesfly.jimi.wire.message.WireMessage;
 import io.leavesfly.jimi.wire.message.*;
 import lombok.extern.slf4j.Slf4j;
@@ -57,7 +55,7 @@ public class ShellUI implements AutoCloseable {
 
     private final Terminal terminal;
     private final LineReader lineReader;
-    private final JimiEngine soul;
+    private final EngineClient engineClient;
     private final ToolVisualization toolVisualization;
     private final AtomicBoolean running;
     private final AtomicReference<String> currentStatus;
@@ -84,9 +82,6 @@ public class ShellUI implements AutoCloseable {
     // 通知服务
     private final NotificationService notificationService;
 
-    // Hook 注册表
-    private final HookRegistry hookRegistry;
-
     // 委托组件
     private final SpinnerManager spinnerManager;
     private final PromptBuilder promptBuilder;
@@ -97,21 +92,22 @@ public class ShellUI implements AutoCloseable {
     /**
      * 创建 Shell UI
      *
-     * @param soul               JimiEngine 实例
+     * @param engineClient       EngineClient 实例
      * @param applicationContext Spring 应用上下文（用于获取 CommandRegistry）
      * @throws IOException 终端初始化失败
      */
-    public ShellUI(JimiEngine soul, ApplicationContext applicationContext) throws IOException {
-        this.soul = soul;
+    public ShellUI(EngineClient engineClient, ApplicationContext applicationContext) throws IOException {
+        this.engineClient = engineClient;
         this.toolVisualization = new ToolVisualization();
         this.running = new AtomicBoolean(false);
         this.currentStatus = new AtomicReference<>("ready");
         this.activeTools = new ConcurrentHashMap<>();
-        // 获取 UI 配置
-        this.uiConfig = soul.getRuntime().getConfig().getShellUI();
+        
+        // 初始化阶段：直接从EngineClient获取配置（无需消息交互）
+        this.uiConfig = engineClient.getShellUIConfig();
 
         // 初始化主题
-        this.theme = resolveTheme();
+        this.theme = engineClient.getThemeConfig();
 
         // 初始化快捷提示计数器
         this.interactionCount = new AtomicInteger(0);
@@ -132,11 +128,8 @@ public class ShellUI implements AutoCloseable {
         // 获取通知服务
         this.notificationService = applicationContext.getBean(io.leavesfly.jimi.ui.notification.NotificationService.class);
 
-        // 获取 Hook 注册表
-        this.hookRegistry = applicationContext.getBean(HookRegistry.class);
-
-        // 获取工作目录
-        Path workingDir = soul.getRuntime().getSession().getWorkDir();
+        // 初始化阶段：从EngineClient获取工作目录
+        Path workingDir = engineClient.getWorkDir();
 
         // 初始化 LineReader（使用增强的 JimiCompleter）
         this.lineReader = LineReaderBuilder.builder()
@@ -163,7 +156,7 @@ public class ShellUI implements AutoCloseable {
         // 初始化委托组件
         this.renderer = new AssistantTextRenderer(terminal, theme);
         this.spinnerManager = new SpinnerManager(terminal, uiConfig);
-        this.promptBuilder = new PromptBuilder(currentStatus, uiConfig, theme, soul);
+        this.promptBuilder = new PromptBuilder(currentStatus, uiConfig, theme, engineClient);
         this.interactionHandler = new InteractionHandler(terminal, outputFormatter, lineReader, renderer);
         this.asyncDisplay = new AsyncSubagentEventDisplay(terminal, outputFormatter, notificationService, uiConfig, renderer);
 
@@ -171,7 +164,7 @@ public class ShellUI implements AutoCloseable {
         this.inputProcessors = new ArrayList<>();
         registerInputProcessors();
 
-        // 订阅 Wire 消息
+        // 初始化阶段：订阅 Wire 消息
         subscribeWire();
     }
 
@@ -194,8 +187,7 @@ public class ShellUI implements AutoCloseable {
      * 使用 boundedElastic 调度器处理可能阻塞的消息（如审批请求）
      */
     private void subscribeWire() {
-        Wire wire = soul.getWire();
-        wireSubscription = wire.asFlux()
+        wireSubscription = engineClient.subscribe()
                 .publishOn(reactor.core.scheduler.Schedulers.boundedElastic())
                 .subscribe(this::handleWireMessage);
     }
@@ -408,8 +400,8 @@ public class ShellUI implements AutoCloseable {
      */
     private void triggerSessionHook(HookType hookType) {
         try {
-            Path workDir = soul.getRuntime().getWorkDir();
-            String agentName = soul.getAgent() != null ? soul.getAgent().getName() : null;
+            Path workDir = engineClient.getWorkDir();
+            String agentName = engineClient.getAgentName();
 
             HookContext hookContext = HookContext.builder()
                     .hookType(hookType)
@@ -417,7 +409,7 @@ public class ShellUI implements AutoCloseable {
                     .agentName(agentName)
                     .build();
 
-            hookRegistry.trigger(hookType, hookContext)
+            engineClient.triggerHook(hookType, hookContext)
                     .doOnError(e -> log.warn("Session hook trigger failed for type {}: {}", hookType, e.getMessage()))
                     .onErrorResume(e -> reactor.core.publisher.Mono.empty())
                     .block();
@@ -465,7 +457,7 @@ public class ShellUI implements AutoCloseable {
 
         // 构建上下文
         ShellContext context = ShellContext.builder()
-                .soul(soul)
+                .engineClient(engineClient)
                 .terminal(terminal)
                 .lineReader(lineReader)
                 .rawInput(input)
@@ -609,7 +601,7 @@ public class ShellUI implements AutoCloseable {
         
         // 如果有上下文Token总数，显示累计
         try {
-            int totalTokens = soul.getContext().getTokenCount();
+            int totalTokens = engineClient.getTokenCount();
             if (totalTokens > 0) {
                 msg.append(" | 总计 ").append(totalTokens);
             }

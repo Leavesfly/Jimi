@@ -1,6 +1,5 @@
 package io.leavesfly.jimi.ui.shell.input;
 
-import io.leavesfly.jimi.command.CommandContext;
 import io.leavesfly.jimi.ui.shell.ShellContext;
 import io.leavesfly.jimi.ui.shell.output.OutputFormatter;
 import lombok.extern.slf4j.Slf4j;
@@ -31,7 +30,7 @@ public class AgentCommandProcessor implements InputProcessor {
         
         try {
             // 运行 Engine，阻塞等待完成
-            context.getSoul().run(input).block();
+            context.getEngineClient().runCommand(input).block();
             
             // 如果成功，打印完成消息
             out.printSuccess("✓ 完成");

@@ -19,10 +19,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.FileVisitResult;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
+import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -281,15 +278,17 @@ public class Grep extends AbstractTool<Grep.Params> {
     }
     
     /**
-     * 简单的 Glob 匹配
+     * 使用 Java PathMatcher 进行 Glob 匹配
      */
     private boolean matchesGlob(String fileName, String glob) {
-        // 简化实现：只支持 *.ext 格式
-        if (glob.startsWith("*.")) {
-            String ext = glob.substring(1);
-            return fileName.endsWith(ext);
+        try {
+            PathMatcher matcher = FileSystems.getDefault()
+                    .getPathMatcher("glob:" + glob);
+            return matcher.matches(Path.of(fileName));
+        } catch (Exception e) {
+            log.warn("Invalid glob pattern: {}", glob, e);
+            return false;
         }
-        return fileName.equals(glob);
     }
     
     /**

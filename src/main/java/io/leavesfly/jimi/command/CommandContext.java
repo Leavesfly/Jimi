@@ -1,6 +1,7 @@
 package io.leavesfly.jimi.command;
 
 import io.leavesfly.jimi.core.JimiEngine;
+import io.leavesfly.jimi.client.EngineClient;
 import io.leavesfly.jimi.ui.shell.output.OutputFormatter;
 import lombok.Builder;
 import lombok.Getter;
@@ -16,9 +17,9 @@ import org.jline.terminal.Terminal;
 public class CommandContext {
     
     /**
-     * JimiEngine 实例
+     * EngineClient 实例
      */
-    private final JimiEngine soul;
+    private final EngineClient engineClient;
     
     /**
      * 终端实例
@@ -49,6 +50,20 @@ public class CommandContext {
      * 输出格式化器
      */
     private final OutputFormatter outputFormatter;
+
+    /**
+     * 获取底层JimiEngine实例（仅用于过渡期兼容）
+     * <p>
+     * 注意：新代码应使用getEngineClient()方法
+     *
+     * @return JimiEngine实例
+     * @deprecated 仅用于过渡期兼容，后续版本将移除
+     */
+    @Deprecated
+    @SuppressWarnings("deprecation")
+    public JimiEngine getSoul() {
+        return engineClient.getUnderlyingEngine();
+    }
     
     /**
      * 获取完整的参数字符串

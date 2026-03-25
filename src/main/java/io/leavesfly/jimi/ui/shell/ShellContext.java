@@ -1,7 +1,7 @@
 package io.leavesfly.jimi.ui.shell;
 
-import io.leavesfly.jimi.core.JimiEngine;
 import io.leavesfly.jimi.ui.shell.output.OutputFormatter;
+import io.leavesfly.jimi.client.EngineClient;
 import lombok.Builder;
 import lombok.Getter;
 import org.jline.reader.LineReader;
@@ -13,9 +13,9 @@ import org.jline.terminal.Terminal;
 public class ShellContext {
 
     /**
-     * JimiEngine 实例
+     * EngineClient 实例
      */
-    private final JimiEngine soul;
+    private final EngineClient engineClient;
 
     /**
      * 终端实例

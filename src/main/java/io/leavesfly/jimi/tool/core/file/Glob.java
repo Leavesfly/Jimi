@@ -205,6 +205,10 @@ public class Glob extends AbstractTool<Glob.Params> {
             }
         } catch (Exception e) {
             log.warn("Failed to validate directory: {}", searchDir, e);
+            return ToolResult.error(
+                String.format("Failed to validate directory safety for `%s`: %s", searchDir, e.getMessage()),
+                "Path validation failed"
+            );
         }
         
         return null;

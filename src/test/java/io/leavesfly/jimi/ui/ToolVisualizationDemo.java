@@ -247,10 +247,10 @@ class ToolVisualizationDemo {
                 ToolResult.ok("...", "找到 3 个相关结果"));
         Thread.sleep(400);
         
-        // Step 5: 应用补丁
-        executeAndDisplay(viz, "call_505", "PatchFile", 
-                "{\"path\":\"/src/main/java/UserService.java\",\"diff\":\"...\"}", 
-                ToolResult.ok("", "成功应用 2 个 hunks"));
+        // Step 5: 应用修改
+        executeAndDisplay(viz, "call_505", "StrReplaceFile", 
+                "{\"path\":\"/src/main/java/UserService.java\",\"old_str\":\"...\",\"new_str\":\"...\"}", 
+                ToolResult.ok("", "File edited successfully."));
         Thread.sleep(300);
         
         // Step 6: 验证

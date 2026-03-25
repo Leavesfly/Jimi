@@ -20,6 +20,8 @@ import reactor.core.publisher.Mono;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * StrReplaceFile 工具 - 字符串替换文件内容
@@ -53,26 +55,29 @@ public class StrReplaceFile extends AbstractTool<StrReplaceFile.Params> {
         /**
          * 文件绝对路径
          */
-        @JsonPropertyDescription("要编辑的文件绝对路径（例如：/home/user/file.txt）")
+        @JsonPropertyDescription("要编辑的文件绝对路径。支持绝对路径或相对于工作目录的相对路径")
         private String path;
         
         /**
          * 要替换的旧字符串（精确匹配）
          */
-        @JsonPropertyDescription("要替换的原始字符串，必须与文件内容完全匹配（包括空格和换行符）")
+        @JsonPropertyDescription("要替换的原始字符串，必须与文件中的内容完全一致（包括缩进、空格和换行）。建议先用 ReadFile 确认文件内容后再填写")
         private String old_str;
         
         /**
          * 替换后的新字符串
          */
-        @JsonPropertyDescription("替换后的新字符串。使用空字符串可删除 old_str")
-        private String new_str;
+        @JsonPropertyDescription("替换后的新字符串。如果要删除 old_str，传空字符串 \"\" 即可。不传此参数等同于空字符串")
+        @Builder.Default
+        private String new_str = "";
     }
     
     public StrReplaceFile() {
         super(
             "StrReplaceFile",
-            "替换文件中的字符串。old_str 必须精确匹配文件内容。",
+            "替换文件中的字符串。old_str 必须与文件内容完全一致（包括缩进和换行）。" +
+            "如果替换失败，工具会返回最相似的片段帮助你修正。" +
+            "建议先用 ReadFile 查看文件内容，再调用本工具。",
             Params.class
         );
     }
@@ -108,27 +113,33 @@ public class StrReplaceFile extends AbstractTool<StrReplaceFile.Params> {
                 
                 if (params.old_str == null || params.old_str.isEmpty()) {
                     return Mono.just(ToolResult.error(
-                        "old_str is required and cannot be empty.",
+                        "old_str is required and cannot be empty. " +
+                        "If you want to insert content, use WriteFile with append mode instead.",
                         "Missing old_str"
                     ));
                 }
                 
-                // new_str 可以为空（表示删除），但不能为 null
-                String newStr = params.new_str != null ? params.new_str : "";
-                
-                // 检查是否为无意义替换
-                if (params.old_str.equals(newStr)) {
-                    log.warn("old_str and new_str are identical, this is a no-op replacement");
+                // new_str 为 null 时视为空字符串（删除操作）
+                if (params.new_str == null) {
+                    params.new_str = "";
                 }
                 
-                Path targetPath = Path.of(params.path);
-                
-                // 验证路径
-                if (!targetPath.isAbsolute()) {
+                // 检查是否为无意义替换
+                if (params.old_str.equals(params.new_str)) {
                     return Mono.just(ToolResult.error(
-                        String.format("`%s` is not an absolute path. You must provide an absolute path to edit a file.", params.path),
-                        "Invalid path"
+                        "old_str and new_str are identical. No changes needed.",
+                        "No-op replacement"
                     ));
+                }
+                
+                Path rawPath = Path.of(params.path);
+                
+                // 支持相对路径：自动解析为绝对路径
+                final Path targetPath;
+                if (!rawPath.isAbsolute()) {
+                    targetPath = workDir.resolve(rawPath).normalize();
+                } else {
+                    targetPath = rawPath;
                 }
                 
                 // 先检查文件是否存在（必须在 validatePath 之前）
@@ -235,29 +246,29 @@ public class StrReplaceFile extends AbstractTool<StrReplaceFile.Params> {
      */
     private Mono<ToolResult> doReplaceString(Path targetPath, Params params) {
         try {
-            // 读取文件内容
             String content = Files.readString(targetPath);
-            String originalContent = content;
             
-            // 只替换第一次出现
+            // 精确匹配
             int index = content.indexOf(params.old_str);
-            if (index != -1) {
-                String finalNewStr = params.new_str != null ? params.new_str : "";
-                content = content.substring(0, index) + 
-                         finalNewStr + 
-                         content.substring(index + params.old_str.length());
+            
+            if (index == -1) {
+                // 匹配失败，尝试提供诊断信息帮助大模型自我修正
+                return Mono.just(buildNotFoundError(content, params.old_str));
             }
             
-            // 检查是否有变化
-            if (content.equals(originalContent)) {
-                return Mono.just(ToolResult.error(
-                    "No replacements were made. The old_str was not found in the file.",
-                    "String not found"
-                ));
+            // 检查是否有多处匹配
+            int secondIndex = content.indexOf(params.old_str, index + 1);
+            if (secondIndex != -1) {
+                int occurrences = countOccurrences(content, params.old_str);
+                log.info("old_str found {} times in file, replacing the first occurrence", occurrences);
             }
             
-            // 写回文件
-            Files.writeString(targetPath, content);
+            // 执行替换（只替换第一次出现）
+            String newContent = content.substring(0, index) +
+                    params.new_str +
+                    content.substring(index + params.old_str.length());
+            
+            Files.writeString(targetPath, newContent);
             
             return Mono.just(ToolResult.ok(
                 "",
@@ -271,5 +282,148 @@ public class StrReplaceFile extends AbstractTool<StrReplaceFile.Params> {
                 "Edit failed"
             ));
         }
+    }
+    
+    /**
+     * 构建匹配失败的诊断错误信息
+     * 帮助大模型理解为什么匹配失败，并给出修正建议
+     */
+    private ToolResult buildNotFoundError(String fileContent, String oldStr) {
+        StringBuilder errorMsg = new StringBuilder();
+        errorMsg.append("The old_str was not found in the file. ");
+        
+        // 尝试忽略前后空白的匹配
+        String trimmedOldStr = oldStr.trim();
+        if (!trimmedOldStr.isEmpty()) {
+            // 按行搜索，找最相似的片段
+            String bestMatch = findMostSimilarFragment(fileContent, oldStr);
+            if (bestMatch != null) {
+                errorMsg.append("Did you mean this similar content?\n\n");
+                errorMsg.append("```\n").append(bestMatch).append("\n```\n\n");
+                errorMsg.append("Make sure old_str matches the file content exactly, ");
+                errorMsg.append("including whitespace and indentation.");
+            } else {
+                // 尝试找到第一行是否存在
+                String firstLine = oldStr.split("\n", 2)[0].trim();
+                if (!firstLine.isEmpty() && fileContent.contains(firstLine)) {
+                    int lineIndex = findLineNumber(fileContent, firstLine);
+                    errorMsg.append(String.format(
+                        "The first line \"%s\" was found at line %d, " +
+                        "but the full old_str does not match. " +
+                        "Please use ReadFile to check the exact content around line %d, " +
+                        "then retry with the correct old_str.",
+                        truncateForDisplay(firstLine, 60), lineIndex, lineIndex
+                    ));
+                } else {
+                    errorMsg.append("The content does not exist in this file. " +
+                        "Please use ReadFile to verify the file content first.");
+                }
+            }
+        }
+        
+        return ToolResult.error(errorMsg.toString(), "String not found");
+    }
+    
+    /**
+     * 在文件内容中查找与 oldStr 最相似的片段
+     * 使用滑动窗口 + 行级别匹配
+     */
+    private String findMostSimilarFragment(String fileContent, String oldStr) {
+        String[] oldLines = oldStr.split("\n");
+        String[] fileLines = fileContent.split("\n");
+        
+        if (oldLines.length == 0 || fileLines.length == 0) {
+            return null;
+        }
+        
+        // 找到第一行的最佳匹配位置
+        String firstOldLine = oldLines[0].trim();
+        if (firstOldLine.isEmpty()) {
+            return null;
+        }
+        
+        int bestStartLine = -1;
+        double bestSimilarity = 0;
+        
+        for (int i = 0; i <= fileLines.length - oldLines.length; i++) {
+            if (fileLines[i].trim().contains(firstOldLine) || firstOldLine.contains(fileLines[i].trim())) {
+                // 计算从这个位置开始的相似度
+                double similarity = calculateBlockSimilarity(fileLines, i, oldLines);
+                if (similarity > bestSimilarity && similarity >= 0.5) {
+                    bestSimilarity = similarity;
+                    bestStartLine = i;
+                }
+            }
+        }
+        
+        if (bestStartLine == -1) {
+            return null;
+        }
+        
+        // 提取匹配的片段
+        int endLine = Math.min(bestStartLine + oldLines.length, fileLines.length);
+        List<String> matchedLines = new ArrayList<>();
+        for (int i = bestStartLine; i < endLine; i++) {
+            matchedLines.add(fileLines[i]);
+        }
+        return String.join("\n", matchedLines);
+    }
+    
+    /**
+     * 计算两个代码块的相似度（0.0 ~ 1.0）
+     */
+    private double calculateBlockSimilarity(String[] fileLines, int startIndex, String[] oldLines) {
+        int matchCount = 0;
+        int compareLength = Math.min(oldLines.length, fileLines.length - startIndex);
+        
+        for (int i = 0; i < compareLength; i++) {
+            String fileLine = fileLines[startIndex + i].trim();
+            String oldLine = oldLines[i].trim();
+            if (fileLine.equals(oldLine)) {
+                matchCount++;
+            }
+        }
+        
+        return (double) matchCount / oldLines.length;
+    }
+    
+    /**
+     * 统计字符串出现次数
+     */
+    private int countOccurrences(String content, String target) {
+        int count = 0;
+        int index = 0;
+        while ((index = content.indexOf(target, index)) != -1) {
+            count++;
+            index += target.length();
+        }
+        return count;
+    }
+    
+    /**
+     * 查找内容所在行号（1-based）
+     */
+    private int findLineNumber(String content, String target) {
+        int index = content.indexOf(target);
+        if (index == -1) {
+            return -1;
+        }
+        int lineNumber = 1;
+        for (int i = 0; i < index; i++) {
+            if (content.charAt(i) == '\n') {
+                lineNumber++;
+            }
+        }
+        return lineNumber;
+    }
+    
+    /**
+     * 截断字符串用于显示
+     */
+    private String truncateForDisplay(String str, int maxLength) {
+        if (str.length() <= maxLength) {
+            return str;
+        }
+        return str.substring(0, maxLength - 3) + "...";
     }
 }
