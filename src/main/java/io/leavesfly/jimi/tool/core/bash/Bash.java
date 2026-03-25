@@ -71,6 +71,11 @@ public class Bash extends AbstractTool<Bash.Params> {
             Params.class
         );
     }
+
+    @Override
+    public boolean isConcurrentSafe() {
+        return false;
+    }
     
     /**
      * 设置 Approval（运行时注入）

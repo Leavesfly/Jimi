@@ -45,7 +45,7 @@ public class CliApplication implements CommandLineRunner, Runnable {
     private final ApplicationContext applicationContext;
     private final JimiFactory jimiFactory;
     private final CommandRegistry commandRegistry;
-    
+
     @Value("${jimi.embedded:false}")
     private boolean embeddedMode;
 
@@ -87,7 +87,7 @@ public class CliApplication implements CommandLineRunner, Runnable {
 
     @Option(names = {"-c", "--command"}, description = "User query to the agent")
     private String command;
-    
+
     @Option(names = {"--simple-server", "--mcp-server"}, description = "Start as simple server (StdIO mode for IDE integration)")
     private boolean simpleServer = false;
 
@@ -98,7 +98,7 @@ public class CliApplication implements CommandLineRunner, Runnable {
             log.info("Running in embedded mode, skipping CLI startup");
             return;
         }
-        
+
         // 解析命令行参数
         CommandLine commandLine = new CommandLine(this);
         int exitCode = commandLine.execute(args);
@@ -126,7 +126,12 @@ public class CliApplication implements CommandLineRunner, Runnable {
                 server.start();
                 return;
             }
-            
+
+            // 启用 debug 模式
+            if (debug) {
+                DebugLogger.enable();
+            }
+
             // 配置已由 Spring 管理，直接使用注入的 JimiConfig
             if (verbose) {
                 System.out.println("Loaded config: " + jimiConfig);

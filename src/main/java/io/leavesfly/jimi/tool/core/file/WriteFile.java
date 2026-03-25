@@ -7,6 +7,7 @@ import io.leavesfly.jimi.core.engine.runtime.BuiltinSystemPromptArgs;
 import io.leavesfly.jimi.core.sandbox.SandboxValidator;
 import io.leavesfly.jimi.tool.AbstractTool;
 import io.leavesfly.jimi.tool.ToolResult;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -75,6 +76,11 @@ public class WriteFile extends AbstractTool<WriteFile.Params> {
             "将内容写入文件。支持覆盖（overwrite）和追加（append）模式。",
             Params.class
         );
+    }
+
+    @Override
+    public boolean isConcurrentSafe() {
+        return false;
     }
     
     /**
@@ -182,6 +188,7 @@ public class WriteFile extends AbstractTool<WriteFile.Params> {
                     }
                 }
                 
+
                 // 正常审批流程
                 return approval.requestApproval("write-file", EDIT_ACTION, String.format("Write file `%s`", params.path))
                     .flatMap(response -> {
@@ -200,7 +207,8 @@ public class WriteFile extends AbstractTool<WriteFile.Params> {
             }
         });
     }
-    
+
+
     /**
      * 验证路径安全性
      */

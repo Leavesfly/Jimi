@@ -4,7 +4,9 @@ import io.leavesfly.jimi.core.engine.context.Context;
 
 import io.leavesfly.jimi.llm.ChatCompletionChunk;
 import io.leavesfly.jimi.llm.ChatCompletionResult;
+import io.leavesfly.jimi.llm.TokenCounter;
 import io.leavesfly.jimi.llm.message.FunctionCall;
+import io.leavesfly.jimi.ui.DebugLogger;
 import io.leavesfly.jimi.llm.message.Message;
 import io.leavesfly.jimi.llm.message.TextPart;
 import io.leavesfly.jimi.llm.message.ToolCall;
@@ -242,6 +244,14 @@ public class ResponseProcessor {
             log.debug("Updated token count: {} + {} = {}",
                     context.getTokenCount(), acc.usage.getTotalTokens(), newTotalTokens);
 
+            // Debug: 记录流式响应完成信息
+            int contentLen = assistantMessage.getTextContent() != null
+                    ? assistantMessage.getTextContent().length() : 0;
+            int toolCallCount = assistantMessage.getToolCalls() != null
+                    ? assistantMessage.getToolCalls().size() : 0;
+            DebugLogger.logLLMResponse(contentLen, toolCallCount,
+                    acc.usage.getPromptTokens(), acc.usage.getCompletionTokens(), acc.usage.getTotalTokens());
+
             // 发送 Token 使用统计消息到 Wire
             wire.send(new TokenUsageMessage(acc.usage));
         } else {
@@ -334,37 +344,14 @@ public class ResponseProcessor {
 
     /**
      * 从消息估算 Token 数量（回退机制）
+     * <p>
+     * 使用 TokenCounter 进行精确估算，替代简单的 charCount/4 方式。
+     * TokenCounter 基于 cl100k_base 编码规则的近似实现，
+     * 对中文、英文、代码等不同内容类型使用不同的估算比率。
      */
     public int estimateTokensFromMessage(Message message) {
-        int charCount = 0;
-
-        // 估算内容部分的字符数
-        String textContent = message.getTextContent();
-        if (textContent != null && !textContent.isEmpty()) {
-            charCount += textContent.length();
-        }
-
-        // 估算工具调用的字符数
-        if (message.getToolCalls() != null) {
-            for (ToolCall toolCall : message.getToolCalls()) {
-                if (toolCall.getId() != null) {
-                    charCount += toolCall.getId().length();
-                }
-                if (toolCall.getFunction() != null) {
-                    FunctionCall function = toolCall.getFunction();
-                    if (function.getName() != null) {
-                        charCount += function.getName().length();
-                    }
-                    if (function.getArguments() != null) {
-                        charCount += function.getArguments().length();
-                    }
-                }
-            }
-        }
-
-        // 使用字符数除以 4 作为 Token 数估算
-        int estimatedTokens = (int) Math.ceil(charCount / 4.0);
-        log.debug("Estimated {} tokens from {} characters", estimatedTokens, charCount);
+        int estimatedTokens = TokenCounter.estimateTokens(message);
+        log.debug("Estimated {} tokens from message (role={})", estimatedTokens, message.getRole());
         return estimatedTokens;
     }
 

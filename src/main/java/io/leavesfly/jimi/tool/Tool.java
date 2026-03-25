@@ -42,4 +42,19 @@ public interface Tool<P> {
     default boolean validateParams(P params) {
         return true;
     }
+
+    /**
+     * 是否支持并发执行
+     * <p>
+     * 当 LLM 返回多个工具调用时，标记为并发安全的工具可以并行执行，
+     * 从而大幅提升 IO 密集型操作（如文件读取、搜索）的效率。
+     * <p>
+     * 默认为 true（大多数只读工具是并发安全的）。
+     * 文件写入类工具应覆盖此方法返回 false。
+     *
+     * @return true 表示可以与其他工具并发执行
+     */
+    default boolean isConcurrentSafe() {
+        return true;
+    }
 }

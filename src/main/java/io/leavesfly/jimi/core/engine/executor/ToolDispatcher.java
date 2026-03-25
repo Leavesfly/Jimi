@@ -10,6 +10,8 @@ import io.leavesfly.jimi.core.engine.toolcall.ToolErrorTracker;
 
 import io.leavesfly.jimi.llm.message.Message;
 import io.leavesfly.jimi.llm.message.ToolCall;
+import io.leavesfly.jimi.ui.DebugLogger;
+import io.leavesfly.jimi.tool.Tool;
 import io.leavesfly.jimi.tool.ToolRegistry;
 import io.leavesfly.jimi.tool.ToolResult;
 import io.leavesfly.jimi.util.SpringContextUtils;
@@ -19,18 +21,27 @@ import io.leavesfly.jimi.wire.message.ToolResultMessage;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * 工具调度器
  * <p>
  * 职责：
  * - 工具调用验证
- * - 工具调用执行（串行）
+ * - 工具调用执行（支持并行 + 串行混合调度）
  * - 工具错误跟踪
  * - 工具结果格式化
+ * <p>
+ * 并行策略：
+ * - 标记为 isConcurrentSafe() 的工具（如读取、搜索）可以并行执行
+ * - 非并发安全的工具（如文件写入、Bash）串行执行
+ * - 工具调用按原始顺序分组：连续的并发安全工具合并为一个并行批次，
+ *   遇到非并发安全工具则单独串行执行
  */
 @Slf4j
 public class ToolDispatcher {
@@ -62,30 +73,123 @@ public class ToolDispatcher {
     }
 
 
+    private static final int MAX_PARALLEL_CONCURRENCY = 4;
+
     /**
-     * 执行工具调用列表（串行执行）
+     * 执行工具调用列表（并行 + 串行混合调度）
+     * <p>
+     * 策略：将工具调用按顺序分组为"批次"（batch），
+     * 连续的并发安全工具合并为一个并行批次，非并发安全工具单独为一个串行批次。
+     * 批次之间严格按顺序执行，批次内部并行执行。
      *
      * @param toolCalls 工具调用列表
      * @param context   上下文
      * @return 完成的 Mono
      */
     public Mono<Void> executeToolCalls(List<ToolCall> toolCalls, Context context) {
-        log.info("Starting sequential execution of {} tool calls", toolCalls.size());
+        List<ToolCallBatch> batches = groupIntoBatches(toolCalls);
+        log.info("Grouped {} tool calls into {} batches for execution", toolCalls.size(), batches.size());
 
-        return Flux.fromIterable(toolCalls).index().concatMap(tuple -> {
-                    long toolIndex = tuple.getT1();
-                    ToolCall toolCall = tuple.getT2();
+        // 按批次顺序执行，每个批次内部根据类型决定并行或串行
+        return Flux.fromIterable(batches)
+                .concatMap(batch -> executeBatch(batch, context))
+                .collectList()
+                .flatMap(allResults -> {
+                    // 将所有批次的结果展平
+                    List<Message> flatResults = new ArrayList<>();
+                    for (List<Message> batchResult : allResults) {
+                        flatResults.addAll(batchResult);
+                    }
+                    log.info("Collected {} tool results after mixed execution", flatResults.size());
+                    return context.appendMessage(flatResults)
+                            .doOnSuccess(v -> log.info("Successfully appended {} tool results to context", flatResults.size()))
+                            .doOnError(e -> log.error("Failed to append tool results to context", e));
+                });
+    }
 
-                    log.info("Executing tool call #{}/{}", toolIndex + 1, toolCalls.size());
+    /**
+     * 将工具调用按并发安全性分组为批次
+     * <p>
+     * 连续的并发安全工具合并为一个并行批次，非并发安全工具单独为一个串行批次。
+     * 保持原始顺序不变。
+     */
+    private List<ToolCallBatch> groupIntoBatches(List<ToolCall> toolCalls) {
+        List<ToolCallBatch> batches = new ArrayList<>();
+        List<ToolCall> currentParallelGroup = new ArrayList<>();
 
-                    return executeToolCall(toolCall, context).doOnError(e -> log.error("Tool call #{} failed", toolIndex, e)).onErrorResume(e -> {
-                        log.error("Caught error in tool call #{}, returning error message", toolIndex, e);
-                        String toolCallId = (toolCall != null && toolCall.getId() != null) ? toolCall.getId() : "unknown_" + toolIndex;
-                        return Mono.just(Message.tool(toolCallId, "Tool execution failed: " + e.getMessage()));
-                    });
-                }).collectList().doOnNext(results -> log.info("Collected {} tool results after sequential execution", results.size()))
-                .flatMap(results -> context.appendMessage(results).doOnSuccess(v -> log.info("Successfully appended {} tool results to context", results.size()))
-                        .doOnError(e -> log.error("Failed to append tool results to context", e)));
+        for (ToolCall toolCall : toolCalls) {
+            boolean concurrentSafe = isToolConcurrentSafe(toolCall);
+
+            if (concurrentSafe) {
+                // 并发安全的工具，累积到当前并行组
+                currentParallelGroup.add(toolCall);
+            } else {
+                // 遇到非并发安全的工具，先提交之前累积的并行组
+                if (!currentParallelGroup.isEmpty()) {
+                    batches.add(new ToolCallBatch(new ArrayList<>(currentParallelGroup), true));
+                    currentParallelGroup.clear();
+                }
+                // 非并发安全工具单独为一个串行批次
+                batches.add(new ToolCallBatch(List.of(toolCall), false));
+            }
+        }
+
+        // 提交最后一个并行组
+        if (!currentParallelGroup.isEmpty()) {
+            batches.add(new ToolCallBatch(currentParallelGroup, true));
+        }
+
+        return batches;
+    }
+
+    /**
+     * 判断工具调用是否并发安全
+     */
+    private boolean isToolConcurrentSafe(ToolCall toolCall) {
+        String toolName = toolCall.getFunction().getName();
+        Optional<Tool<?>> toolOpt = toolRegistry.getTool(toolName);
+        return toolOpt.map(Tool::isConcurrentSafe).orElse(false);
+    }
+
+    /**
+     * 执行一个批次的工具调用
+     */
+    private Mono<List<Message>> executeBatch(ToolCallBatch batch, Context context) {
+        if (batch.parallel && batch.toolCalls.size() > 1) {
+            log.info("Executing parallel batch of {} concurrent-safe tool calls", batch.toolCalls.size());
+            return Flux.fromIterable(batch.toolCalls)
+                    .flatMap(toolCall -> executeToolCallSafely(toolCall, context)
+                                    .subscribeOn(Schedulers.boundedElastic()),
+                            MAX_PARALLEL_CONCURRENCY)
+                    .collectList();
+        } else {
+            // 串行执行（单个非并发安全工具，或单个并发安全工具）
+            String toolName = batch.toolCalls.get(0).getFunction().getName();
+            log.info("Executing serial batch: {}", toolName);
+            return Flux.fromIterable(batch.toolCalls)
+                    .concatMap(toolCall -> executeToolCallSafely(toolCall, context))
+                    .collectList();
+        }
+    }
+
+    /**
+     * 安全执行单个工具调用（带错误恢复）
+     */
+    private Mono<Message> executeToolCallSafely(ToolCall toolCall, Context context) {
+        return executeToolCall(toolCall, context)
+                .doOnError(e -> log.error("Tool call failed: {}", toolCall.getFunction().getName(), e))
+                .onErrorResume(e -> {
+                    String toolCallId = (toolCall != null && toolCall.getId() != null)
+                            ? toolCall.getId() : "unknown";
+                    return Mono.just(Message.tool(toolCallId,
+                            "Tool execution failed: " + e.getMessage()));
+                });
+    }
+
+    /**
+     * 工具调用批次
+     */
+    private record ToolCallBatch(List<ToolCall> toolCalls, boolean parallel) {
     }
 
     /**
@@ -108,7 +212,17 @@ public class ToolDispatcher {
                 String rawArgs = toolCall.getFunction().getArguments();
                 String toolSignature = toolName + ":" + rawArgs;
 
-                return executeValidToolCall(toolName, rawArgs, toolCallId, toolSignature, context);
+                // Debug: 记录工具执行信息
+                DebugLogger.logToolExecution(toolName, rawArgs);
+                long toolStartTime = System.currentTimeMillis();
+
+                return executeValidToolCall(toolName, rawArgs, toolCallId, toolSignature, context)
+                        .doOnNext(msg -> {
+                            long elapsed = System.currentTimeMillis() - toolStartTime;
+                            String content = msg.getTextContent();
+                            int resultSize = content != null ? content.length() : 0;
+                            DebugLogger.logToolResult(toolName, elapsed, resultSize);
+                        });
             } catch (Exception e) {
                 log.error("Unexpected error in executeToolCall", e);
                 String errorToolCallId = (toolCall != null && toolCall.getId() != null) ? toolCall.getId() : "unknown";

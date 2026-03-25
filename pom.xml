@@ -65,10 +65,16 @@
             <artifactId>spring-boot-starter</artifactId>
         </dependency>
         
-        <!-- Spring Boot WebFlux for reactive programming -->
+        <!-- Spring WebFlux (client-only, no embedded server) -->
+        <!-- 只引入 WebClient 和 Reactor Netty HTTP 客户端，不引入 starter-webflux -->
+        <!-- 以避免加载嵌入式 Web 服务器的自动配置，减少启动开销 -->
         <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-webflux</artifactId>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-webflux</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.projectreactor.netty</groupId>
+            <artifactId>reactor-netty-http</artifactId>
         </dependency>
 
         <!-- Picocli for command-line parsing -->
@@ -98,6 +104,10 @@
         <dependency>
             <groupId>com.fasterxml.jackson.dataformat</groupId>
             <artifactId>jackson-dataformat-yaml</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.datatype</groupId>
+            <artifactId>jackson-datatype-jsr310</artifactId>
         </dependency>
 
         <!-- SnakeYAML -->

@@ -7,6 +7,7 @@ import io.leavesfly.jimi.core.engine.runtime.BuiltinSystemPromptArgs;
 import io.leavesfly.jimi.core.sandbox.SandboxValidator;
 import io.leavesfly.jimi.tool.AbstractTool;
 import io.leavesfly.jimi.tool.ToolResult;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -74,6 +75,11 @@ public class StrReplaceFile extends AbstractTool<StrReplaceFile.Params> {
             "替换文件中的字符串。old_str 必须精确匹配文件内容。",
             Params.class
         );
+    }
+
+    @Override
+    public boolean isConcurrentSafe() {
+        return false;
     }
     
     public void setBuiltinArgs(BuiltinSystemPromptArgs builtinArgs) {
@@ -174,7 +180,8 @@ public class StrReplaceFile extends AbstractTool<StrReplaceFile.Params> {
                             });
                     }
                 }
-                
+
+
                 // 正常审批流程
                 return approval.requestApproval("replace-file", EDIT_ACTION, String.format("Edit file `%s`", params.path))
                     .flatMap(response -> {
@@ -194,6 +201,8 @@ public class StrReplaceFile extends AbstractTool<StrReplaceFile.Params> {
         });
     }
     
+
+
     /**
      * 验证路径安全性
      * 注意：调用此方法前必须确保文件存在，否则 toRealPath() 会失败

@@ -39,8 +39,7 @@ import reactor.core.publisher.Mono;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.*;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -63,14 +62,11 @@ public class ShellUI implements AutoCloseable {
     private final ToolVisualization toolVisualization;
     private final AtomicBoolean running;
     private final AtomicReference<String> currentStatus;
-    private final Map<String, String> activeTools;
+    private final Map<String, String> activeTools; // ConcurrentHashMap, accessed from Wire subscriber thread
     private final AtomicBoolean assistantOutputStarted;
     private final AtomicInteger currentLineLength; // 当前行的字符计数
     private final AtomicBoolean isInReasoningMode; // 当前是否在推理模式
     private Disposable wireSubscription;
-
-    // 审批请求队列
-    private final BlockingQueue<ApprovalRequest> approvalQueue;
 
     // Shell UI 配置
     private final ShellUIConfig uiConfig;
@@ -85,7 +81,6 @@ public class ShellUI implements AutoCloseable {
     
     // Token 统计
     private final AtomicInteger currentStepTokens; // 当前步骤的Token消耗
-    private int lastTotalTokens; // 上次记录的总Token数
     
     // 快捷提示计数器
     private final AtomicInteger interactionCount; // 交互次数计数器
@@ -116,12 +111,10 @@ public class ShellUI implements AutoCloseable {
         this.toolVisualization = new ToolVisualization();
         this.running = new AtomicBoolean(false);
         this.currentStatus = new AtomicReference<>("ready");
-        this.activeTools = new HashMap<>();
+        this.activeTools = new ConcurrentHashMap<>();
         this.assistantOutputStarted = new AtomicBoolean(false);
         this.currentLineLength = new AtomicInteger(0);
         this.isInReasoningMode = new AtomicBoolean(false);
-        this.approvalQueue = new LinkedBlockingQueue<>();
-        
         // 获取 UI 配置
         this.uiConfig = soul.getRuntime().getConfig().getShellUI();
         
@@ -142,7 +135,6 @@ public class ShellUI implements AutoCloseable {
         
         // 初始化 Token 统计
         this.currentStepTokens = new AtomicInteger(0);
-        this.lastTotalTokens = 0;
         
         // 初始化快捷提示计数器
         this.interactionCount = new AtomicInteger(0);
@@ -225,168 +217,164 @@ public class ShellUI implements AutoCloseable {
     }
 
     /**
-     * 处理 Wire 消息
+     * 处理 Wire 消息，根据消息类型分发到对应的处理方法
      */
     private void handleWireMessage(WireMessage message) {
         try {
             if (message instanceof StepBegin stepBegin) {
-                // 重置当前步骤的Token计数
-                currentStepTokens.set(0);
-                
-                // 显示主Agent和subAgent的步骤，但用不同的格式区分
-                if (stepBegin.isSubagent()) {
-                    // subAgent的步骤 - 显示缩进和Agent名称
-                    String agentName = stepBegin.getAgentName() != null ? stepBegin.getAgentName() : "subagent";
-                    printStatus("  🤖 [" + agentName + "] Step " + stepBegin.getStepNumber() + " - Thinking...");
-                } else {
-                    // 主 Agent 的步骤
-                    currentStatus.set("thinking (step " + stepBegin.getStepNumber() + ")");
-                    String statusMsg = "🧠 Step " + stepBegin.getStepNumber() + " - Thinking...";
-                    printStatus(statusMsg);
-                    
-                    // 启动旋转动画（如果配置了）
-                    if (uiConfig.isShowSpinner()) {
-                        startSpinner("正在思考...");
-                    }
-                    
-                    // 首次思考时显示提示
-                    if (stepBegin.getStepNumber() == 1) {
-                        showShortcutsHint("thinking");
-                    }
-                    
-                    // 重置输出标志和行长度
-                    assistantOutputStarted.set(false);
-                    currentLineLength.set(0);
-                    isInReasoningMode.set(false); // 重置推理模式
-                }
-
+                handleStepBegin(stepBegin);
             } else if (message instanceof StepInterrupted) {
-                currentStatus.set("interrupted");
-                activeTools.clear();
-                // 如果有输出，添加换行
-                if (assistantOutputStarted.getAndSet(false)) {
-                    terminal.writer().println();
-                    terminal.flush();
-                }
-                printError("⚠️  Step interrupted");
-                
-                // 显示错误提示
-                showShortcutsHint("error");
-
+                handleStepInterrupted();
             } else if (message instanceof CompactionBegin) {
-                currentStatus.set("compacting");
-                printStatus("🗜️  Compacting context...");
-
+                handleCompactionBegin();
             } else if (message instanceof CompactionEnd) {
-                currentStatus.set("ready");
-                printSuccess("✅ Context compacted");
-
+                handleCompactionEnd();
             } else if (message instanceof StatusUpdate statusUpdate) {
-                Map<String, Object> statusMap = statusUpdate.getStatus();
-                String status = statusMap.getOrDefault("status", "unknown").toString();
-                currentStatus.set(status);
-
+                handleStatusUpdate(statusUpdate);
             } else if (message instanceof ContentPartMessage contentMsg) {
-                // 停止旋转动画（LLM开始输出内容）
-                if (uiConfig.isShowSpinner()) {
-                    stopSpinner();
-                }
-                
-                // 打印 LLM 输出的内容部分
-                ContentPart part = contentMsg.getContentPart();
-                if (part instanceof TextPart textPart) {
-                    // 根据内容类型使用不同的显示样式
-                    boolean isReasoning = contentMsg.getContentType() == ContentPartMessage.ContentType.REASONING;
-                    printAssistantText(textPart.getText(), isReasoning);
-                }
-
+                handleContentPart(contentMsg);
             } else if (message instanceof ToolCallMessage toolCallMsg) {
-                // 停止旋转动画
-                if (uiConfig.isShowSpinner()) {
-                    stopSpinner();
-                }
-                
-                // 工具调用开始 - 如果有输出，先添加换行
-                if (assistantOutputStarted.getAndSet(false)) {
-                    terminal.writer().println();
-                    terminal.flush();
-                }
-                
-                ToolCall toolCall = toolCallMsg.getToolCall();
-                String toolName = toolCall.getFunction().getName();
-                activeTools.put(toolCall.getId(), toolName);
-
-                // 根据配置的显示模式显示工具调用
-                String displayMode = uiConfig.getToolDisplayMode();
-                if ("minimal".equals(displayMode)) {
-                    // 最小模式：只显示工具名
-                    printStatus("🔧 " + toolName);
-                } else if ("compact".equals(displayMode)) {
-                    // 紧凑模式：显示工具名 + 截断的参数
-                    String args = toolCall.getFunction().getArguments();
-                    int truncateLen = uiConfig.getToolArgsTruncateLength();
-                    if (args != null && args.length() > truncateLen) {
-                        args = args.substring(0, truncateLen) + "...";
-                    }
-                    printStatus("🔧 " + toolName + " | " + (args != null ? args : ""));
-                } else {
-                    // 完整模式：使用工具可视化
-                    toolVisualization.onToolCallStart(toolCall);
-                }
-
+                handleToolCall(toolCallMsg);
             } else if (message instanceof ToolResultMessage toolResultMsg) {
-                // 工具执行结果
-                String toolCallId = toolResultMsg.getToolCallId();
-                ToolResult result = toolResultMsg.getToolResult();
-
-                // 根据显示模式显示结果
-                String displayMode = uiConfig.getToolDisplayMode();
-                if ("minimal".equals(displayMode)) {
-                    // 最小模式：只显示完成状态
-                    if (result.isOk()) {
-                        printSuccess("✅ " + activeTools.get(toolCallId));
-                    } else {
-                        printError("❌ " + activeTools.get(toolCallId));
-                    }
-                } else if ("compact".equals(displayMode)) {
-                    // 紧凑模式：显示结果摘要
-                    String resultPreview = result.isOk() ? "✅ 成功" : "❌ 失败: " + result.getMessage();
-                    printInfo("  → " + resultPreview);
-                } else {
-                    // 完整模式：使用工具可视化
-                    toolVisualization.onToolCallComplete(toolCallId, result);
-                }
-
-                activeTools.remove(toolCallId);
+                handleToolResult(toolResultMsg);
             } else if (message instanceof TokenUsageMessage tokenUsageMsg) {
-                // 显示Token消耗统计
                 showTokenUsage(tokenUsageMsg.getUsage());
             } else if (message instanceof ApprovalRequest approvalRequest) {
-                // 处理审批请求
-                log.info("[ShellUI] Received ApprovalRequest: action={}, description={}", 
+                log.info("[ShellUI] Received ApprovalRequest: action={}, description={}",
                         approvalRequest.getAction(), approvalRequest.getDescription());
                 handleApprovalRequest(approvalRequest);
             } else if (message instanceof HumanInputRequest humanInputRequest) {
-                // 处理人工交互请求
                 log.info("[ShellUI] Received HumanInputRequest: type={}, question={}",
                         humanInputRequest.getInputType(), truncateForLog(humanInputRequest.getQuestion()));
                 handleHumanInputRequest(humanInputRequest);
             } else if (message instanceof AsyncSubagentStarted asyncStarted) {
-                // 异步子代理启动
                 handleAsyncSubagentStarted(asyncStarted);
             } else if (message instanceof AsyncSubagentProgress asyncProgress) {
-                // 异步子代理进度
                 handleAsyncSubagentProgress(asyncProgress);
             } else if (message instanceof AsyncSubagentCompleted asyncCompleted) {
-                // 异步子代理完成
                 handleAsyncSubagentCompleted(asyncCompleted);
             } else if (message instanceof AsyncSubagentTrigger asyncTrigger) {
-                // 异步子代理触发（Watch 模式）
                 handleAsyncSubagentTrigger(asyncTrigger);
+            } else {
+                log.debug("Unhandled wire message type: {}", message.getClass().getSimpleName());
             }
         } catch (Exception e) {
-            log.error("Error handling wire message", e);
+            log.error("Error handling wire message: {}", message.getClass().getSimpleName(), e);
         }
+    }
+
+    private void handleStepBegin(StepBegin stepBegin) {
+        currentStepTokens.set(0);
+
+        if (stepBegin.isSubagent()) {
+            String agentName = stepBegin.getAgentName() != null ? stepBegin.getAgentName() : "subagent";
+            printStatus("  🤖 [" + agentName + "] Step " + stepBegin.getStepNumber() + " - Thinking...");
+        } else {
+            currentStatus.set("thinking (step " + stepBegin.getStepNumber() + ")");
+            printStatus("🧠 Step " + stepBegin.getStepNumber() + " - Thinking...");
+
+            if (uiConfig.isShowSpinner()) {
+                startSpinner("正在思考...");
+            }
+            if (stepBegin.getStepNumber() == 1) {
+                showShortcutsHint("thinking");
+            }
+
+            assistantOutputStarted.set(false);
+            currentLineLength.set(0);
+            isInReasoningMode.set(false);
+        }
+    }
+
+    private void handleStepInterrupted() {
+        currentStatus.set("interrupted");
+        activeTools.clear();
+        if (assistantOutputStarted.getAndSet(false)) {
+            terminal.writer().println();
+            terminal.flush();
+        }
+        printError("⚠️  Step interrupted");
+        showShortcutsHint("error");
+    }
+
+    private void handleCompactionBegin() {
+        currentStatus.set("compacting");
+        printStatus("🗜️  Compacting context...");
+    }
+
+    private void handleCompactionEnd() {
+        currentStatus.set("ready");
+        printSuccess("✅ Context compacted");
+    }
+
+    private void handleStatusUpdate(StatusUpdate statusUpdate) {
+        Map<String, Object> statusMap = statusUpdate.getStatus();
+        String status = statusMap.getOrDefault("status", "unknown").toString();
+        currentStatus.set(status);
+    }
+
+    private void handleContentPart(ContentPartMessage contentMsg) {
+        if (uiConfig.isShowSpinner()) {
+            stopSpinner();
+        }
+
+        ContentPart part = contentMsg.getContentPart();
+        if (part instanceof TextPart textPart) {
+            boolean isReasoning = contentMsg.getContentType() == ContentPartMessage.ContentType.REASONING;
+            printAssistantText(textPart.getText(), isReasoning);
+        }
+    }
+
+    private void handleToolCall(ToolCallMessage toolCallMsg) {
+        if (uiConfig.isShowSpinner()) {
+            stopSpinner();
+        }
+
+        if (assistantOutputStarted.getAndSet(false)) {
+            terminal.writer().println();
+            terminal.flush();
+        }
+
+        ToolCall toolCall = toolCallMsg.getToolCall();
+        String toolName = toolCall.getFunction().getName();
+        activeTools.put(toolCall.getId(), toolName);
+
+        String displayMode = uiConfig.getToolDisplayMode();
+        switch (displayMode) {
+            case "minimal" -> printStatus("🔧 " + toolName);
+            case "compact" -> {
+                String args = toolCall.getFunction().getArguments();
+                int truncateLen = uiConfig.getToolArgsTruncateLength();
+                if (args != null && args.length() > truncateLen) {
+                    args = args.substring(0, truncateLen) + "...";
+                }
+                printStatus("🔧 " + toolName + " | " + (args != null ? args : ""));
+            }
+            default -> toolVisualization.onToolCallStart(toolCall);
+        }
+    }
+
+    private void handleToolResult(ToolResultMessage toolResultMsg) {
+        String toolCallId = toolResultMsg.getToolCallId();
+        ToolResult result = toolResultMsg.getToolResult();
+
+        String displayMode = uiConfig.getToolDisplayMode();
+        switch (displayMode) {
+            case "minimal" -> {
+                if (result.isOk()) {
+                    printSuccess("✅ " + activeTools.get(toolCallId));
+                } else {
+                    printError("❌ " + activeTools.get(toolCallId));
+                }
+            }
+            case "compact" -> {
+                String resultPreview = result.isOk() ? "✅ 成功" : "❌ 失败: " + result.getMessage();
+                printInfo("  → " + resultPreview);
+            }
+            default -> toolVisualization.onToolCallComplete(toolCallId, result);
+        }
+
+        activeTools.remove(toolCallId);
     }
 
     /**
@@ -482,16 +470,11 @@ public class ShellUI implements AutoCloseable {
      * 构建提示符
      */
     private String buildPrompt() {
-        String promptStyle = uiConfig.getPromptStyle();
-        
-        switch (promptStyle) {
-            case "simple":
-                return buildSimplePrompt();
-            case "rich":
-                return buildRichPrompt();
-            default:
-                return buildNormalPrompt();
-        }
+        return switch (uiConfig.getPromptStyle()) {
+            case "simple" -> buildSimplePrompt();
+            case "rich" -> buildRichPrompt();
+            default -> buildNormalPrompt();
+        };
     }
     
     /**
@@ -513,17 +496,14 @@ public class ShellUI implements AutoCloseable {
         String status = currentStatus.get();
         AttributedStyle style = getStyleForStatus(status);
         String icon = getIconForStatus(status);
-        
+
         StringBuilder promptText = new StringBuilder();
         promptText.append(icon).append(" jimi");
-        
-        // 添加状态提示
-        if (status.startsWith("thinking")) {
-//            promptText.append("[🧠]");
-        } else if (status.equals("compacting")) {
+
+        if ("compacting".equals(status)) {
             promptText.append("[🗂️]");
         }
-        
+
         promptText.append("> ");
         return new AttributedString(promptText.toString(), style).toAnsi();
     }
@@ -606,20 +586,14 @@ public class ShellUI implements AutoCloseable {
         if (status.startsWith("thinking")) {
             return "🧠";
         }
-        
-        switch (status) {
-            case "compacting":
-                return "🗂️";
-            case "interrupted":
-                return "⚠️";
-            case "error":
-                return "❌";
-            case "ready":
-            default:
-                return "✨";
-        }
+        return switch (status) {
+            case "compacting" -> "🗂️";
+            case "interrupted" -> "⚠️";
+            case "error" -> "❌";
+            default -> "✨";
+        };
     }
-    
+
     /**
      * 根据状态获取样式
      */
@@ -628,18 +602,14 @@ public class ShellUI implements AutoCloseable {
             AttributedStyle style = ColorMapper.createStyle(theme.getThinkingColor());
             return theme.isBoldPrompt() ? style.bold() : style;
         }
-        
-        switch (status) {
-            case "compacting":
-                return ColorMapper.createStyle(theme.getStatusColor());
-            case "interrupted":
-            case "error":
-                return ColorMapper.createStyle(theme.getErrorColor());
-            case "ready":
-            default:
+        return switch (status) {
+            case "compacting" -> ColorMapper.createStyle(theme.getStatusColor());
+            case "interrupted", "error" -> ColorMapper.createStyle(theme.getErrorColor());
+            default -> {
                 AttributedStyle readyStyle = ColorMapper.createStyle(theme.getPromptColor());
-                return theme.isBoldPrompt() ? readyStyle.bold() : readyStyle;
-        }
+                yield theme.isBoldPrompt() ? readyStyle.bold() : readyStyle;
+            }
+        };
     }
 
     /**
@@ -952,25 +922,20 @@ public class ShellUI implements AutoCloseable {
             String response = lineReader.readLine(prompt).trim().toLowerCase();
 
             // 解析响应
-            ApprovalResponse approvalResponse;
-            switch (response) {
-                case "y":
-                case "yes":
-                    approvalResponse = ApprovalResponse.APPROVE;
+            ApprovalResponse approvalResponse = switch (response) {
+                case "y", "yes" -> {
                     outputFormatter.printSuccess("\u2705 已批准");
-                    break;
-                case "a":
-                case "all":
-                    approvalResponse = ApprovalResponse.APPROVE_FOR_SESSION;
+                    yield ApprovalResponse.APPROVE;
+                }
+                case "a", "all" -> {
                     outputFormatter.printSuccess("\u2705 已批准（本次会话全部同类操作）");
-                    break;
-                case "n":
-                case "no":
-                default:
-                    approvalResponse = ApprovalResponse.REJECT;
+                    yield ApprovalResponse.APPROVE_FOR_SESSION;
+                }
+                default -> {
                     outputFormatter.printError("\u274c 已拒绝");
-                    break;
-            }
+                    yield ApprovalResponse.REJECT;
+                }
+            };
 
             terminal.writer().println();
             terminal.flush();
@@ -992,69 +957,7 @@ public class ShellUI implements AutoCloseable {
         }
     }
 
-    /**
-     * 在主线程中处理审批请求
-     * 显示审批提示并等待用户输入
-     */
-    private void handleApprovalRequestInMainThread(ApprovalRequest request) {
-        try {
-            // 如果有助手输出，先换行
-            if (assistantOutputStarted.getAndSet(false)) {
-                terminal.writer().println();
-                terminal.flush();
-            }
 
-            // 打印审批请求
-            outputFormatter.println("");
-            outputFormatter.printStatus("\u26a0\ufe0f  需要审批:");
-            outputFormatter.printInfo("  操作类型: " + request.getAction());
-            outputFormatter.printInfo("  操作描述: " + request.getDescription());
-            outputFormatter.println("");
-
-            // 读取用户输入
-            String prompt = new AttributedString("\u2753 是否批准？[y/n/a] (y=批准, n=拒绝, a=本次会话全部批准): ",
-                    AttributedStyle.DEFAULT.foreground(AttributedStyle.YELLOW).bold())
-                    .toAnsi();
-
-            String response = lineReader.readLine(prompt).trim().toLowerCase();
-
-            // 解析响应
-            ApprovalResponse approvalResponse;
-            switch (response) {
-                case "y":
-                case "yes":
-                    approvalResponse = ApprovalResponse.APPROVE;
-                    outputFormatter.printSuccess("\u2705 已批准");
-                    break;
-                case "a":
-                case "all":
-                    approvalResponse = ApprovalResponse.APPROVE_FOR_SESSION;
-                    outputFormatter.printSuccess("\u2705 已批准（本次会话全部同类操作）");
-                    break;
-                case "n":
-                case "no":
-                default:
-                    approvalResponse = ApprovalResponse.REJECT;
-                    outputFormatter.printError("\u274c 已拒绝");
-                    break;
-            }
-
-            outputFormatter.println("");
-
-            // 发送响应
-            request.resolve(approvalResponse);
-
-        } catch (UserInterruptException e) {
-            // 用户按 Ctrl-C，默认拒绝
-            log.info("Approval interrupted by user");
-            outputFormatter.printError("\u274c 审批已取消");
-            request.resolve(ApprovalResponse.REJECT);
-        } catch (Exception e) {
-            log.error("Error handling approval request", e);
-            // 发生错误时默认拒绝
-            request.resolve(ApprovalResponse.REJECT);
-        }
-    }
 
     /**
      * 处理人工交互请求
@@ -1313,27 +1216,20 @@ public class ShellUI implements AutoCloseable {
         }
         
         // 根据频率配置决定是否显示
-        String frequency = uiConfig.getShortcutsHintFrequency();
-        
-        switch (frequency) {
-            case "first_time":
-                // 仅首次显示
+        switch (uiConfig.getShortcutsHintFrequency()) {
+            case "first_time" -> {
                 if (!shouldShowFirstTimeHint(hintType)) {
                     return;
                 }
-                break;
-            case "periodic":
-                // 定期显示
+            }
+            case "periodic" -> {
                 int count = interactionCount.get();
                 int interval = uiConfig.getShortcutsHintInterval();
                 if (count % interval != 0) {
                     return;
                 }
-                break;
-            case "always":
-            default:
-                // 总是显示
-                break;
+            }
+            default -> { /* always: do nothing, show hint */ }
         }
         
         // 显示对应类型的提示
@@ -1353,41 +1249,23 @@ public class ShellUI implements AutoCloseable {
      * 判断是否应该显示首次提示
      */
     private boolean shouldShowFirstTimeHint(String hintType) {
-        switch (hintType) {
-            case "welcome":
-                return welcomeHintShown.compareAndSet(false, true);
-            case "input":
-                return inputHintShown.compareAndSet(false, true);
-            case "thinking":
-                return thinkingHintShown.compareAndSet(false, true);
-            default:
-                return true; // 其他类型总是显示
-        }
+        return switch (hintType) {
+            case "welcome" -> welcomeHintShown.compareAndSet(false, true);
+            case "input" -> inputHintShown.compareAndSet(false, true);
+            case "thinking" -> thinkingHintShown.compareAndSet(false, true);
+            default -> true;
+        };
     }
-    
+
     /**
      * 根据类型获取提示内容
      */
     private String getHintForType(String hintType) {
-        switch (hintType) {
-//            case "welcome":
-//                return "💡 快捷键: /help (帮助) | /status (状态) | /history (历史) | Ctrl+C (中断) | Ctrl+D (退出)";
-//
-//            case "input":
-//                return "💡 提示: 输入 /help 查看所有命令 | Tab 键自动补全 | ↑↓ 箭头浏览历史";
-//
-//            case "thinking":
-//                return "💡 提示: 按 Ctrl+C 可中断当前操作";
-            
-            case "error":
-                return "💡 提示: /reset 清空上下文 | /status 查看状态 | /history 查看历史";
-            
-            case "approval":
-                return "💡 快捷键: y (批准) | n (拒绝) | a (全部批准)";
-            
-            default:
-                return null;
-        }
+        return switch (hintType) {
+            case "error" -> "💡 提示: /reset 清空上下文 | /status 查看状态 | /history 查看历史";
+            case "approval" -> "💡 快捷键: y (批准) | n (拒绝) | a (全部批准)";
+            default -> null;
+        };
     }
 
     // ==================== 异步子代理消息处理 ====================
@@ -1598,6 +1476,7 @@ public class ShellUI implements AutoCloseable {
 
     @Override
     public void close() throws Exception {
+        stopSpinner();
         if (wireSubscription != null) {
             wireSubscription.dispose();
         }

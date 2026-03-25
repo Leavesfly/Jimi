@@ -37,7 +37,6 @@ tools:
 
   #→ 其他:
   - AskHuman
-  - AsyncTask
   - CallGraphTool
   - CodeLocateTool
   - ImpactAnalysisTool

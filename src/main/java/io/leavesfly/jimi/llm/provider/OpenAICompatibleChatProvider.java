@@ -13,6 +13,7 @@ import io.leavesfly.jimi.llm.message.FunctionCall;
 import io.leavesfly.jimi.llm.message.Message;
 import io.leavesfly.jimi.llm.message.ToolCall;
 
+import io.leavesfly.jimi.ui.DebugLogger;
 import lombok.extern.slf4j.Slf4j;
 import io.netty.resolver.DefaultAddressResolverGroup;
 import org.springframework.http.MediaType;
@@ -110,6 +111,16 @@ public class OpenAICompatibleChatProvider implements ChatProvider {
 
                 ObjectNode requestBody = buildRequestBody(systemPrompt, history, tools, false);
 
+                // Debug: 记录请求信息
+                int messageCount = (systemPrompt != null ? 1 : 0) + history.size();
+                int toolCount = tools != null ? tools.size() : 0;
+                DebugLogger.logLLMRequest(providerName, modelName, messageCount, toolCount, false);
+                if (DebugLogger.isEnabled()) {
+                    try {
+                        DebugLogger.logLLMRequestBody(objectMapper.writeValueAsString(requestBody));
+                    } catch (Exception ignored) {}
+                }
+
                 return webClient.post()
                         .uri("/chat/completions")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -117,6 +128,17 @@ public class OpenAICompatibleChatProvider implements ChatProvider {
                         .retrieve()
                         .bodyToMono(JsonNode.class)
                         .map(this::parseResponse)
+                        .doOnNext(result -> {
+                            // Debug: 记录响应信息
+                            int contentLen = result.getMessage() != null && result.getMessage().getTextContent() != null
+                                    ? result.getMessage().getTextContent().length() : 0;
+                            int tcCount = result.getMessage() != null && result.getMessage().getToolCalls() != null
+                                    ? result.getMessage().getToolCalls().size() : 0;
+                            int promptTk = result.getUsage() != null ? result.getUsage().getPromptTokens() : 0;
+                            int completionTk = result.getUsage() != null ? result.getUsage().getCompletionTokens() : 0;
+                            int totalTk = result.getUsage() != null ? result.getUsage().getTotalTokens() : 0;
+                            DebugLogger.logLLMResponse(contentLen, tcCount, promptTk, completionTk, totalTk);
+                        })
                         .onErrorResume(e -> {
                             if (e instanceof WebClientResponseException) {
                                 WebClientResponseException webEx =
@@ -153,6 +175,16 @@ public class OpenAICompatibleChatProvider implements ChatProvider {
                 apiErrorOccurred = false;  // 重置错误标志
 
                 ObjectNode requestBody = buildRequestBody(systemPrompt, history, tools, true);
+
+                // Debug: 记录流式请求信息
+                int messageCount = (systemPrompt != null ? 1 : 0) + history.size();
+                int toolCount = tools != null ? tools.size() : 0;
+                DebugLogger.logLLMRequest(providerName, modelName, messageCount, toolCount, true);
+                if (DebugLogger.isEnabled()) {
+                    try {
+                        DebugLogger.logLLMRequestBody(objectMapper.writeValueAsString(requestBody));
+                    } catch (Exception ignored) {}
+                }
 
                 return webClient.post()
                         .uri("/chat/completions")

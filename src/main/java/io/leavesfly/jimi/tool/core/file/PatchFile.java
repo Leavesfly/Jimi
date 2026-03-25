@@ -110,6 +110,11 @@ public class PatchFile extends AbstractTool<PatchFile.Params> {
     public PatchFile() {
         super(NAME, DESCRIPTION, Params.class);
     }
+
+    @Override
+    public boolean isConcurrentSafe() {
+        return false;
+    }
     
     public void setBuiltinArgs(BuiltinSystemPromptArgs builtinArgs) {
         this.workDir = builtinArgs.getJimiWorkDir();
