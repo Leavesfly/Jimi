@@ -148,6 +148,10 @@ public class AgentRegistry {
         substitutionMap.put("JIMI_WORK_DIR", builtinArgs.getJimiWorkDir().toString());
         substitutionMap.put("JIMI_WORK_DIR_LS", builtinArgs.getJimiWorkDirLs());
         substitutionMap.put("JIMI_AGENTS_MD", builtinArgs.getJimiAgentsMd());
+        
+        // 添加技能摘要（渐进式披露）
+        String skillsSummary = builtinArgs.getJimiSkillsSummary();
+        substitutionMap.put("JIMI_SKILLS_SUMMARY", skillsSummary != null ? skillsSummary : "");
 
         // 添加自定义参数（覆盖内置参数）
         if (args != null) {

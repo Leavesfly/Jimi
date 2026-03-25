@@ -388,6 +388,189 @@ public class SkillRegistry {
     }
     
     /**
+     * 创建新技能
+     * 在用户 Skills 目录下创建新的 SKILL.md 文件并注册
+     * 
+     * @param name 技能名称
+     * @param description 技能描述
+     * @param content 技能内容（Markdown 格式）
+     * @return 创建的 SkillSpec
+     */
+    public SkillSpec createSkill(String name, String description, String content) {
+        if (name == null || name.trim().isEmpty()) {
+            throw new IllegalArgumentException("技能名称不能为空");
+        }
+        if (content == null || content.trim().isEmpty()) {
+            throw new IllegalArgumentException("技能内容不能为空");
+        }
+        
+        // 检查是否已存在
+        if (skillsByName.containsKey(name)) {
+            throw new IllegalArgumentException("技能 '" + name + "' 已存在");
+        }
+        
+        // 创建技能目录
+        Path userSkillsDir = skillLoader.getUserSkillsDirectory();
+        Path skillDir = userSkillsDir.resolve(name);
+        Path skillFile = skillDir.resolve("SKILL.md");
+        
+        try {
+            java.nio.file.Files.createDirectories(skillDir);
+            
+            // 生成 SKILL.md 内容
+            StringBuilder sb = new StringBuilder();
+            sb.append("---\n");
+            sb.append("name: ").append(name).append("\n");
+            sb.append("description: ").append(description != null ? description : "用户创建的技能").append("\n");
+            sb.append("version: 1.0.0\n");
+            sb.append("---\n\n");
+            sb.append(content);
+            
+            java.nio.file.Files.writeString(skillFile, sb.toString());
+            
+            // 加载并注册
+            SkillSpec skill = skillLoader.parseSkillFile(skillFile);
+            if (skill == null) {
+                throw new RuntimeException("创建的技能文件解析失败");
+            }
+            
+            skill.setScope(SkillSpec.SkillScope.GLOBAL);
+            skill.setSkillFilePath(skillFile);
+            register(skill);
+            
+            log.info("Created new skill: {} at {}", name, skillFile);
+            return skill;
+            
+        } catch (Exception e) {
+            // 清理失败的创建
+            try {
+                deleteDirectory(skillDir);
+            } catch (Exception ignored) {}
+            throw new RuntimeException("创建技能失败: " + e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * 编辑已有技能的内容
+     * 
+     * @param name 技能名称
+     * @param newContent 新的技能内容（Markdown 格式）
+     * @return 更新后的 SkillSpec
+     */
+    public SkillSpec editSkill(String name, String newContent) {
+        if (name == null || name.trim().isEmpty()) {
+            throw new IllegalArgumentException("技能名称不能为空");
+        }
+        if (newContent == null || newContent.trim().isEmpty()) {
+            throw new IllegalArgumentException("技能内容不能为空");
+        }
+        
+        SkillSpec skill = skillsByName.get(name);
+        if (skill == null) {
+            throw new IllegalArgumentException("技能 '" + name + "' 未找到");
+        }
+        
+        // 只能编辑全局技能
+        if (skill.getScope() != SkillSpec.SkillScope.GLOBAL) {
+            throw new IllegalArgumentException("只能编辑全局技能（用户创建的）");
+        }
+        
+        Path skillFile = skill.getSkillFilePath();
+        if (skillFile == null || !java.nio.file.Files.exists(skillFile)) {
+            throw new RuntimeException("技能文件不存在: " + skillFile);
+        }
+        
+        try {
+            // 生成新的 SKILL.md 内容（保留元信息）
+            StringBuilder sb = new StringBuilder();
+            sb.append("---\n");
+            sb.append("name: ").append(skill.getName()).append("\n");
+            sb.append("description: ").append(skill.getDescription()).append("\n");
+            sb.append("version: ").append(skill.getVersion()).append("\n");
+            if (skill.getCategory() != null && !skill.getCategory().isEmpty()) {
+                sb.append("category: ").append(skill.getCategory()).append("\n");
+            }
+            if (skill.getTriggers() != null && !skill.getTriggers().isEmpty()) {
+                sb.append("triggers:\n");
+                for (String trigger : skill.getTriggers()) {
+                    sb.append("  - ").append(trigger).append("\n");
+                }
+            }
+            sb.append("---\n\n");
+            sb.append(newContent);
+            
+            java.nio.file.Files.writeString(skillFile, sb.toString());
+            
+            // 重新加载技能
+            SkillSpec updatedSkill = skillLoader.parseSkillFile(skillFile);
+            if (updatedSkill == null) {
+                throw new RuntimeException("更新后的技能文件解析失败");
+            }
+            
+            updatedSkill.setScope(SkillSpec.SkillScope.GLOBAL);
+            updatedSkill.setSkillFilePath(skillFile);
+            
+            // 更新注册表
+            unregisterFromIndexes(skill);
+            skillsByName.put(name, updatedSkill);
+            
+            // 重新建立索引
+            if (updatedSkill.getCategory() != null && !updatedSkill.getCategory().isEmpty()) {
+                skillsByCategory
+                    .computeIfAbsent(updatedSkill.getCategory(), k -> new ArrayList<>())
+                    .add(updatedSkill);
+            }
+            if (updatedSkill.getTriggers() != null) {
+                for (String trigger : updatedSkill.getTriggers()) {
+                    String triggerLower = trigger.toLowerCase();
+                    skillsByTrigger
+                        .computeIfAbsent(triggerLower, k -> new ArrayList<>())
+                        .add(updatedSkill);
+                }
+            }
+            
+            log.info("Updated skill: {}", name);
+            return updatedSkill;
+            
+        } catch (Exception e) {
+            throw new RuntimeException("编辑技能失败: " + e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * 生成技能摘要列表（用于 System Prompt 注入）
+     * 
+     * @return Markdown 格式的技能摘要
+     */
+    public String generateSkillsSummary() {
+        List<SkillSpec> skills = getAllSkills();
+        
+        if (skills.isEmpty()) {
+            return "";
+        }
+        
+        StringBuilder sb = new StringBuilder();
+        sb.append("<available_skills>\n");
+        sb.append("以下是可用的技能列表。当任务需要专业指导时，使用 Skills 工具的 invoke 操作加载完整内容：\n\n");
+        
+        for (SkillSpec skill : skills) {
+            sb.append("- **").append(skill.getName()).append("**");
+            if (skill.getDescription() != null && !skill.getDescription().isEmpty()) {
+                sb.append(": ").append(skill.getDescription());
+            }
+            if (skill.getTriggers() != null && !skill.getTriggers().isEmpty()) {
+                sb.append(" [triggers: ").append(String.join(", ", skill.getTriggers())).append("]");
+            }
+            sb.append("\n");
+        }
+        
+        sb.append("\n使用方法: Skills(action='invoke', name='技能名称')\n");
+        sb.append("</available_skills>");
+        
+        return sb.toString();
+    }
+    
+    /**
      * 获取 Skill 安装信息列表（供 UI 展示）
      */
     public List<SkillInfo> listAllInfo() {

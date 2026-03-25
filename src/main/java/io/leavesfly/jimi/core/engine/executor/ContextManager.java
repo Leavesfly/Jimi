@@ -7,17 +7,13 @@ import io.leavesfly.jimi.knowledge.KnowledgeService;
 import io.leavesfly.jimi.knowledge.domain.query.UnifiedKnowledgeQuery;
 import io.leavesfly.jimi.knowledge.domain.result.UnifiedKnowledgeResult;
 import io.leavesfly.jimi.llm.LLM;
-import io.leavesfly.jimi.llm.message.ContentPart;
 import io.leavesfly.jimi.llm.message.Message;
 import io.leavesfly.jimi.llm.message.MessageRole;
 import io.leavesfly.jimi.llm.message.TextPart;
-import io.leavesfly.jimi.tool.skill.SkillInjector;
-import io.leavesfly.jimi.tool.skill.SkillMatcher;
-import io.leavesfly.jimi.tool.skill.SkillSpec;
+import io.leavesfly.jimi.tool.skill.SkillRegistry;
 import io.leavesfly.jimi.wire.Wire;
 import io.leavesfly.jimi.wire.message.CompactionBegin;
 import io.leavesfly.jimi.wire.message.CompactionEnd;
-import io.leavesfly.jimi.wire.message.SkillsActivated;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -40,10 +36,8 @@ import java.util.stream.Collectors;
 public class ContextManager {
     @Autowired
     private Wire wire;
-    @Autowired
-    private SkillMatcher skillMatcher;
-    @Autowired
-    private SkillInjector skillProvider;
+    @Autowired(required = false)
+    private SkillRegistry skillRegistry;
     @Autowired(required = false)
     private KnowledgeService knowledgeService;
 
@@ -250,63 +244,32 @@ public class ContextManager {
 
 
     /**
-     * 匹配和注入 Skills（如果启用）
-     *
+     * 匹配和注入 Skills（已废弃，改为渐进式披露模式）
+     * 
+     * 新架构：
+     * - 技能摘要在 System Prompt 中提供（通过 getSkillsSummary()）
+     * - 大模型通过 SkillsTool 主动调用加载完整技能内容
+     * 
      * @param context 上下文
      * @param stepNo  当前步骤号
-     * @return 完成的 Mono
+     * @return 完成的 Mono（始终为空，不再自动注入）
      */
     public Mono<Void> matchAndInjectSkills(Context context, int stepNo) {
-        // 如果没有配置 Skill 组件，直接跳过
-        if (skillMatcher == null || skillProvider == null) {
-            return Mono.empty();
-        }
-
-        // 只在第一步执行 Skill 匹配（基于用户输入）
-        if (stepNo == 1) {
-            return matchSkillsFromUserInput(context);
-        }
-
+        // 渐进式披露模式：不再自动匹配和注入技能
+        // 技能摘要已在 System Prompt 中提供，大模型通过 SkillsTool 按需加载
         return Mono.empty();
     }
 
     /**
-     * 从用户输入匹配 Skills
+     * 获取技能摘要（用于 System Prompt 注入）
+     * 
+     * @return 技能摘要 Markdown 字符串，如果没有技能则返回空字符串
      */
-    private Mono<Void> matchSkillsFromUserInput(Context context) {
-        return Mono.defer(() -> {
-            // 获取最近的用户消息
-            List<Message> history = context.getHistory();
-            if (history.isEmpty()) {
-                return Mono.empty();
-            }
-
-            // 从最后一条用户消息中提取内容
-            Message lastUserMessage = findLastUserMessage(history);
-            if (lastUserMessage == null) {
-                return Mono.empty();
-            }
-
-            // 提取内容部分
-            List<ContentPart> contentParts = lastUserMessage.getContentParts();
-            if (contentParts.isEmpty()) {
-                return Mono.empty();
-            }
-
-            // 匹配 Skills
-            List<SkillSpec> matchedSkills = skillMatcher.matchFromInput(contentParts);
-
-            if (matchedSkills.isEmpty()) {
-                log.debug("No skills matched from user input");
-                return Mono.empty();
-            }
-
-            // 发送 Wire 消息
-            wire.send(SkillsActivated.from(matchedSkills));
-
-            // 注入 Skills
-            return skillProvider.injectSkills(context, matchedSkills);
-        });
+    public String getSkillsSummary() {
+        if (skillRegistry == null) {
+            return "";
+        }
+        return skillRegistry.generateSkillsSummary();
     }
 
     /**

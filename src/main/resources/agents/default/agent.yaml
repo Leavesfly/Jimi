@@ -53,6 +53,7 @@ tools:
   - MetaTool
   - SetTodoList
   - Task
+  - Skills
 
 # 子 Agent 配置
 subagents:

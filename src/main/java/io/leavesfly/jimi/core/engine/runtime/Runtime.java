@@ -103,6 +103,7 @@ public class Runtime {
         private Session session;
         private Approval approval;
         private SessionManager sessionManager;  // 用于加载 AGENTS.md
+        private String skillsSummary;           // 技能摘要（渐进式披露）
         
         public Builder config(JimiConfig config) {
             this.config = config;
@@ -133,6 +134,14 @@ public class Runtime {
         }
         
         /**
+         * 设置技能摘要（渐进式披露）
+         */
+        public Builder skillsSummary(String skillsSummary) {
+            this.skillsSummary = skillsSummary;
+            return this;
+        }
+        
+        /**
          * 构建 Runtime 实例
          * 自动创建 BuiltinSystemPromptArgs
          */
@@ -149,7 +158,7 @@ public class Runtime {
         
         /**
          * 构建内置系统提示词参数
-         * 封装环境信息收集逻辑：当前时间、工作目录、文件列表、Agent文档
+         * 封装环境信息收集逻辑：当前时间、工作目录、文件列表、Agent文档、技能摘要
          */
         private BuiltinSystemPromptArgs createBuiltinArgs() {
             String now = ZonedDateTime.now().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
@@ -177,6 +186,7 @@ public class Runtime {
                     .jimiWorkDir(workDir)
                     .jimiWorkDirLs(workDirLs)
                     .jimiAgentsMd(agentsMd)
+                    .jimiSkillsSummary(skillsSummary != null ? skillsSummary : "")
                     .build();
         }
     }

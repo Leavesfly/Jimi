@@ -1,5 +1,6 @@
 package io.leavesfly.jimi.tool;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import reactor.core.publisher.Mono;
 
 /**
@@ -56,5 +57,20 @@ public interface Tool<P> {
      */
     default boolean isConcurrentSafe() {
         return true;
+    }
+
+    /**
+     * 获取自定义的参数 JSON Schema
+     * <p>
+     * 当工具的参数不能通过反射 paramsType 自动生成 schema 时（如 MCP 工具使用 Map 作为参数类型），
+     * 可以覆写此方法直接提供参数的 JSON Schema。
+     * <p>
+     * ToolRegistry 在生成工具 schema 时会优先使用此方法返回的值，
+     * 如果返回 null 则回退到基于反射的自动生成。
+     *
+     * @return 参数的 JSON Schema 节点，返回 null 表示使用默认的反射生成
+     */
+    default JsonNode getCustomParametersSchema() {
+        return null;
     }
 }

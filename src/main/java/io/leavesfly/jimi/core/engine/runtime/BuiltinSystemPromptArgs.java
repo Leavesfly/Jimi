@@ -36,4 +36,10 @@ public class BuiltinSystemPromptArgs {
      * AGENTS.md 内容
      */
     private String jimiAgentsMd;
+    
+    /**
+     * 可用技能摘要（渐进式披露）
+     * 包含技能列表的简要描述，供 LLM 决定是否调用 SkillsTool
+     */
+    private String jimiSkillsSummary;
 }

@@ -182,15 +182,34 @@ public class ToolRegistry {
         function.put("name", tool.getName());
         function.put("description", tool.getDescription());
 
-        // 生成参数 schema
+        // 优先使用工具提供的自定义参数 schema（如 MCP 工具的 inputSchema）
+        JsonNode customParametersSchema = tool.getCustomParametersSchema();
+        if (customParametersSchema != null) {
+            function.set("parameters", customParametersSchema);
+        } else {
+            // 回退到基于反射的自动生成
+            function.set("parameters", generateParametersSchemaByReflection(tool.getParamsType()));
+        }
+
+        schema.set("function", function);
+
+        return schema;
+    }
+
+    /**
+     * 通过反射生成参数的 JSON Schema
+     * 分析 paramsType 类的字段，生成对应的 JSON Schema 定义
+     *
+     * @param paramsType 参数类型
+     * @return 参数的 JSON Schema 节点
+     */
+    private ObjectNode generateParametersSchemaByReflection(Class<?> paramsType) {
         ObjectNode parameters = objectMapper.createObjectNode();
         parameters.put("type", "object");
 
-        // 使用反射从参数类生成详细的 schema
         ObjectNode properties = objectMapper.createObjectNode();
         ArrayNode required = objectMapper.createArrayNode();
 
-        Class<?> paramsType = tool.getParamsType();
         if (paramsType != null) {
             for (Field field : paramsType.getDeclaredFields()) {
                 // 跳过静态字段和合成字段
@@ -230,10 +249,7 @@ public class ToolRegistry {
             parameters.set("required", required);
         }
 
-        function.set("parameters", parameters);
-        schema.set("function", function);
-
-        return schema;
+        return parameters;
     }
 
     /**

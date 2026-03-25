@@ -1,5 +1,7 @@
 package io.leavesfly.jimi.tool.core.mcp;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.leavesfly.jimi.mcp.JsonRpcClient;
 import io.leavesfly.jimi.mcp.MCPResultConverter;
 import io.leavesfly.jimi.mcp.MCPSchema;
@@ -15,16 +17,22 @@ import java.util.Map;
  * MCP 工具包装器 - 轻量级本地实现
  * 不依赖io.modelcontextprotocol.sdk，直接使用本地客户端
  * 
- * 将外部MCP服务提供的工具包装成Jimi的AbstractTool，使其能被统一调用
+ * 将外部MCP服务提供的工具包装成Jimi的AbstractTool，使其能被统一调用。
+ * 通过覆写 getCustomParametersSchema() 将 MCP 服务端返回的 inputSchema
+ * 直接透传给大模型，确保每个工具的所有参数都能被正确暴露。
  */
 @Slf4j
 public class MCPTool extends AbstractTool<Map<String, Object>> {
+    private static final ObjectMapper SCHEMA_MAPPER = new ObjectMapper();
+
     /** MCP客户端，用于与外部服务通信 */
     private final JsonRpcClient mcpClient;
     /** 工具名称 */
     private final String mcpToolName;
     /** 执行超时时间（秒） */
     private final int timeoutSeconds;
+    /** MCP 服务端返回的参数 JSON Schema，直接透传给大模型 */
+    private final JsonNode inputSchemaNode;
 
     /**
      * 构造MCP工具（默认超时20秒）
@@ -52,6 +60,36 @@ public class MCPTool extends AbstractTool<Map<String, Object>> {
         this.mcpClient = mcpClient;
         this.mcpToolName = mcpTool.getName();
         this.timeoutSeconds = timeoutSeconds;
+        this.inputSchemaNode = convertInputSchema(mcpTool.getInputSchema());
+    }
+
+    /**
+     * 将 MCP 工具的 inputSchema（Map 格式）转换为 JsonNode
+     * 以便 ToolRegistry 生成工具 schema 时直接使用
+     *
+     * @param inputSchema MCP 服务端返回的 inputSchema（JSON Schema 格式的 Map）
+     * @return 对应的 JsonNode，转换失败时返回 null
+     */
+    private static JsonNode convertInputSchema(Map<String, Object> inputSchema) {
+        if (inputSchema == null || inputSchema.isEmpty()) {
+            return null;
+        }
+        try {
+            return SCHEMA_MAPPER.valueToTree(inputSchema);
+        } catch (Exception e) {
+            log.warn("Failed to convert MCP inputSchema to JsonNode: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * 返回 MCP 服务端提供的参数 JSON Schema
+     * ToolRegistry 在生成工具定义时会优先使用此 schema，
+     * 确保 MCP 工具的每个参数都能被大模型感知和调用
+     */
+    @Override
+    public JsonNode getCustomParametersSchema() {
+        return inputSchemaNode;
     }
 
     /**

@@ -17,6 +17,7 @@ import io.leavesfly.jimi.core.engine.context.Context;
 import io.leavesfly.jimi.core.engine.runtime.Runtime;
 import io.leavesfly.jimi.tool.ToolRegistry;
 import io.leavesfly.jimi.tool.ToolRegistryFactory;
+import io.leavesfly.jimi.tool.skill.SkillRegistry;
 import io.leavesfly.jimi.wire.Wire;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -55,6 +56,9 @@ public class JimiFactory {
     // ==================== 组件提供者（封装可选依赖） ====================
     @Autowired
     private KnowledgeService knowledgeService;
+    
+    @Autowired(required = false)
+    private SkillRegistry skillRegistry;  // 用于生成技能摘要（渐进式披露）
 
 
     // ==================== Builder 模式 API ====================
@@ -179,6 +183,11 @@ public class JimiFactory {
 
                 // 4. 创建 Runtime（自动构建 builtinArgs）
                 Approval approval = new Approval(yolo);
+                
+                // 生成技能摘要（渐进式披露）
+                String skillsSummary = skillRegistry != null 
+                    ? skillRegistry.generateSkillsSummary() 
+                    : "";
 
                 Runtime runtime = Runtime.builder()
                         .config(config)
@@ -186,6 +195,7 @@ public class JimiFactory {
                         .session(session)
                         .approval(approval)
                         .sessionManager(sessionManager)  // 用于构建 builtinArgs
+                        .skillsSummary(skillsSummary)    // 技能摘要（渐进式披露）
                         .build();
 
                 // 5. 使用 AgentRegistry 单例加载 Agent（包含系统提示词处理）

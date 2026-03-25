@@ -1,6 +1,5 @@
 package io.leavesfly.jimi.mcp;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -51,24 +50,6 @@ public class MCPSchema {
         /** 服务提供的所有工具列表 */
         @JsonProperty("tools")
         private List<Tool> tools;
-    }
-
-    /**
-     * 工具调用请求
-     * 用于tools/call方法的参数
-     */
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class CallToolRequest {
-        /** 要调用的工具名称 */
-        @JsonProperty("name")
-        private String name;
-        
-        /** 调用参数 */
-        @JsonProperty("arguments")
-        private Map<String, Object> arguments;
     }
 
     /**
@@ -173,47 +154,6 @@ public class MCPSchema {
         /** 二进制数据（Base64编码） */
         @JsonProperty("blob")
         private String blob;
-    }
-
-    /**
-     * 初始化请求
-     * 用于initialize方法，建立客户端与服务端的连接
-     */
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    @JsonInclude(JsonInclude.Include.NON_NULL)
-    public static class InitializeRequest {
-        /** MCP协议版本 */
-        @JsonProperty("protocolVersion")
-        private String protocolVersion = "2024-11-05";
-        
-        /** 客户端能力声明 */
-        @JsonProperty("capabilities")
-        private Map<String, Object> capabilities;
-        
-        /** 客户端信息 */
-        @JsonProperty("clientInfo")
-        private ClientInfo clientInfo;
-    }
-
-    /**
-     * 客户端信息
-     * 描述连接的客户端名称和版本
-     */
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class ClientInfo {
-        /** 客户端名称 */
-        @JsonProperty("name")
-        private String name = "jimi";
-        
-        /** 客户端版本 */
-        @JsonProperty("version")
-        private String version = "0.1.0";
     }
 
     /**

@@ -9,6 +9,7 @@ import io.leavesfly.jimi.core.sandbox.SandboxValidator;
 import io.leavesfly.jimi.core.session.Session;
 import io.leavesfly.jimi.tool.core.bash.Bash;
 import io.leavesfly.jimi.tool.core.file.*;
+import io.leavesfly.jimi.tool.core.skill.SkillsTool;
 import io.leavesfly.jimi.tool.core.todo.SetTodoList;
 import io.leavesfly.jimi.tool.core.web.FetchURL;
 import io.leavesfly.jimi.tool.core.web.WebSearch;
@@ -133,7 +134,8 @@ public class ToolRegistryFactory {
             Bash.class,
             FetchURL.class,
             WebSearch.class,
-            SetTodoList.class
+            SetTodoList.class,
+            SkillsTool.class  // 技能管理工具（渐进式披露）
     );
 
     /**
