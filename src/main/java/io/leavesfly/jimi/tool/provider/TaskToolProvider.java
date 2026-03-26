@@ -1,7 +1,7 @@
 package io.leavesfly.jimi.tool.provider;
 
 import io.leavesfly.jimi.core.agent.AgentSpec;
-import io.leavesfly.jimi.core.engine.runtime.Runtime;
+import io.leavesfly.jimi.core.engine.JimiRuntime;
 import io.leavesfly.jimi.tool.Tool;
 import io.leavesfly.jimi.tool.ToolProvider;
 
@@ -36,17 +36,17 @@ public class TaskToolProvider implements ToolProvider {
     }
     
     @Override
-    public boolean supports(AgentSpec agentSpec, Runtime runtime) {
+    public boolean supports(AgentSpec agentSpec, JimiRuntime jimiRuntime) {
         return agentSpec.getSubagents() != null && !agentSpec.getSubagents().isEmpty();
     }
     
     @Override
-    public List<Tool<?>> createTools(AgentSpec agentSpec, Runtime runtime) {
+    public List<Tool<?>> createTools(AgentSpec agentSpec, JimiRuntime jimiRuntime) {
         log.info("Creating Task tool with {} subagents", agentSpec.getSubagents().size());
         
         // 从 Spring 容器获取 Task 原型实例
         Task task = applicationContext.getBean(Task.class);
-        task.setRuntimeParams(agentSpec, runtime);
+        task.setRuntimeParams(agentSpec, jimiRuntime);
         
         return Collections.singletonList(task);
     }

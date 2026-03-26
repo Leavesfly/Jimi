@@ -1,6 +1,6 @@
 package io.leavesfly.jimi.knowledge;
 
-import io.leavesfly.jimi.core.engine.runtime.Runtime;
+import io.leavesfly.jimi.core.engine.JimiRuntime;
 import io.leavesfly.jimi.knowledge.domain.query.*;
 import io.leavesfly.jimi.knowledge.domain.result.*;
 import io.leavesfly.jimi.knowledge.graph.GraphManager;
@@ -12,8 +12,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
-
-import java.util.List;
 
 /**
  * 知识服务统一门面实现
@@ -52,7 +50,7 @@ public class KnowledgeServiceImpl implements KnowledgeService {
 
 
     @Override
-    public Mono<Boolean> initialize(Runtime runtime) {
+    public Mono<Boolean> initialize(JimiRuntime jimiRuntime) {
         if (initialized) {
             log.debug("KnowledgeService 已初始化，跳过重复初始化");
             return Mono.just(true);
@@ -62,10 +60,10 @@ public class KnowledgeServiceImpl implements KnowledgeService {
 
         // 并行初始化所有子服务
         return Mono.zip(
-                initializeServiceSafely("GraphManager", graphManager, runtime, graphManager::initialize),
-                initializeServiceSafely("RagManager", ragManager, runtime, ragManager::initialize),
-                initializeMemoryServiceSafely("MemoryManager", memoryManager, runtime),
-                initializeServiceSafely("WikiService", wikiService, runtime, wikiService::initialize)
+                initializeServiceSafely("GraphManager", graphManager, jimiRuntime, graphManager::initialize),
+                initializeServiceSafely("RagManager", ragManager, jimiRuntime, ragManager::initialize),
+                initializeMemoryServiceSafely("MemoryManager", memoryManager, jimiRuntime),
+                initializeServiceSafely("WikiService", wikiService, jimiRuntime, wikiService::initialize)
         ).map(tuple -> {
             boolean graphOk = tuple.getT1();
             boolean retrievalOk = tuple.getT2();
@@ -89,17 +87,17 @@ public class KnowledgeServiceImpl implements KnowledgeService {
      *
      * @param serviceName 服务名称，用于日志
      * @param service 服务实例，如果为 null 则跳过初始化
-     * @param runtime 运行时环境
+     * @param jimiRuntime 运行时环境
      * @param initializer 初始化函数
      * @return 初始化结果
      */
-    private Mono<Boolean> initializeServiceSafely(String serviceName, Object service, Runtime runtime,
-            java.util.function.Function<Runtime, Mono<Boolean>> initializer) {
+    private Mono<Boolean> initializeServiceSafely(String serviceName, Object service, JimiRuntime jimiRuntime,
+            java.util.function.Function<JimiRuntime, Mono<Boolean>> initializer) {
         if (service == null) {
             log.debug("{} 未启用，跳过初始化", serviceName);
             return Mono.just(true);
         }
-        return initializer.apply(runtime)
+        return initializer.apply(jimiRuntime)
                 .doOnSuccess(ok -> log.debug("{} 初始化成功: {}", serviceName, ok))
                 .onErrorResume(e -> {
                     log.warn("{} 初始化失败: {}", serviceName, e.getMessage());
@@ -112,15 +110,15 @@ public class KnowledgeServiceImpl implements KnowledgeService {
      *
      * @param serviceName 服务名称，用于日志
      * @param service 服务实例，如果为 null 则跳过初始化
-     * @param runtime 运行时环境
+     * @param jimiRuntime 运行时环境
      * @return 初始化结果
      */
-    private Mono<Boolean> initializeMemoryServiceSafely(String serviceName, MemoryManager service, Runtime runtime) {
+    private Mono<Boolean> initializeMemoryServiceSafely(String serviceName, MemoryManager service, JimiRuntime jimiRuntime) {
         if (service == null) {
             log.debug("{} 未启用，跳过初始化", serviceName);
             return Mono.just(true);
         }
-        return Mono.fromRunnable(() -> service.initialize(runtime))
+        return Mono.fromRunnable(() -> service.initialize(jimiRuntime))
                 .thenReturn(true)
                 .doOnSuccess(ok -> log.debug("{} 初始化成功: {}", serviceName, ok))
                 .onErrorResume(e -> {

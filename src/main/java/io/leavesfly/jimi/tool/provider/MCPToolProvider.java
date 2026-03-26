@@ -2,7 +2,7 @@ package io.leavesfly.jimi.tool.provider;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.leavesfly.jimi.core.agent.AgentSpec;
-import io.leavesfly.jimi.core.engine.runtime.Runtime;
+import io.leavesfly.jimi.core.engine.JimiRuntime;
 import io.leavesfly.jimi.tool.Tool;
 import io.leavesfly.jimi.tool.ToolProvider;
 import io.leavesfly.jimi.tool.ToolRegistry;
@@ -52,13 +52,13 @@ public class MCPToolProvider implements ToolProvider {
     }
     
     @Override
-    public boolean supports(AgentSpec agentSpec, Runtime runtime) {
+    public boolean supports(AgentSpec agentSpec, JimiRuntime jimiRuntime) {
         // 检查是否有 MCP 配置文件
         return mcpConfigFiles != null && !mcpConfigFiles.isEmpty();
     }
     
     @Override
-    public List<Tool<?>> createTools(AgentSpec agentSpec, Runtime runtime) {
+    public List<Tool<?>> createTools(AgentSpec agentSpec, JimiRuntime jimiRuntime) {
         List<Tool<?>> allMcpTools = new ArrayList<>();
         
         // 临时创建一个空的注册表用于加载工具

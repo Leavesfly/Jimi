@@ -289,9 +289,9 @@ public class JShellCodeExecutor {
         // 注意：不检查 Class.forName 和 java.lang.reflect.Method，因为 callTool 辅助方法需要使用它们
         String[] dangerousPatterns = {
                 "System.exit",
-                "Runtime.getRuntime",
+                "JimiRuntime.getRuntime",
                 "ProcessBuilder",
-                "Runtime.exec",
+                "JimiRuntime.exec",
                 "Thread.stop",
                 "System.setSecurityManager"
         };

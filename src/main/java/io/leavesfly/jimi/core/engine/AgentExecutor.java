@@ -1,17 +1,14 @@
-package io.leavesfly.jimi.core;
+package io.leavesfly.jimi.core.engine;
 
 import io.leavesfly.jimi.common.HttpClientConstants;
 import io.leavesfly.jimi.core.agent.Agent;
 import io.leavesfly.jimi.core.compaction.Compaction;
-import io.leavesfly.jimi.core.engine.ContextManager;
-import io.leavesfly.jimi.core.engine.ExecutionState;
-import io.leavesfly.jimi.core.engine.MemoryRecorder;
-import io.leavesfly.jimi.core.engine.ResponseProcessor;
+import io.leavesfly.jimi.core.engine.context.ContextManager;
+import io.leavesfly.jimi.knowledge.memory.MemoryRecorder;
 import io.leavesfly.jimi.core.engine.context.Context;
 import io.leavesfly.jimi.core.engine.hook.HookContext;
 import io.leavesfly.jimi.core.engine.hook.HookRegistry;
 import io.leavesfly.jimi.core.engine.hook.HookType;
-import io.leavesfly.jimi.core.engine.runtime.Runtime;
 import io.leavesfly.jimi.exception.MaxStepsReachedException;
 import io.leavesfly.jimi.exception.RunCancelledException;
 
@@ -49,7 +46,7 @@ public class AgentExecutor {
     // ==================== 核心依赖（必需） ====================
     private final String agentName;
     private final Agent agent;
-    private final Runtime runtime;
+    private final JimiRuntime jimiRuntime;
     private final Context context;
     private final Wire wire;
     private final ToolRegistry toolRegistry;
@@ -72,7 +69,7 @@ public class AgentExecutor {
     private AgentExecutor(Builder builder) {
         // 必需参数
         this.agent = Objects.requireNonNull(builder.agent, "agent is required");
-        this.runtime = Objects.requireNonNull(builder.runtime, "runtime is required");
+        this.jimiRuntime = Objects.requireNonNull(builder.jimiRuntime, "jimiRuntime is required");
         this.context = Objects.requireNonNull(builder.context, "context is required");
         this.wire = Objects.requireNonNull(builder.wire, "wire is required");
         this.toolRegistry = Objects.requireNonNull(builder.toolRegistry, "toolRegistry is required");
@@ -107,7 +104,7 @@ public class AgentExecutor {
      * <pre>
      * AgentExecutor executor = AgentExecutor.builder()
      *     .agent(agent)
-     *     .runtime(runtime)
+     *     .jimiRuntime(jimiRuntime)
      *     .context(context)
      *     .wire(wire)
      *     .toolRegistry(toolRegistry)
@@ -121,7 +118,7 @@ public class AgentExecutor {
     public static class Builder {
         // 必需参数
         private Agent agent;
-        private Runtime runtime;
+        private JimiRuntime jimiRuntime;
         private Context context;
         private Wire wire;
         private ToolRegistry toolRegistry;
@@ -146,8 +143,8 @@ public class AgentExecutor {
             return this;
         }
 
-        public Builder runtime(Runtime runtime) {
-            this.runtime = runtime;
+        public Builder runtime(JimiRuntime jimiRuntime) {
+            this.jimiRuntime = jimiRuntime;
             return this;
         }
 
@@ -253,7 +250,7 @@ public class AgentExecutor {
             // 触发 PRE_USER_INPUT hook
             HookContext preInputHookContext = HookContext.builder()
                     .hookType(HookType.PRE_USER_INPUT)
-                    .workDir(runtime.getWorkDir())
+                    .workDir(jimiRuntime.getWorkDir())
                     .userInput(userInputText)
                     .agentName(agentName)
                     .build();
@@ -276,7 +273,7 @@ public class AgentExecutor {
                         // 触发 POST_USER_INPUT hook（异步，不阻塞主流程）
                         HookContext postInputHookContext = HookContext.builder()
                                 .hookType(HookType.POST_USER_INPUT)
-                                .workDir(runtime.getWorkDir())
+                                .workDir(jimiRuntime.getWorkDir())
                                 .userInput(userInputText)
                                 .agentName(agentName)
                                 .build();
@@ -291,7 +288,7 @@ public class AgentExecutor {
                         // 触发 ON_ERROR hook（异步，不阻塞主流程）
                         HookContext errorHookContext = HookContext.builder()
                                 .hookType(HookType.ON_ERROR)
-                                .workDir(runtime.getWorkDir())
+                                .workDir(jimiRuntime.getWorkDir())
                                 .errorMessage(e.getMessage())
                                 .errorStackTrace(getStackTraceString(e))
                                 .agentName(agentName)
@@ -357,7 +354,7 @@ public class AgentExecutor {
      */
     private Mono<Void> agentLoopStep(int stepNo, boolean skipKnowledge) {
         // 检查是否已取消
-        if (runtime.getSession().isCancelled()) {
+        if (jimiRuntime.getSession().isCancelled()) {
             log.info("Agent '{}' cancelled at step {}", agentName != null ? agentName : "main", stepNo);
             wire.send(new StepInterrupted());
             return Mono.error(new RunCancelledException());
@@ -367,10 +364,10 @@ public class AgentExecutor {
         executionState.setStepsInTask(stepNo);
 
         // 获取并递增全局步数
-        int globalStepNo = runtime.getSession().incrementAndGetGlobalStep();
+        int globalStepNo = jimiRuntime.getSession().incrementAndGetGlobalStep();
 
         // 检查全局最大步数
-        int maxSteps = runtime.getConfig().getLoopControl().getMaxStepsPerRun();
+        int maxSteps = jimiRuntime.getConfig().getLoopControl().getMaxStepsPerRun();
         if (globalStepNo > maxSteps) {
             return Mono.error(new MaxStepsReachedException(maxSteps));
         }
@@ -383,7 +380,7 @@ public class AgentExecutor {
 
         return Mono.defer(() -> {
             // 检查上下文是否超限，触发压缩
-            Mono<Void> pipeline = contextManager.checkAndCompact(context, runtime.getLlm(), compaction)
+            Mono<Void> pipeline = contextManager.checkAndCompact(context, jimiRuntime.getLlm(), compaction)
                     .then(context.checkpoint(false))
                     .then();
 
@@ -421,16 +418,16 @@ public class AgentExecutor {
      */
     private Mono<Boolean> step() {
         return Mono.defer(() -> {
-            LLM llm = runtime.getLlm();
+            LLM llm = jimiRuntime.getLlm();
             List<Object> toolSchemas = new ArrayList<>(toolRegistry.getToolSchemas(agent.getTools()));
 
             String systemPrompt = agent.getSystemPrompt();
 
             return llm.getChatProvider()
                     .generateStream(systemPrompt, context.getHistory(), toolSchemas)
-                    .contextWrite(ctx -> ctx.put("workDir", runtime.getWorkDir()))
+                    .contextWrite(ctx -> ctx.put("workDir", jimiRuntime.getWorkDir()))
                     .reduce(new ResponseProcessor.StreamAccumulator(), responseProcessor::processStreamChunk)
-                    .flatMap(acc -> responseProcessor.handleStreamCompletion(acc, context, executionState, toolRegistry, runtime.getWorkDir()))
+                    .flatMap(acc -> responseProcessor.handleStreamCompletion(acc, context, executionState, toolRegistry, jimiRuntime.getWorkDir()))
                     .onErrorResume(responseProcessor::handleLLMError);
         });
     }
@@ -441,8 +438,8 @@ public class AgentExecutor {
         return agent;
     }
 
-    public Runtime getRuntime() {
-        return runtime;
+    public JimiRuntime getRuntime() {
+        return jimiRuntime;
     }
 
     public Context getContext() {

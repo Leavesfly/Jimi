@@ -130,7 +130,7 @@ class JShellCodeExecutorTest {
         String dangerousCode1 = "System.exit(0);";
         assertFalse(JShellCodeExecutor.validateCodeSafety(dangerousCode1));
         
-        String dangerousCode2 = "Runtime.getRuntime().exec(\"rm -rf /\");";
+        String dangerousCode2 = "JimiRuntime.getRuntime().exec(\"rm -rf /\");";
         assertFalse(JShellCodeExecutor.validateCodeSafety(dangerousCode2));
         
         String dangerousCode3 = "ProcessBuilder pb = new ProcessBuilder();";

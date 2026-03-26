@@ -76,9 +76,9 @@ src/main/java/io/leavesfly/jimi/
 ```java
 package io.leavesfly.jimi.engine.async;
 
-import io.leavesfly.jimi.core.engine.async.AsyncSubagentCallback;
-import io.leavesfly.jimi.core.engine.async.AsyncSubagentMode;
-import io.leavesfly.jimi.core.engine.async.AsyncSubagentStatus;
+import io.leavesfly.jimi.core.async.AsyncSubagentCallback;
+import io.leavesfly.jimi.core.async.AsyncSubagentMode;
+import io.leavesfly.jimi.core.async.AsyncSubagentStatus;
 
 @Data
 @Builder
@@ -133,7 +133,7 @@ public enum AsyncSubagentMode {
 ```java
 package io.leavesfly.jimi.engine.async;
 
-import io.leavesfly.jimi.core.engine.async.AsyncSubagent;
+import io.leavesfly.jimi.core.async.AsyncSubagent;
 
 @FunctionalInterface
 public interface AsyncSubagentCallback {
@@ -150,10 +150,10 @@ public interface AsyncSubagentCallback {
 ```java
 package io.leavesfly.jimi.engine.async;
 
-import io.leavesfly.jimi.core.engine.async.AsyncSubagent;
-import io.leavesfly.jimi.core.engine.async.AsyncSubagentCallback;
-import io.leavesfly.jimi.core.engine.async.AsyncSubagentMode;
-import io.leavesfly.jimi.core.engine.async.AsyncSubagentStatus;
+import io.leavesfly.jimi.core.async.AsyncSubagent;
+import io.leavesfly.jimi.core.async.AsyncSubagentCallback;
+import io.leavesfly.jimi.core.async.AsyncSubagentMode;
+import io.leavesfly.jimi.core.async.AsyncSubagentStatus;
 
 @Slf4j
 @Service

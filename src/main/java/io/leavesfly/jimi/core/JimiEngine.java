@@ -1,10 +1,10 @@
 package io.leavesfly.jimi.core;
 
 import io.leavesfly.jimi.core.agent.Agent;
-import io.leavesfly.jimi.core.compaction.Compaction;
+import io.leavesfly.jimi.core.engine.AgentExecutor;
 import io.leavesfly.jimi.core.engine.EngineConstants;
+import io.leavesfly.jimi.core.engine.JimiRuntime;
 import io.leavesfly.jimi.core.engine.context.Context;
-import io.leavesfly.jimi.core.engine.runtime.Runtime;
 import io.leavesfly.jimi.exception.LLMNotSetException;
 
 import io.leavesfly.jimi.llm.LLM;
@@ -80,7 +80,7 @@ public class JimiEngine implements Engine {
         return executor.getAgent();
     }
 
-    public Runtime getRuntime() {
+    public JimiRuntime getRuntime() {
         return executor.getRuntime();
     }
 
@@ -113,13 +113,13 @@ public class JimiEngine implements Engine {
     public Map<String, Object> getStatus() {
         Map<String, Object> status = new HashMap<>();
         Context context = executor.getContext();
-        Runtime runtime = executor.getRuntime();
+        JimiRuntime jimiRuntime = executor.getRuntime();
         
         status.put("messageCount", context.getHistory().size());
         status.put("tokenCount", context.getTokenCount());
         status.put("checkpointCount", context.getnCheckpoints());
         
-        LLM llm = runtime.getLlm();
+        LLM llm = jimiRuntime.getLlm();
         if (llm != null) {
             int maxContextSize = llm.getMaxContextSize();
             int used = context.getTokenCount();

@@ -1,7 +1,7 @@
 package io.leavesfly.jimi.tool.provider;
 
 import io.leavesfly.jimi.core.agent.AgentSpec;
-import io.leavesfly.jimi.core.engine.runtime.Runtime;
+import io.leavesfly.jimi.core.engine.JimiRuntime;
 import io.leavesfly.jimi.tool.Tool;
 import io.leavesfly.jimi.tool.ToolProvider;
 import io.leavesfly.jimi.tool.core.interaction.AskHuman;
@@ -34,7 +34,7 @@ public class HumanInteractionToolProvider implements ToolProvider {
     }
     
     @Override
-    public boolean supports(AgentSpec agentSpec, Runtime runtime) {
+    public boolean supports(AgentSpec agentSpec, JimiRuntime jimiRuntime) {
         // 检查是否通过exclude_tools禁用
         if (agentSpec.getExcludeTools() != null && 
                 agentSpec.getExcludeTools().contains("ask_human")) {
@@ -47,7 +47,7 @@ public class HumanInteractionToolProvider implements ToolProvider {
     }
     
     @Override
-    public List<Tool<?>> createTools(AgentSpec agentSpec, Runtime runtime) {
+    public List<Tool<?>> createTools(AgentSpec agentSpec, JimiRuntime jimiRuntime) {
         log.info("Creating AskHuman tool for agent: {}", agentSpec.getName());
         
         // 创建AskHuman工具，它实现了WireAware接口，Wire会在工具注册时自动注入

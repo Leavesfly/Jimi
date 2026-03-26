@@ -1,8 +1,8 @@
 package io.leavesfly.jimi.core.agent;
 
+import io.leavesfly.jimi.core.engine.JimiRuntime;
 import io.leavesfly.jimi.exception.AgentSpecException;
-import io.leavesfly.jimi.core.engine.runtime.BuiltinSystemPromptArgs;
-import io.leavesfly.jimi.core.engine.runtime.Runtime;
+import io.leavesfly.jimi.core.engine.context.BuiltinSystemPromptArgs;
 import lombok.extern.slf4j.Slf4j;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -66,7 +66,7 @@ public class AgentRegistry {
     }
 
 
-    public Mono<Agent> loadAgent(Path agentFile, Runtime runtime) {
+    public Mono<Agent> loadAgent(Path agentFile, JimiRuntime jimiRuntime) {
         return Mono.defer(() -> {
 
             // 规范化路径 - 处理classpath资源和文件系统路径
@@ -88,7 +88,7 @@ public class AgentRegistry {
                 log.info("加载Agent: {} (from {})", spec.getName(), absolutePath);
 
                 // 渲染系统提示词
-                String systemPrompt = renderSystemPrompt(spec.getSystemPromptPath(), spec.getSystemPromptArgs(), runtime.getBuiltinArgs());
+                String systemPrompt = renderSystemPrompt(spec.getSystemPromptPath(), spec.getSystemPromptArgs(), jimiRuntime.getBuiltinArgs());
 
                 // 处理工具列表
                 List<String> tools = spec.getTools();
@@ -168,11 +168,11 @@ public class AgentRegistry {
     /**
      * 加载默认 Agent 实例
      *
-     * @param runtime 运行时上下文
+     * @param jimiRuntime 运行时上下文
      * @return 默认 Agent 实例
      */
-    public Mono<Agent> loadDefaultAgent(Runtime runtime) {
-        return loadAgent(specLoader.getDefaultAgentPath(), runtime);
+    public Mono<Agent> loadDefaultAgent(JimiRuntime jimiRuntime) {
+        return loadAgent(specLoader.getDefaultAgentPath(), jimiRuntime);
     }
 
 
@@ -180,15 +180,15 @@ public class AgentRegistry {
      * 加载 Subagent 实例
      *
      * @param subagentSpec Subagent 规范
-     * @param runtime      运行时上下文
+     * @param jimiRuntime      运行时上下文
      * @return Agent 实例
      */
-    public Mono<Agent> loadSubagent(SubagentSpec subagentSpec, Runtime runtime) {
+    public Mono<Agent> loadSubagent(SubagentSpec subagentSpec, JimiRuntime jimiRuntime) {
         if (subagentSpec == null || subagentSpec.getPath() == null) {
             return Mono.error(new AgentSpecException("Invalid subagent spec"));
         }
 
-        return loadAgent(subagentSpec.getPath(), runtime);
+        return loadAgent(subagentSpec.getPath(), jimiRuntime);
     }
 
 

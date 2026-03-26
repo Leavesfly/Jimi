@@ -6,8 +6,7 @@ import io.leavesfly.jimi.core.agent.AgentSpec;
 import io.leavesfly.jimi.command.CommandContext;
 import io.leavesfly.jimi.command.CommandHandler;
 import io.leavesfly.jimi.core.JimiEngine;
-import io.leavesfly.jimi.core.engine.runtime.Runtime;
-import io.leavesfly.jimi.tool.ToolRegistryFactory;
+import io.leavesfly.jimi.core.engine.JimiRuntime;
 import io.leavesfly.jimi.ui.shell.output.OutputFormatter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -233,7 +232,7 @@ public class AgentsCommandHandler implements CommandHandler {
     private void runAgent(CommandContext context, String agentName) throws Exception {
         OutputFormatter out = context.getOutputFormatter();
         JimiEngine soul = context.getSoul();
-        Runtime runtime = soul.getRuntime();
+        JimiRuntime jimiRuntime = soul.getRuntime();
 
         // 检查当前是否已经是该 Agent
         if (soul.getAgent() != null && agentName.equals(soul.getAgent().getName())) {
@@ -261,7 +260,7 @@ public class AgentsCommandHandler implements CommandHandler {
 
         // 加载 Agent
         log.info("Loading agent: {} from path: {}", agentName, agentPath);
-        Mono<Agent> agentMono = agentRegistry.loadAgent(agentPath, runtime);
+        Mono<Agent> agentMono = agentRegistry.loadAgent(agentPath, jimiRuntime);
 
         Agent newAgent;
         try {
@@ -289,7 +288,7 @@ public class AgentsCommandHandler implements CommandHandler {
         out.println();
 
         // 确认（如果不在 YOLO 模式）
-        if (!runtime.isYoloMode()) {
+        if (!jimiRuntime.isYoloMode()) {
             out.printWarning("⚠️  切换代理会:");
             out.println("  - 更换系统提示词");
             out.println("  - 更新可用工具集");

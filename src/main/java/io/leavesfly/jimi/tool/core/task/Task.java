@@ -7,18 +7,18 @@ import io.leavesfly.jimi.core.agent.AgentRegistry;
 import io.leavesfly.jimi.core.agent.AgentSpec;
 import io.leavesfly.jimi.core.agent.SubagentSpec;
 import io.leavesfly.jimi.core.compaction.SimpleCompaction;
-import io.leavesfly.jimi.core.engine.ContextManager;
-import io.leavesfly.jimi.core.engine.MemoryRecorder;
+import io.leavesfly.jimi.core.engine.context.ContextManager;
+import io.leavesfly.jimi.core.engine.JimiRuntime;
+import io.leavesfly.jimi.knowledge.memory.MemoryRecorder;
 import io.leavesfly.jimi.core.engine.ResponseProcessor;
 import io.leavesfly.jimi.core.engine.hook.HookRegistry;
 import io.leavesfly.jimi.core.session.Session;
-import io.leavesfly.jimi.core.AgentExecutor;
+import io.leavesfly.jimi.core.engine.AgentExecutor;
 import io.leavesfly.jimi.core.JimiEngine;
 import io.leavesfly.jimi.core.agent.Agent;
 import io.leavesfly.jimi.core.engine.context.Context;
 import io.leavesfly.jimi.llm.message.Message;
 import io.leavesfly.jimi.llm.message.MessageRole;
-import io.leavesfly.jimi.core.engine.runtime.Runtime;
 import io.leavesfly.jimi.tool.AbstractTool;
 import io.leavesfly.jimi.tool.ToolResult;
 import io.leavesfly.jimi.tool.ToolRegistry;
@@ -87,7 +87,7 @@ public class Task extends AbstractTool<Task.Params> implements WireAware {
      */
     private int minResponseLength = 10;
 
-    private Runtime runtime;
+    private JimiRuntime jimiRuntime;
     private Session session;
     private AgentSpec agentSpec;
     private String taskDescription;
@@ -186,10 +186,10 @@ public class Task extends AbstractTool<Task.Params> implements WireAware {
      * 设置运行时参数并初始化工具
      * 使用懒加载模式，不在 Setter 中执行 I/O 操作
      */
-    public void setRuntimeParams(AgentSpec agentSpec, Runtime runtime) {
+    public void setRuntimeParams(AgentSpec agentSpec, JimiRuntime jimiRuntime) {
         this.agentSpec = agentSpec;
-        this.runtime = runtime;
-        this.session = runtime.getSession();
+        this.jimiRuntime = jimiRuntime;
+        this.session = jimiRuntime.getSession();
         this.subagentSpecs = agentSpec.getSubagents();
 
         // 更新工具描述
@@ -262,7 +262,7 @@ public class Task extends AbstractTool<Task.Params> implements WireAware {
 
             // 同时加载 AgentSpec 和 Agent
             Mono<AgentSpec> specMono = agentRegistry.loadAgentSpec(spec.getPath());
-            Mono<Agent> agentMono = agentRegistry.loadSubagent(spec, runtime);
+            Mono<Agent> agentMono = agentRegistry.loadSubagent(spec, jimiRuntime);
 
             return Mono.zip(specMono, agentMono).doOnSuccess(tuple -> {
                 AgentSpec subAgentSpec = tuple.getT1();
@@ -361,7 +361,7 @@ public class Task extends AbstractTool<Task.Params> implements WireAware {
      */
     private ToolRegistry createSubToolRegistry(AgentSpec subAgentSpec) {
         return toolRegistryFactory.create(
-                runtime.getBuiltinArgs(), runtime.getApproval(), subAgentSpec, runtime, null);
+                jimiRuntime.getBuiltinArgs(), jimiRuntime.getApproval(), subAgentSpec, jimiRuntime, null);
     }
 
     /**
@@ -370,7 +370,7 @@ public class Task extends AbstractTool<Task.Params> implements WireAware {
     private JimiEngine createSubEngine(Agent agent, Context subContext, ToolRegistry subToolRegistry) {
         AgentExecutor executor = AgentExecutor.builder()
                 .agent(agent)
-                .runtime(runtime)
+                .runtime(jimiRuntime)
                 .context(subContext)
                 .wire(parentWire != null ? parentWire : new WireImpl())
                 .toolRegistry(subToolRegistry)

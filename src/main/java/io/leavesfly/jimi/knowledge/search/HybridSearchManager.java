@@ -1,6 +1,6 @@
 package io.leavesfly.jimi.knowledge.search;
 
-import io.leavesfly.jimi.core.engine.runtime.Runtime;
+import io.leavesfly.jimi.core.engine.JimiRuntime;
 import io.leavesfly.jimi.knowledge.domain.query.GraphQuery;
 import io.leavesfly.jimi.knowledge.domain.query.HybridQuery;
 import io.leavesfly.jimi.knowledge.domain.query.RetrievalQuery;
@@ -43,7 +43,7 @@ public class HybridSearchManager {
         this.ragManager = ragManager;
     }
     
-    public Mono<Boolean> initialize(Runtime runtime) {
+    public Mono<Boolean> initialize(JimiRuntime jimiRuntime) {
         log.info("HybridSearchManager 初始化完成");
         return Mono.just(true);
     }

@@ -1,6 +1,7 @@
-package io.leavesfly.jimi.core.engine.runtime;
+package io.leavesfly.jimi.core.engine;
 
 import io.leavesfly.jimi.config.JimiConfig;
+import io.leavesfly.jimi.core.engine.context.BuiltinSystemPromptArgs;
 import io.leavesfly.jimi.core.session.SessionManager;
 import io.leavesfly.jimi.llm.LLM;
 import io.leavesfly.jimi.core.session.Session;
@@ -17,7 +18,7 @@ import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 
 /**
- * Runtime 运行时上下文
+ * JimiRuntime 运行时上下文
  * 包含 Agent 运行所需的所有全局状态和服务
  * 
  * 功能特性：
@@ -28,14 +29,14 @@ import java.time.format.DateTimeFormatter;
  * 5. 审批服务（Approval）
  * 
  * 设计理念：
- * - Runtime 自行构建内置参数，封装环境信息收集逻辑
+ * - JimiRuntime 自行构建内置参数，封装环境信息收集逻辑
  * - 对外提供 Builder，简化创建过程
  */
 @Slf4j
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class Runtime {
+public class JimiRuntime {
 
     /**
      * 全局配置
@@ -87,14 +88,14 @@ public class Runtime {
     // ==================== Builder 模式 ====================
     
     /**
-     * 创建 Runtime Builder
+     * 创建 JimiRuntime Builder
      */
     public static Builder builder() {
         return new Builder();
     }
     
     /**
-     * Runtime 构建器
+     * JimiRuntime 构建器
      * 负责构建 BuiltinSystemPromptArgs，封装环境信息收集逻辑
      */
     public static class Builder {
@@ -142,10 +143,10 @@ public class Runtime {
         }
         
         /**
-         * 构建 Runtime 实例
+         * 构建 JimiRuntime 实例
          * 自动创建 BuiltinSystemPromptArgs
          */
-        public Runtime build() {
+        public JimiRuntime build() {
             if (session == null) {
                 throw new IllegalArgumentException("session is required");
             }
@@ -153,7 +154,7 @@ public class Runtime {
             // 自动构建 builtinArgs
             BuiltinSystemPromptArgs builtinArgs = createBuiltinArgs();
             
-            return new Runtime(config, llm, session, builtinArgs, approval);
+            return new JimiRuntime(config, llm, session, builtinArgs, approval);
         }
         
         /**

@@ -1,6 +1,6 @@
 package io.leavesfly.jimi.knowledge;
 
-import io.leavesfly.jimi.core.engine.runtime.Runtime;
+import io.leavesfly.jimi.core.engine.JimiRuntime;
 import io.leavesfly.jimi.knowledge.domain.query.*;
 import io.leavesfly.jimi.knowledge.domain.result.*;
 import reactor.core.publisher.Mono;
@@ -13,7 +13,7 @@ import reactor.core.publisher.Mono;
 public interface KnowledgeService {
 
 
-    Mono<Boolean> initialize(Runtime runtime);
+    Mono<Boolean> initialize(JimiRuntime jimiRuntime);
 
 
     // ==================== 统一知识搜索 ====================

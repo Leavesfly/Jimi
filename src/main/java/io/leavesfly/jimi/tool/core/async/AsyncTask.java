@@ -6,9 +6,9 @@ import io.leavesfly.jimi.core.agent.Agent;
 import io.leavesfly.jimi.core.agent.AgentRegistry;
 import io.leavesfly.jimi.core.agent.AgentSpec;
 import io.leavesfly.jimi.core.agent.SubagentSpec;
-import io.leavesfly.jimi.core.engine.async.AsyncSubagentManager;
-import io.leavesfly.jimi.core.engine.async.AsyncSubagentMode;
-import io.leavesfly.jimi.core.engine.runtime.Runtime;
+import io.leavesfly.jimi.core.engine.JimiRuntime;
+import io.leavesfly.jimi.core.async.AsyncSubagentManager;
+import io.leavesfly.jimi.core.async.AsyncSubagentMode;
 import io.leavesfly.jimi.tool.AbstractTool;
 import io.leavesfly.jimi.tool.ToolResult;
 import io.leavesfly.jimi.wire.Wire;
@@ -121,7 +121,7 @@ public class AsyncTask extends AbstractTool<AsyncTask.Params> implements WireAwa
     }
     
     private Wire parentWire;
-    private Runtime runtime;
+    private JimiRuntime jimiRuntime;
     private AgentSpec agentSpec;
     private Map<String, SubagentSpec> subagentSpecs;
     private Map<String, Agent> loadedAgents;
@@ -170,9 +170,9 @@ public class AsyncTask extends AbstractTool<AsyncTask.Params> implements WireAwa
     /**
      * 设置运行时参数
      */
-    public void setRuntimeParams(AgentSpec agentSpec, Runtime runtime) {
+    public void setRuntimeParams(AgentSpec agentSpec, JimiRuntime jimiRuntime) {
         this.agentSpec = agentSpec;
-        this.runtime = runtime;
+        this.jimiRuntime = jimiRuntime;
         this.subagentSpecs = agentSpec.getSubagents();
     }
     
@@ -243,7 +243,7 @@ public class AsyncTask extends AbstractTool<AsyncTask.Params> implements WireAwa
         
         return asyncSubagentManager.startAsync(
                 agent,
-                runtime,
+                jimiRuntime,
                 params.getPrompt(),
                 parentWire,
                 null,  // 无回调
@@ -311,7 +311,7 @@ public class AsyncTask extends AbstractTool<AsyncTask.Params> implements WireAwa
         
         return asyncSubagentManager.startWatcher(
                 agent,
-                runtime,
+                jimiRuntime,
                 params.getPrompt(),
                 params.getWatchTarget(),
                 params.getTriggerPattern(),
@@ -379,7 +379,7 @@ public class AsyncTask extends AbstractTool<AsyncTask.Params> implements WireAwa
                     
                     log.debug("Loading subagent for AsyncTask: {}", name);
                     
-                    return agentRegistry.loadSubagent(spec, runtime)
+                    return agentRegistry.loadSubagent(spec, jimiRuntime)
                             .doOnSuccess(agent -> {
                                 if (agent != null) {
                                     loadedAgents.put(name, agent);

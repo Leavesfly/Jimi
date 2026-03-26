@@ -1,7 +1,7 @@
 package io.leavesfly.jimi.knowledge.rag;
 
 import io.leavesfly.jimi.config.info.VectorIndexConfig;
-import io.leavesfly.jimi.core.engine.runtime.Runtime;
+import io.leavesfly.jimi.core.engine.JimiRuntime;
 import io.leavesfly.jimi.knowledge.domain.query.RetrievalQuery;
 import io.leavesfly.jimi.knowledge.domain.result.RetrievalResult;
 import lombok.extern.slf4j.Slf4j;
@@ -46,9 +46,9 @@ public class RagManager {
         this.config = config;
     }
     
-    public Mono<Boolean> initialize(Runtime runtime) {
+    public Mono<Boolean> initialize(JimiRuntime jimiRuntime) {
         return Mono.fromRunnable(() -> {
-            this.workDir = runtime.getWorkDir();
+            this.workDir = jimiRuntime.getWorkDir();
             log.info("RagManager 初始化完成, workDir={}", workDir);
         }).thenReturn(true);
     }

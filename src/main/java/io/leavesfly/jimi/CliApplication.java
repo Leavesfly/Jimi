@@ -160,7 +160,7 @@ public class CliApplication implements CommandLineRunner, Runnable {
             System.out.println("✓ Working directory: " + session.getWorkDir());
 
             // 使用注入的 JimiFactory 创建 Engine（Builder 模式）
-            JimiEngine soul = jimiFactory.createEngine()
+            JimiEngine jimiEngine = jimiFactory.createEngine()
                     .session(session)
                     .agentSpec(agentFile)
                     .model(modelName)
@@ -169,7 +169,7 @@ public class CliApplication implements CommandLineRunner, Runnable {
                     .build()
                     .block();
 
-            if (soul == null) {
+            if (jimiEngine == null) {
                 System.err.println("Failed to create Jimi Engine");
                 System.exit(1);
                 return;
@@ -178,14 +178,14 @@ public class CliApplication implements CommandLineRunner, Runnable {
             // 如果有命令，直接执行
             if (command != null && !command.isEmpty()) {
                 System.out.println("\n[INFO] Executing command: " + command);
-                soul.run(command).block();
+                jimiEngine.run(command).block();
                 System.out.println("\n✓ Command completed");
                 return;
             }
 
             // 初始化阶段：创建WireEngineClient（内部完成所有配置缓存）
             HookRegistry hookRegistry = applicationContext.getBean(HookRegistry.class);
-            EngineClient engineClient = new WireEngineClient(soul, hookRegistry, sessionManager);
+            EngineClient engineClient = new WireEngineClient(jimiEngine, hookRegistry, sessionManager);
 
             // 初始化阶段：创建ShellUI（注入EngineClient）
             try (ShellUI shellUI = new ShellUI(engineClient, applicationContext)) {

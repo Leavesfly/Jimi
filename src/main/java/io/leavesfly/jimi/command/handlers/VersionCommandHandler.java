@@ -37,7 +37,7 @@ public class VersionCommandHandler implements CommandHandler {
         out.printSuccess("Jimi");
         out.println("  Version: 0.1.0");
         out.println("  Java Version: " + System.getProperty("java.version"));
-        out.println("  Runtime: " + System.getProperty("java.runtime.name"));
+        out.println("  JimiRuntime: " + System.getProperty("java.runtime.name"));
         out.println();
     }
 }

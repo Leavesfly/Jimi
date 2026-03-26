@@ -1,7 +1,7 @@
 package io.leavesfly.jimi.tool.provider;
 
 import io.leavesfly.jimi.core.agent.AgentSpec;
-import io.leavesfly.jimi.core.engine.runtime.Runtime;
+import io.leavesfly.jimi.core.engine.JimiRuntime;
 import io.leavesfly.jimi.tool.Tool;
 import io.leavesfly.jimi.tool.ToolProvider;
 
@@ -43,18 +43,18 @@ public class AsyncTaskToolProvider implements ToolProvider {
     }
     
     @Override
-    public boolean supports(AgentSpec agentSpec, Runtime runtime) {
+    public boolean supports(AgentSpec agentSpec, JimiRuntime jimiRuntime) {
         // 只有配置了子代理的 Agent 才需要 AsyncTask 工具
         return agentSpec.getSubagents() != null && !agentSpec.getSubagents().isEmpty();
     }
     
     @Override
-    public List<Tool<?>> createTools(AgentSpec agentSpec, Runtime runtime) {
+    public List<Tool<?>> createTools(AgentSpec agentSpec, JimiRuntime jimiRuntime) {
         log.info("Creating AsyncTask tool with {} subagents", agentSpec.getSubagents().size());
         
         // 从 Spring 容器获取 AsyncTask 原型实例
         AsyncTask asyncTask = applicationContext.getBean(AsyncTask.class);
-        asyncTask.setRuntimeParams(agentSpec, runtime);
+        asyncTask.setRuntimeParams(agentSpec, jimiRuntime);
         
         return Collections.singletonList(asyncTask);
     }

@@ -1,7 +1,7 @@
 package io.leavesfly.jimi.knowledge.wiki;
 
 import io.leavesfly.jimi.core.Engine;
-import io.leavesfly.jimi.core.engine.runtime.Runtime;
+import io.leavesfly.jimi.core.engine.JimiRuntime;
 import io.leavesfly.jimi.knowledge.domain.query.WikiQuery;
 import io.leavesfly.jimi.knowledge.domain.result.WikiResult;
 import lombok.extern.slf4j.Slf4j;
@@ -28,7 +28,7 @@ public class WikiServiceImpl {
     private final WikiIndexManager wikiIndexManager;
     
     private volatile Path workDir;
-    private volatile Runtime runtime;
+    private volatile JimiRuntime jimiRuntime;
     private volatile Engine engine;
     private volatile boolean enabled = true;
     
@@ -42,10 +42,10 @@ public class WikiServiceImpl {
         this.wikiIndexManager = wikiIndexManager;
     }
     
-    public Mono<Boolean> initialize(Runtime runtime) {
+    public Mono<Boolean> initialize(JimiRuntime jimiRuntime) {
         return Mono.fromRunnable(() -> {
-            this.runtime = runtime;
-            this.workDir = runtime.getWorkDir();
+            this.jimiRuntime = jimiRuntime;
+            this.workDir = jimiRuntime.getWorkDir();
             log.info("WikiService 初始化完成, workDir={}", workDir);
         }).thenReturn(true);
     }

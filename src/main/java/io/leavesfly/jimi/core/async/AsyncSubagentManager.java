@@ -1,16 +1,16 @@
-package io.leavesfly.jimi.core.engine.async;
+package io.leavesfly.jimi.core.async;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.leavesfly.jimi.core.agent.Agent;
 import io.leavesfly.jimi.core.agent.AgentSpec;
-import io.leavesfly.jimi.core.AgentExecutor;
+import io.leavesfly.jimi.core.engine.AgentExecutor;
 import io.leavesfly.jimi.core.JimiEngine;
 import io.leavesfly.jimi.core.compaction.SimpleCompaction;
-import io.leavesfly.jimi.core.engine.ContextManager;
-import io.leavesfly.jimi.core.engine.MemoryRecorder;
+import io.leavesfly.jimi.core.engine.context.ContextManager;
+import io.leavesfly.jimi.core.engine.JimiRuntime;
+import io.leavesfly.jimi.knowledge.memory.MemoryRecorder;
 import io.leavesfly.jimi.core.engine.ResponseProcessor;
 import io.leavesfly.jimi.core.engine.hook.HookRegistry;
-import io.leavesfly.jimi.core.engine.runtime.Runtime;
 import io.leavesfly.jimi.core.engine.context.Context;
 import io.leavesfly.jimi.llm.message.Message;
 import io.leavesfly.jimi.llm.message.MessageRole;
@@ -118,7 +118,7 @@ public class AsyncSubagentManager {
      * 启动 Watch 模式子代理（持续监控）
      *
      * @param agent                要执行的 Agent
-     * @param runtime              运行时上下文
+     * @param jimiRuntime              运行时上下文
      * @param prompt               任务提示词
      * @param watchTarget          监控目标（文件路径或命令）
      * @param triggerPattern       触发模式（正则表达式）
@@ -130,7 +130,7 @@ public class AsyncSubagentManager {
      */
     public Mono<String> startWatcher(
             Agent agent,
-            Runtime runtime,
+            JimiRuntime jimiRuntime,
             String prompt,
             String watchTarget,
             String triggerPattern,
@@ -158,7 +158,7 @@ public class AsyncSubagentManager {
                     .startTime(Instant.now())
                     .timeout(timeout)
                     .triggerPattern(triggerPattern)
-                    .workDir(runtime.getSession().getWorkDir())
+                    .workDir(jimiRuntime.getSession().getWorkDir())
                     .build();
 
             // 注册到活跃列表
@@ -167,7 +167,7 @@ public class AsyncSubagentManager {
             // 后台启动执行
             Disposable subscription = executeWatchInBackground(
                     asyncSubagent,
-                    runtime,
+                    jimiRuntime,
                     watchPrompt,
                     watchTarget,
                     triggerPattern,
@@ -238,7 +238,7 @@ public class AsyncSubagentManager {
      */
     private Mono<Void> executeWatchInBackground(
             AsyncSubagent asyncSubagent,
-            Runtime runtime,
+            JimiRuntime jimiRuntime,
             String prompt,
             String watchTarget,
             String triggerPattern,
@@ -253,7 +253,7 @@ public class AsyncSubagentManager {
                 asyncSubagent.setContext(context);
 
                 // 创建工具注册表
-                ToolRegistry toolRegistry = createToolRegistry(asyncSubagent.getAgent(), runtime);
+                ToolRegistry toolRegistry = createToolRegistry(asyncSubagent.getAgent(), jimiRuntime);
 
                 // 创建独立 Wire
                 Wire subWire = new WireImpl();
@@ -261,7 +261,7 @@ public class AsyncSubagentManager {
                 // 创建引擎
                 AgentExecutor executor = AgentExecutor.builder()
                         .agent(asyncSubagent.getAgent())
-                        .runtime(runtime)
+                        .runtime(jimiRuntime)
                         .context(context)
                         .wire(subWire)
                         .toolRegistry(toolRegistry)
@@ -368,7 +368,7 @@ public class AsyncSubagentManager {
      * 启动异步子代理（Fire-and-Forget 模式）
      *
      * @param agent      要执行的 Agent
-     * @param runtime    运行时上下文
+     * @param jimiRuntime    运行时上下文
      * @param prompt     任务提示词
      * @param parentWire 父 Wire（用于发送消息，可选）
      * @param callback   完成回调（可选）
@@ -377,7 +377,7 @@ public class AsyncSubagentManager {
      */
     public Mono<String> startAsync(
             Agent agent,
-            Runtime runtime,
+            JimiRuntime jimiRuntime,
             String prompt,
             @Nullable Wire parentWire,
             @Nullable AsyncSubagentCallback callback,
@@ -399,14 +399,14 @@ public class AsyncSubagentManager {
                     .startTime(Instant.now())
                     .callback(callback)
                     .timeout(timeout)
-                    .workDir(runtime.getSession().getWorkDir())
+                    .workDir(jimiRuntime.getSession().getWorkDir())
                     .build();
 
             // 注册到活跃列表
             activeSubagents.put(subagentId, asyncSubagent);
 
             // 后台启动执行
-            Disposable subscription = executeInBackground(asyncSubagent, runtime, prompt, parentWire)
+            Disposable subscription = executeInBackground(asyncSubagent, jimiRuntime, prompt, parentWire)
                     .subscribeOn(asyncScheduler)
                     .subscribe(
                             v -> {
@@ -438,7 +438,7 @@ public class AsyncSubagentManager {
      */
     private Mono<Void> executeInBackground(
             AsyncSubagent asyncSubagent,
-            Runtime runtime,
+            JimiRuntime jimiRuntime,
             String prompt,
             @Nullable Wire parentWire
     ) {
@@ -450,7 +450,7 @@ public class AsyncSubagentManager {
                 asyncSubagent.setContext(context);
 
                 // 创建工具注册表
-                ToolRegistry toolRegistry = createToolRegistry(asyncSubagent.getAgent(), runtime);
+                ToolRegistry toolRegistry = createToolRegistry(asyncSubagent.getAgent(), jimiRuntime);
 
 //                // 创建独立 Wire
                 Wire subWire = new WireImpl();
@@ -458,7 +458,7 @@ public class AsyncSubagentManager {
                 // 创建引擎
                 AgentExecutor fireAndForgetExecutor = AgentExecutor.builder()
                         .agent(asyncSubagent.getAgent())
-                        .runtime(runtime)
+                        .runtime(jimiRuntime)
                         .context(context)
                         .wire(subWire)
                         .toolRegistry(toolRegistry)
@@ -688,15 +688,15 @@ public class AsyncSubagentManager {
     /**
      * 创建工具注册表
      */
-    private ToolRegistry createToolRegistry(Agent agent, Runtime runtime) {
+    private ToolRegistry createToolRegistry(Agent agent, JimiRuntime jimiRuntime) {
         AgentSpec agentSpec = AgentSpec.builder()
                 .name(agent.getName())
                 .build();
         ToolRegistry registry = toolRegistryFactory.create(
-                runtime.getBuiltinArgs(),
-                runtime.getApproval(),
+                jimiRuntime.getBuiltinArgs(),
+                jimiRuntime.getApproval(),
                 agentSpec,
-                runtime, null
+                jimiRuntime, null
         );
         return registry;
     }

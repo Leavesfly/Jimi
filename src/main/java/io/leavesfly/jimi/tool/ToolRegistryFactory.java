@@ -3,8 +3,8 @@ package io.leavesfly.jimi.tool;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.leavesfly.jimi.core.agent.AgentSpec;
 import io.leavesfly.jimi.core.interaction.approval.Approval;
-import io.leavesfly.jimi.core.engine.runtime.BuiltinSystemPromptArgs;
-import io.leavesfly.jimi.core.engine.runtime.Runtime;
+import io.leavesfly.jimi.core.engine.context.BuiltinSystemPromptArgs;
+import io.leavesfly.jimi.core.engine.JimiRuntime;
 import io.leavesfly.jimi.core.sandbox.SandboxValidator;
 import io.leavesfly.jimi.core.session.Session;
 import io.leavesfly.jimi.tool.core.bash.Bash;
@@ -55,7 +55,7 @@ public class ToolRegistryFactory {
      * @param builtinArgs    内置系统提示词参数
      * @param approval       审批对象
      * @param agentSpec      Agent 规范
-     * @param runtime        运行时对象
+     * @param jimiRuntime        运行时对象
      * @param mcpConfigFiles MCP 配置文件列表（可选）
      * @return 配置好的 ToolRegistry 实例
      */
@@ -63,14 +63,14 @@ public class ToolRegistryFactory {
             BuiltinSystemPromptArgs builtinArgs,
             Approval approval,
             AgentSpec agentSpec,
-            Runtime runtime,
+            JimiRuntime jimiRuntime,
             List<Path> mcpConfigFiles) {
 
         // 1. 创建基础工具注册表
-        ToolRegistry registry = createStandardRegistry(builtinArgs, approval, runtime.getSession());
+        ToolRegistry registry = createStandardRegistry(builtinArgs, approval, jimiRuntime.getSession());
 
         // 2. 应用 ToolProvider SPI 机制加载额外工具
-        applyToolProviders(registry, agentSpec, runtime, mcpConfigFiles);
+        applyToolProviders(registry, agentSpec, jimiRuntime, mcpConfigFiles);
 
         log.info("Created complete tool registry with {} tools", registry.getToolNames().size());
         return registry;
@@ -82,7 +82,7 @@ public class ToolRegistryFactory {
     private void applyToolProviders(
             ToolRegistry registry,
             AgentSpec agentSpec,
-            Runtime runtime,
+            JimiRuntime jimiRuntime,
             List<Path> mcpConfigFiles) {
 
         log.debug("Applying {} tool providers", toolProviders.size());
@@ -100,11 +100,11 @@ public class ToolRegistryFactory {
         // 按顺序应用所有工具提供者
         toolProviders.stream()
                 .sorted(Comparator.comparingInt(ToolProvider::getOrder))
-                .filter(provider -> provider.supports(agentSpec, runtime))
+                .filter(provider -> provider.supports(agentSpec, jimiRuntime))
                 .forEach(provider -> {
                     log.info("Applying tool provider: {} (order={})",
                             provider.getName(), provider.getOrder());
-                    List<Tool<?>> tools = provider.createTools(agentSpec, runtime);
+                    List<Tool<?>> tools = provider.createTools(agentSpec, jimiRuntime);
                     tools.forEach(registry::register);
                     log.debug("  Registered {} tools from {}", tools.size(), provider.getName());
                 });

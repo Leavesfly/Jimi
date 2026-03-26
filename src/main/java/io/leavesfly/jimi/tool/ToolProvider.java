@@ -1,7 +1,7 @@
 package io.leavesfly.jimi.tool;
 
 import io.leavesfly.jimi.core.agent.AgentSpec;
-import io.leavesfly.jimi.core.engine.runtime.Runtime;
+import io.leavesfly.jimi.core.engine.JimiRuntime;
 
 import java.util.List;
 
@@ -29,19 +29,19 @@ public interface ToolProvider {
      * 判断是否支持为该 Agent 提供工具
      * 
      * @param agentSpec Agent 规范
-     * @param runtime 运行时上下文
+     * @param jimiRuntime 运行时上下文
      * @return 如果支持返回 true
      */
-    boolean supports(AgentSpec agentSpec, Runtime runtime);
+    boolean supports(AgentSpec agentSpec, JimiRuntime jimiRuntime);
     
     /**
      * 创建工具实例列表
      * 
      * @param agentSpec Agent 规范
-     * @param runtime 运行时上下文
+     * @param jimiRuntime 运行时上下文
      * @return 工具实例列表
      */
-    List<Tool<?>> createTools(AgentSpec agentSpec, Runtime runtime);
+    List<Tool<?>> createTools(AgentSpec agentSpec, JimiRuntime jimiRuntime);
     
     /**
      * 获取加载顺序

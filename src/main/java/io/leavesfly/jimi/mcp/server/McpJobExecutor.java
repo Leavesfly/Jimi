@@ -15,7 +15,6 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import static io.leavesfly.jimi.mcp.server.McpResultHelper.errorResult;
 import static io.leavesfly.jimi.mcp.server.McpResultHelper.textResult;
-import static io.leavesfly.jimi.mcp.server.McpResultHelper.getRequiredArgument;
 import static io.leavesfly.jimi.mcp.server.McpResultHelper.getOptionalArgument;
 
 /**

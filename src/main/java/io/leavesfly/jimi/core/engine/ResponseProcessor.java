@@ -3,6 +3,7 @@ package io.leavesfly.jimi.core.engine;
 import io.leavesfly.jimi.core.engine.context.Context;
 
 import io.leavesfly.jimi.core.engine.hook.HookRegistry;
+import io.leavesfly.jimi.core.engine.toolcall.ToolDispatcher;
 import io.leavesfly.jimi.core.engine.toolcall.ToolErrorTracker;
 import io.leavesfly.jimi.llm.ChatCompletionChunk;
 import io.leavesfly.jimi.llm.ChatCompletionResult;

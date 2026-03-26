@@ -4,8 +4,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.leavesfly.jimi.core.JimiEngine;
 import io.leavesfly.jimi.core.JimiFactory;
 import io.leavesfly.jimi.core.session.Session;
-import io.leavesfly.jimi.llm.message.TextPart;
-import io.leavesfly.jimi.wire.message.ContentPartMessage;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -16,10 +14,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
-import reactor.core.Disposable;
 
 /**
  * 极简 Jimi Server - Less is more

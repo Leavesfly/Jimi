@@ -1,4 +1,4 @@
-package io.leavesfly.jimi.core.engine.async;
+package io.leavesfly.jimi.core.async;
 
 /**
  * 异步子代理完成回调接口

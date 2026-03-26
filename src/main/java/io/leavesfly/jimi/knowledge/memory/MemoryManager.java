@@ -2,7 +2,7 @@ package io.leavesfly.jimi.knowledge.memory;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.leavesfly.jimi.config.info.MemoryConfig;
-import io.leavesfly.jimi.core.engine.runtime.Runtime;
+import io.leavesfly.jimi.core.engine.JimiRuntime;
 import io.leavesfly.jimi.knowledge.domain.query.MemoryQuery;
 import io.leavesfly.jimi.knowledge.domain.result.MemoryResult;
 import io.leavesfly.jimi.knowledge.rag.VectorStore;
@@ -18,7 +18,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -69,12 +68,12 @@ public class MemoryManager {
     /**
      * 初始化记忆目录（基于工作目录）
      */
-    public void initialize(Runtime runtime) {
+    public void initialize(JimiRuntime jimiRuntime) {
         if (initialized) {
             return;
         }
         
-        Path workDir = runtime.getWorkDir();
+        Path workDir = jimiRuntime.getWorkDir();
         this.memoryDir = workDir.resolve(".jimi").resolve("memory");
         
         try {
@@ -897,7 +896,7 @@ public class MemoryManager {
     /**
      * 从会话中提取记忆
      */
-    public Mono<MemoryResult> extractFromSession(Runtime runtime) {
+    public Mono<MemoryResult> extractFromSession(JimiRuntime jimiRuntime) {
         // 暂时返回空操作，可以后续扩展
         return Mono.just(MemoryResult.builder()
                 .success(true)

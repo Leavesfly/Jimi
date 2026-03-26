@@ -56,7 +56,6 @@ public class Context {
      */
     private final List<SkillSpec> activeSkills;
 
-
     /**
      * 构造器（使用同步Repository）
      */
@@ -245,7 +244,6 @@ public class Context {
     public int getnCheckpoints() {
         return nextCheckpointId;
     }
-
     /**
      * 添加激活的 Skills
      *
@@ -303,7 +301,6 @@ public class Context {
             return Mono.empty();
         });
     }
-
 
     // ==================== 内部辅助方法 ====================
 

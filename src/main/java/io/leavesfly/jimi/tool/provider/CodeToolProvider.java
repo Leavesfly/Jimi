@@ -1,7 +1,7 @@
 package io.leavesfly.jimi.tool.provider;
 
 import io.leavesfly.jimi.core.agent.AgentSpec;
-import io.leavesfly.jimi.core.engine.runtime.Runtime;
+import io.leavesfly.jimi.core.engine.JimiRuntime;
 import io.leavesfly.jimi.knowledge.graph.GraphManager;
 import io.leavesfly.jimi.knowledge.search.HybridSearchManager;
 import io.leavesfly.jimi.tool.Tool;
@@ -42,7 +42,7 @@ public class CodeToolProvider implements ToolProvider {
     }
     
     @Override
-    public boolean supports(AgentSpec agentSpec, Runtime runtime) {
+    public boolean supports(AgentSpec agentSpec, JimiRuntime jimiRuntime) {
         // 只有在图服务可用时才提供工具
         boolean isAvailable = graphManager != null && graphManager.isEnabled();
         
@@ -54,7 +54,7 @@ public class CodeToolProvider implements ToolProvider {
     }
     
     @Override
-    public List<Tool<?>> createTools(AgentSpec agentSpec, Runtime runtime) {
+    public List<Tool<?>> createTools(AgentSpec agentSpec, JimiRuntime jimiRuntime) {
         List<Tool<?>> tools = new ArrayList<>();
         
         log.info("Creating graph tools...");

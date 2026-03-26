@@ -1,4 +1,4 @@
-package io.leavesfly.jimi.core.engine.async;
+package io.leavesfly.jimi.core.async;
 
 import io.leavesfly.jimi.core.agent.Agent;
 import io.leavesfly.jimi.core.JimiEngine;

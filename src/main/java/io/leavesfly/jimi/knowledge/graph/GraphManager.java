@@ -1,7 +1,7 @@
 package io.leavesfly.jimi.knowledge.graph;
 
 import io.leavesfly.jimi.config.info.GraphConfig;
-import io.leavesfly.jimi.core.engine.runtime.Runtime;
+import io.leavesfly.jimi.core.engine.JimiRuntime;
 import io.leavesfly.jimi.knowledge.domain.query.GraphQuery;
 import io.leavesfly.jimi.knowledge.domain.result.GraphResult;
 import io.leavesfly.jimi.knowledge.graph.builder.GraphBuilder;
@@ -305,13 +305,13 @@ public class GraphManager {
     /**
      * 初始化图谱服务
      *
-     * @param runtime 运行时环境
+     * @param jimiRuntime 运行时环境
      * @return 初始化结果
      */
-    public Mono<Boolean> initialize(Runtime runtime) {
+    public Mono<Boolean> initialize(JimiRuntime jimiRuntime) {
         return Mono.fromRunnable(() -> {
-            setWorkDir(runtime.getWorkDir());
-            log.info("GraphService 初始化完成, workDir={}", runtime.getWorkDir());
+            setWorkDir(jimiRuntime.getWorkDir());
+            log.info("GraphService 初始化完成, workDir={}", jimiRuntime.getWorkDir());
         }).thenReturn(true);
     }
 

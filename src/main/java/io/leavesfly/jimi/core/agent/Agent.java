@@ -15,7 +15,7 @@ import java.util.List;
  * 设计特性：
  * 1. **无状态配置对象**：只包含配置数据，不包含运行时状态或会话信息
  * 2. **不可变性**：一旦创建，字段值不应被修改（虽然 @Data 提供了 setter，但应避免使用）
- * 3. **缓存安全**：可安全地在 AgentRegistry 中缓存，在多个 Session/Runtime 之间共享
+ * 3. **缓存安全**：可安全地在 AgentRegistry 中缓存，在多个 Session/JimiRuntime 之间共享
  * 4. **线程安全**：不包含可变状态，多线程环境下只读访问安全
  * 
  * 注意事项：

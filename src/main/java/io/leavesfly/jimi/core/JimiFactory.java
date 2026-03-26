@@ -6,8 +6,10 @@ import io.leavesfly.jimi.core.agent.AgentSpec;
 import io.leavesfly.jimi.config.JimiConfig;
 import io.leavesfly.jimi.core.compaction.Compaction;
 
-import io.leavesfly.jimi.core.engine.ContextManager;
-import io.leavesfly.jimi.core.engine.MemoryRecorder;
+import io.leavesfly.jimi.core.engine.AgentExecutor;
+import io.leavesfly.jimi.core.engine.context.ContextManager;
+import io.leavesfly.jimi.core.engine.JimiRuntime;
+import io.leavesfly.jimi.knowledge.memory.MemoryRecorder;
 import io.leavesfly.jimi.core.engine.ResponseProcessor;
 import io.leavesfly.jimi.core.engine.hook.HookRegistry;
 import io.leavesfly.jimi.knowledge.KnowledgeService;
@@ -18,7 +20,6 @@ import io.leavesfly.jimi.core.session.SessionManager;
 import io.leavesfly.jimi.core.agent.Agent;
 import io.leavesfly.jimi.core.interaction.approval.Approval;
 import io.leavesfly.jimi.core.engine.context.Context;
-import io.leavesfly.jimi.core.engine.runtime.Runtime;
 import io.leavesfly.jimi.tool.ToolRegistry;
 import io.leavesfly.jimi.tool.ToolRegistryFactory;
 import io.leavesfly.jimi.tool.skill.SkillRegistry;
@@ -195,7 +196,7 @@ public class JimiFactory {
                 // 3. 获取或创建 LLM（使用工厂，带缓存）
                 LLM llm = llmFactory.getOrCreateLLM(effectiveModelName);
 
-                // 4. 创建 Runtime（自动构建 builtinArgs）
+                // 4. 创建 JimiRuntime（自动构建 builtinArgs）
                 Approval approval = new Approval(yolo);
                 
                 // 生成技能摘要（渐进式披露）
@@ -203,7 +204,7 @@ public class JimiFactory {
                     ? skillRegistry.generateSkillsSummary() 
                     : "";
 
-                Runtime runtime = Runtime.builder()
+                JimiRuntime jimiRuntime = JimiRuntime.builder()
                         .config(config)
                         .llm(llm)
                         .session(session)
@@ -214,8 +215,8 @@ public class JimiFactory {
 
                 // 5. 使用 AgentRegistry 单例加载 Agent（包含系统提示词处理）
                 Agent agent = agentSpecPath != null
-                        ? agentRegistry.loadAgent(agentSpecPath, runtime).block()
-                        : agentRegistry.loadDefaultAgent(runtime).block();
+                        ? agentRegistry.loadAgent(agentSpecPath, jimiRuntime).block()
+                        : agentRegistry.loadDefaultAgent(jimiRuntime).block();
                 if (agent == null) {
                     String msg = agentSpecPath != null
                             ? "Failed to load agent from: " + agentSpecPath
@@ -229,14 +230,14 @@ public class JimiFactory {
 
                 // 7. 创建 ToolRegistry（委托给 ToolRegistryFactory）
                 ToolRegistry toolRegistry = toolRegistryFactory.create(
-                        runtime.getBuiltinArgs(), approval, agentSpec, runtime, mcpConfigFiles);
+                        jimiRuntime.getBuiltinArgs(), approval, agentSpec, jimiRuntime, mcpConfigFiles);
 
-                knowledgeService.initialize(runtime);
+                knowledgeService.initialize(jimiRuntime);
 
                 // 8. 创建 JimiEngine
                 AgentExecutor executor = AgentExecutor.builder()
                         .agent(agent)
-                        .runtime(runtime)
+                        .runtime(jimiRuntime)
                         .context(context)
                         .wire(wire)
                         .toolRegistry(toolRegistry)

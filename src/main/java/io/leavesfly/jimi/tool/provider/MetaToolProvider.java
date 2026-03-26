@@ -2,7 +2,7 @@ package io.leavesfly.jimi.tool.provider;
 
 import io.leavesfly.jimi.core.agent.AgentSpec;
 import io.leavesfly.jimi.config.info.MetaToolConfig;
-import io.leavesfly.jimi.core.engine.runtime.Runtime;
+import io.leavesfly.jimi.core.engine.JimiRuntime;
 import io.leavesfly.jimi.tool.Tool;
 import io.leavesfly.jimi.tool.ToolProvider;
 import io.leavesfly.jimi.tool.ToolRegistry;
@@ -52,7 +52,7 @@ public class MetaToolProvider implements ToolProvider {
     }
     
     @Override
-    public boolean supports(AgentSpec agentSpec, Runtime runtime) {
+    public boolean supports(AgentSpec agentSpec, JimiRuntime jimiRuntime) {
         // 仅检查配置是否启用
         // 注意：MetaTool 通过 SPI 自动注册，不应在 Agent 的 tools 列表中手动声明
         // 否则会因时序问题导致 'Tool not found in registry' 警告
@@ -66,7 +66,7 @@ public class MetaToolProvider implements ToolProvider {
     }
     
     @Override
-    public List<Tool<?>> createTools(AgentSpec agentSpec, Runtime runtime) {
+    public List<Tool<?>> createTools(AgentSpec agentSpec, JimiRuntime jimiRuntime) {
         log.info("MetaToolProvider: Creating MetaTool");
         
         // 从 Spring 容器获取 MetaTool 原型实例

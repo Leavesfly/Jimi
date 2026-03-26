@@ -1,4 +1,4 @@
-package io.leavesfly.jimi.core.engine.async;
+package io.leavesfly.jimi.core.async;
 
 /**
  * 异步子代理状态枚举

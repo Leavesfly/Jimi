@@ -99,7 +99,6 @@ public class SkillInjector {
         // 添加到上下文并记录激活的 Skills
         return context.appendMessage(skillsMessage)
                 .then(context.addActiveSkills(newSkills))
-
                 .doOnSuccess(v -> {
                     if (logPerformanceMetrics()) {
                         long elapsed = System.currentTimeMillis() - startTime;
