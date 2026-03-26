@@ -1,12 +1,12 @@
-package io.leavesfly.jimi.knowledge.search;
+package io.leavesfly.jimi.knowledge;
 
 import io.leavesfly.jimi.core.engine.JimiRuntime;
-import io.leavesfly.jimi.knowledge.domain.query.GraphQuery;
-import io.leavesfly.jimi.knowledge.domain.query.HybridQuery;
-import io.leavesfly.jimi.knowledge.domain.query.RetrievalQuery;
-import io.leavesfly.jimi.knowledge.domain.result.GraphResult;
-import io.leavesfly.jimi.knowledge.domain.result.HybridResult;
-import io.leavesfly.jimi.knowledge.domain.result.RetrievalResult;
+import io.leavesfly.jimi.knowledge.query.GraphQuery;
+import io.leavesfly.jimi.knowledge.query.HybridQuery;
+import io.leavesfly.jimi.knowledge.query.RetrievalQuery;
+import io.leavesfly.jimi.knowledge.result.GraphResult;
+import io.leavesfly.jimi.knowledge.result.HybridResult;
+import io.leavesfly.jimi.knowledge.result.RetrievalResult;
 import io.leavesfly.jimi.knowledge.graph.GraphManager;
 import io.leavesfly.jimi.knowledge.rag.RagManager;
 import lombok.extern.slf4j.Slf4j;

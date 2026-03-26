@@ -3,9 +3,11 @@ package io.leavesfly.jimi.core.engine.context;
 import io.leavesfly.jimi.core.compaction.Compaction;
 import io.leavesfly.jimi.core.engine.EngineConstants;
 import io.leavesfly.jimi.core.engine.context.Context;
-import io.leavesfly.jimi.knowledge.KnowledgeService;
-import io.leavesfly.jimi.knowledge.domain.query.UnifiedKnowledgeQuery;
-import io.leavesfly.jimi.knowledge.domain.result.UnifiedKnowledgeResult;
+import io.leavesfly.jimi.knowledge.memory.MemoryManager;
+
+import io.leavesfly.jimi.knowledge.memory.ProjectInsight;
+import io.leavesfly.jimi.knowledge.memory.SessionSummary;
+import io.leavesfly.jimi.knowledge.memory.TaskHistory;
 import io.leavesfly.jimi.llm.LLM;
 import io.leavesfly.jimi.llm.message.Message;
 import io.leavesfly.jimi.llm.message.MessageRole;
@@ -27,8 +29,7 @@ import java.util.stream.Collectors;
  * <p>
  * 职责：
  * - 上下文压缩检查和执行
- * - 通过 KnowledgeService 注入 RAG 检索结果
- * - 通过 KnowledgeService 注入长期记忆
+ * - 通过 MemoryManager 注入长期记忆
  * - Skill 匹配和注入
  */
 @Slf4j
@@ -39,8 +40,7 @@ public class ContextManager {
     @Autowired(required = false)
     private SkillRegistry skillRegistry;
     @Autowired(required = false)
-    private KnowledgeService knowledgeService;
-
+    private MemoryManager memoryManager;
 
     /**
      * 设置依赖（用于 Spring Bean 注入后设置依赖）
@@ -50,10 +50,10 @@ public class ContextManager {
     }
 
     /**
-     * 设置 KnowledgeService（用于 Spring Bean 注入）
+     * 设置 MemoryManager（用于 Spring Bean 注入）
      */
-    public void setKnowledgeService(KnowledgeService knowledgeService) {
-        this.knowledgeService = knowledgeService;
+    public void setMemoryManager(MemoryManager memoryManager) {
+        this.memoryManager = memoryManager;
     }
 
     /**
@@ -120,127 +120,8 @@ public class ContextManager {
                 .collect(Collectors.joining(" "));
     }
 
-    /**
-     * 统一知识检索并注入（通过 KnowledgeService.unifiedSearch）
-     * <p>
-     * 整合 RAG、Graph、Memory、Wiki 四个模块的检索能力
-     *
-     * @param context 上下文
-     * @param stepNo  当前步骤号
-     * @return 完成的 Mono
-     */
-    public Mono<Void> matchAndInjectKnowlwdge(Context context, int stepNo) {
-        // 如果没有配置 KnowledgeService，直接跳过
-        if (knowledgeService == null) {
-            return Mono.empty();
-        }
-
-        // 只在第一步执行检索（基于用户输入）
-        if (stepNo != 1) {
-            return Mono.empty();
-        }
-
-        // 从上下文中提取用户查询
-        String userQuery = extractUserQuery(context);
-        if (userQuery == null || userQuery.isEmpty()) {
-            return Mono.empty();
-        }
-
-        // 构建统一检索查询（仅启用代码相关搜索）
-        UnifiedKnowledgeQuery query = UnifiedKnowledgeQuery.builder()
-                .keyword(userQuery)
-                .scope(UnifiedKnowledgeQuery.SearchScope.codeOnly()) // 仅 Graph + Retrieval
-                .limit(UnifiedKnowledgeQuery.ResultLimit.builder()
-                        .graphLimit(5)
-                        .retrievalLimit(5)
-                        .build())
-                .sortStrategy(UnifiedKnowledgeQuery.SortStrategy.RELEVANCE)
-                .build();
-
-        return knowledgeService.unifiedSearch(query)
-                .flatMap(result -> {
-                    if (result == null || !result.isSuccess() || result.getTotalResults() == 0) {
-                        log.debug("No knowledge found for query: {}", userQuery);
-                        return Mono.empty();
-                    }
-
-                    // 构建注入消息
-                    String knowledgeContent = formatUnifiedResult(result);
-                    Message knowledgeMessage = Message.user(List.of(TextPart.of(knowledgeContent)));
-
-                    log.info("Injected unified knowledge: {} total results (Graph: {}, Retrieval: {})",
-                            result.getTotalResults(),
-                            result.getGraphResult().getEntityCount(),
-                            result.getRetrievalResult().getChunkCount());
-
-                    return context.appendMessage(knowledgeMessage).then();
-                })
-                .doOnError(e -> {
-                    log.warn("Unified knowledge search failed, continuing: {}", e.getMessage());
-                })
-                .onErrorResume(e -> Mono.empty()) // 检索失败不影响主流程
-                .then();
-    }
 
 
-    /**
-     * 格式化统一检索结果
-     */
-    private String formatUnifiedResult(UnifiedKnowledgeResult result) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("\n## 📚 相关知识\n\n");
-
-        // 1. 代码图谱结果
-        UnifiedKnowledgeResult.GraphSearchResult graphResult = result.getGraphResult();
-        if (graphResult != null && graphResult.getEntityCount() > 0) {
-            sb.append("### 🔗 代码结构\n\n");
-            graphResult.getEntities().forEach(entity -> {
-                sb.append(String.format("- **%s** `%s` (%s)\n",
-                        entity.getType(),
-                        entity.getName(),
-                        entity.getFilePath() != null ? entity.getFilePath() : "unknown"));
-            });
-            sb.append("\n");
-        }
-
-        // 2. 向量检索结果
-        UnifiedKnowledgeResult.RetrievalSearchResult retrievalResult = result.getRetrievalResult();
-        if (retrievalResult != null && retrievalResult.getChunkCount() > 0) {
-            sb.append("### 📝 相关代码片段\n\n");
-            retrievalResult.getChunks().forEach(chunk -> {
-                sb.append(String.format("#### %s (lines %d-%d)\n",
-                        chunk.getFilePath(), chunk.getStartLine(), chunk.getEndLine()));
-                sb.append("```\n").append(chunk.getContent()).append("\n```\n\n");
-            });
-        }
-
-        // 3. 长期记忆结果
-        UnifiedKnowledgeResult.MemorySearchResult memoryResult = result.getMemoryResult();
-        if (memoryResult != null && memoryResult.getEntryCount() > 0) {
-            sb.append("### 🧠 历史记忆\n\n");
-            memoryResult.getEntries().forEach(entry -> {
-                sb.append(String.format("- **%s**: %s\n",
-                        entry.getType() != null ? entry.getType() : "记忆",
-                        entry.getContent()));
-            });
-            sb.append("\n");
-        }
-
-        // 4. Wiki 文档结果
-        UnifiedKnowledgeResult.WikiSearchResult wikiResult = result.getWikiResult();
-        if (wikiResult != null && wikiResult.getDocumentCount() > 0) {
-            sb.append("### 📖 相关文档\n\n");
-            wikiResult.getDocuments().forEach(doc -> {
-                sb.append(String.format("#### %s\n", doc.getTitle()));
-                if (doc.getSummary() != null && !doc.getSummary().isEmpty()) {
-                    sb.append(doc.getSummary());
-                    sb.append("\n\n");
-                }
-            });
-        }
-
-        return sb.toString();
-    }
 
 
     /**
@@ -270,6 +151,78 @@ public class ContextManager {
             return "";
         }
         return skillRegistry.generateSkillsSummary();
+    }
+
+    /**
+     * 获取长期记忆摘要（用于 System Prompt 注入）
+     * 从 MemoryManager 查询最近会话、任务历史、项目知识，格式化为结构化文本
+     *
+     * @return 记忆摘要字符串，如果记忆未启用或无数据则返回空字符串
+     */
+    public String getMemorySummary() {
+        if (memoryManager == null || !memoryManager.isEnabled()) {
+            return "";
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("<long_term_memory>\n");
+        sb.append("以下是从长期记忆中检索到的历史信息，可帮助你更好地理解项目上下文和用户偏好：\n\n");
+
+        boolean hasContent = false;
+
+        // 最近一次会话摘要
+        try {
+            SessionSummary lastSession = memoryManager.getLastSession().block();
+            if (lastSession != null) {
+                hasContent = true;
+                sb.append("## 上次会话\n");
+                sb.append(lastSession.toShortSummary()).append("\n\n");
+            }
+        } catch (Exception e) {
+            log.debug("Failed to load last session summary: {}", e.getMessage());
+        }
+
+        // 最近的任务历史
+        try {
+            List<TaskHistory> recentTasks = memoryManager.getRecentTasks(5).block();
+            if (recentTasks != null && !recentTasks.isEmpty()) {
+                hasContent = true;
+                sb.append("## 最近任务\n");
+                for (TaskHistory task : recentTasks) {
+                    sb.append("- ").append(task.getUserQuery());
+                    if (task.getSummary() != null && !task.getSummary().isEmpty()) {
+                        sb.append(" → ").append(task.getSummary());
+                    }
+                    sb.append(" [").append(task.getResultStatus()).append("]\n");
+                }
+                sb.append("\n");
+            }
+        } catch (Exception e) {
+            log.debug("Failed to load recent tasks: {}", e.getMessage());
+        }
+
+        // 项目知识
+        try {
+            List<ProjectInsight> insights = memoryManager.queryInsights("", 5).block();
+            if (insights != null && !insights.isEmpty()) {
+                hasContent = true;
+                sb.append("## 项目知识\n");
+                for (ProjectInsight insight : insights) {
+                    sb.append("- [").append(insight.getCategory()).append("] ")
+                            .append(insight.getContent()).append("\n");
+                }
+                sb.append("\n");
+            }
+        } catch (Exception e) {
+            log.debug("Failed to load project insights: {}", e.getMessage());
+        }
+
+        if (!hasContent) {
+            return "";
+        }
+
+        sb.append("</long_term_memory>");
+        return sb.toString();
     }
 
     /**

@@ -153,6 +153,10 @@ public class AgentRegistry {
         String skillsSummary = builtinArgs.getJimiSkillsSummary();
         substitutionMap.put("JIMI_SKILLS_SUMMARY", skillsSummary != null ? skillsSummary : "");
 
+        // 添加长期记忆摘要
+        String memorySummary = builtinArgs.getJimiMemorySummary();
+        substitutionMap.put("JIMI_MEMORY_SUMMARY", memorySummary != null ? memorySummary : "");
+
         // 添加自定义参数（覆盖内置参数）
         if (args != null) {
             substitutionMap.putAll(args);

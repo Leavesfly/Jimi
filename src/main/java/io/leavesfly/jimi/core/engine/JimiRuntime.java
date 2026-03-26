@@ -105,6 +105,7 @@ public class JimiRuntime {
         private Approval approval;
         private SessionManager sessionManager;  // 用于加载 AGENTS.md
         private String skillsSummary;           // 技能摘要（渐进式披露）
+        private String memorySummary;           // 长期记忆摘要
         
         public Builder config(JimiConfig config) {
             this.config = config;
@@ -139,6 +140,14 @@ public class JimiRuntime {
          */
         public Builder skillsSummary(String skillsSummary) {
             this.skillsSummary = skillsSummary;
+            return this;
+        }
+
+        /**
+         * 设置长期记忆摘要
+         */
+        public Builder memorySummary(String memorySummary) {
+            this.memorySummary = memorySummary;
             return this;
         }
         
@@ -188,6 +197,7 @@ public class JimiRuntime {
                     .jimiWorkDirLs(workDirLs)
                     .jimiAgentsMd(agentsMd)
                     .jimiSkillsSummary(skillsSummary != null ? skillsSummary : "")
+                    .jimiMemorySummary(memorySummary != null ? memorySummary : "")
                     .build();
         }
     }

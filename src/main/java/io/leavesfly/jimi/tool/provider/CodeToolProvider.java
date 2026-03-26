@@ -3,7 +3,7 @@ package io.leavesfly.jimi.tool.provider;
 import io.leavesfly.jimi.core.agent.AgentSpec;
 import io.leavesfly.jimi.core.engine.JimiRuntime;
 import io.leavesfly.jimi.knowledge.graph.GraphManager;
-import io.leavesfly.jimi.knowledge.search.HybridSearchManager;
+import io.leavesfly.jimi.knowledge.HybridSearchManager;
 import io.leavesfly.jimi.tool.Tool;
 import io.leavesfly.jimi.tool.ToolProvider;
 import io.leavesfly.jimi.tool.core.graph.CallGraphTool;

@@ -1,9 +1,9 @@
 package io.leavesfly.jimi.tool.core.graph;
 
 import com.fasterxml.jackson.annotation.JsonPropertyDescription;
-import io.leavesfly.jimi.knowledge.domain.query.HybridQuery;
-import io.leavesfly.jimi.knowledge.domain.result.HybridResult;
-import io.leavesfly.jimi.knowledge.search.HybridSearchManager;
+import io.leavesfly.jimi.knowledge.query.HybridQuery;
+import io.leavesfly.jimi.knowledge.result.HybridResult;
+import io.leavesfly.jimi.knowledge.HybridSearchManager;
 import io.leavesfly.jimi.tool.AbstractTool;
 import io.leavesfly.jimi.tool.ToolResult;
 import lombok.AllArgsConstructor;

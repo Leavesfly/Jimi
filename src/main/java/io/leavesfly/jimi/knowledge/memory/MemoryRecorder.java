@@ -2,7 +2,6 @@ package io.leavesfly.jimi.knowledge.memory;
 
 import io.leavesfly.jimi.core.engine.ExecutionState;
 import io.leavesfly.jimi.core.engine.context.Context;
-import io.leavesfly.jimi.knowledge.memory.*;
 import io.leavesfly.jimi.llm.message.ContentPart;
 import io.leavesfly.jimi.llm.message.Message;
 import io.leavesfly.jimi.llm.message.MessageRole;

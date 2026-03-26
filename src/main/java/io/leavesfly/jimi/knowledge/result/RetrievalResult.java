@@ -1,4 +1,4 @@
-package io.leavesfly.jimi.knowledge.domain.result;
+package io.leavesfly.jimi.knowledge.result;
 
 import lombok.Builder;
 import lombok.Data;

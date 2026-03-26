@@ -12,7 +12,6 @@ import io.leavesfly.jimi.core.engine.JimiRuntime;
 import io.leavesfly.jimi.knowledge.memory.MemoryRecorder;
 import io.leavesfly.jimi.core.engine.ResponseProcessor;
 import io.leavesfly.jimi.core.engine.hook.HookRegistry;
-import io.leavesfly.jimi.knowledge.KnowledgeService;
 import io.leavesfly.jimi.llm.LLM;
 import io.leavesfly.jimi.llm.LLMFactory;
 import io.leavesfly.jimi.core.session.Session;
@@ -69,9 +68,6 @@ public class JimiFactory {
     private HookRegistry hookRegistry;
 
     // ==================== 组件提供者（封装可选依赖） ====================
-    @Autowired
-    private KnowledgeService knowledgeService;
-    
     @Autowired(required = false)
     private SkillRegistry skillRegistry;  // 用于生成技能摘要（渐进式披露）
 
@@ -204,6 +200,9 @@ public class JimiFactory {
                     ? skillRegistry.generateSkillsSummary() 
                     : "";
 
+                // 生成长期记忆摘要
+                String memorySummary = contextManager.getMemorySummary();
+
                 JimiRuntime jimiRuntime = JimiRuntime.builder()
                         .config(config)
                         .llm(llm)
@@ -211,6 +210,7 @@ public class JimiFactory {
                         .approval(approval)
                         .sessionManager(sessionManager)  // 用于构建 builtinArgs
                         .skillsSummary(skillsSummary)    // 技能摘要（渐进式披露）
+                        .memorySummary(memorySummary)    // 长期记忆摘要
                         .build();
 
                 // 5. 使用 AgentRegistry 单例加载 Agent（包含系统提示词处理）
@@ -231,8 +231,6 @@ public class JimiFactory {
                 // 7. 创建 ToolRegistry（委托给 ToolRegistryFactory）
                 ToolRegistry toolRegistry = toolRegistryFactory.create(
                         jimiRuntime.getBuiltinArgs(), approval, agentSpec, jimiRuntime, mcpConfigFiles);
-
-                knowledgeService.initialize(jimiRuntime);
 
                 // 8. 创建 JimiEngine
                 AgentExecutor executor = AgentExecutor.builder()

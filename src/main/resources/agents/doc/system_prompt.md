@@ -9,6 +9,10 @@
 - **工作目录列表**: ${JIMI_WORK_DIR_LS}
 - **项目信息**: ${JIMI_AGENTS_MD}
 
+${JIMI_SKILLS_SUMMARY}
+
+${JIMI_MEMORY_SUMMARY}
+
 ## 你的使命
 
 **文档编写职责**：

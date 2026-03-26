@@ -2,8 +2,8 @@ package io.leavesfly.jimi.knowledge.rag;
 
 import io.leavesfly.jimi.config.info.VectorIndexConfig;
 import io.leavesfly.jimi.core.engine.JimiRuntime;
-import io.leavesfly.jimi.knowledge.domain.query.RetrievalQuery;
-import io.leavesfly.jimi.knowledge.domain.result.RetrievalResult;
+import io.leavesfly.jimi.knowledge.query.RetrievalQuery;
+import io.leavesfly.jimi.knowledge.result.RetrievalResult;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;

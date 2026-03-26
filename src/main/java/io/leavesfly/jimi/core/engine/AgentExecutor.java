@@ -267,7 +267,8 @@ public class AgentExecutor {
                     .doOnSuccess(v -> {
                         log.info("Agent execution completed");
                         memoryRecorder.recordTaskHistory(executionState, context, "success")
-                            .subscribe(unused -> {}, error -> log.warn("Failed to record task history", error));
+                                .subscribe(unused -> {
+                                }, error -> log.warn("Failed to record task history", error));
                         executionState.incrementTasksCompleted();
 
                         // 触发 POST_USER_INPUT hook（异步，不阻塞主流程）
@@ -278,12 +279,14 @@ public class AgentExecutor {
                                 .agentName(agentName)
                                 .build();
                         triggerHookSafely(HookType.POST_USER_INPUT, postInputHookContext)
-                            .subscribe(unused -> {}, error -> log.warn("Hook POST_USER_INPUT execution failed", error));
+                                .subscribe(unused -> {
+                                }, error -> log.warn("Hook POST_USER_INPUT execution failed", error));
                     })
                     .doOnError(e -> {
                         log.error("Agent execution failed", e);
                         memoryRecorder.recordTaskHistory(executionState, context, "failed")
-                            .subscribe(unused -> {}, error -> log.warn("Failed to record task history on error", error));
+                                .subscribe(unused -> {
+                                }, error -> log.warn("Failed to record task history on error", error));
 
                         // 触发 ON_ERROR hook（异步，不阻塞主流程）
                         HookContext errorHookContext = HookContext.builder()
@@ -294,7 +297,8 @@ public class AgentExecutor {
                                 .agentName(agentName)
                                 .build();
                         triggerHookSafely(HookType.ON_ERROR, errorHookContext)
-                            .subscribe(unused -> {}, error -> log.warn("Hook ON_ERROR execution failed", error));
+                                .subscribe(unused -> {
+                                }, error -> log.warn("Hook ON_ERROR execution failed", error));
                     });
         });
     }
@@ -343,23 +347,22 @@ public class AgentExecutor {
      * Agent 主循环
      */
     private Mono<Void> agentLoop(boolean skipKnowledge) {
-        return Mono.defer(() -> agentLoopStep(1, skipKnowledge));
+        return Mono.defer(() -> agentLoopStep(1));
     }
 
     /**
      * Agent 循环步骤
      *
-     * @param stepNo        当前步骤号
-     * @param skipKnowledge 是否跳过知识检索和 Skill 匹配
+     * @param stepNo 当前步骤号
      */
-    private Mono<Void> agentLoopStep(int stepNo, boolean skipKnowledge) {
+    private Mono<Void> agentLoopStep(int stepNo) {
         // 检查是否已取消
         if (jimiRuntime.getSession().isCancelled()) {
             log.info("Agent '{}' cancelled at step {}", agentName != null ? agentName : "main", stepNo);
             wire.send(new StepInterrupted());
             return Mono.error(new RunCancelledException());
         }
-        
+
         // 记录步数
         executionState.setStepsInTask(stepNo);
 
@@ -384,12 +387,6 @@ public class AgentExecutor {
                     .then(context.checkpoint(false))
                     .then();
 
-            // 仅在非跳过模式下注入 Skills 和知识
-            if (!skipKnowledge) {
-                pipeline = pipeline
-                        .then(contextManager.matchAndInjectSkills(context, stepNo))
-                        .then(contextManager.matchAndInjectKnowlwdge(context, stepNo));
-            }
 
             return pipeline
                     .then(step())
@@ -399,8 +396,7 @@ public class AgentExecutor {
                                     agentName != null ? agentName : "main", stepNo, globalStepNo);
                             return Mono.empty();
                         } else {
-                            // 后续步骤中 skipKnowledge 不再生效（stepNo > 1 时 ContextManager 本身就会跳过）
-                            return agentLoopStep(stepNo + 1, skipKnowledge);
+                            return agentLoopStep(stepNo + 1);
                         }
                     })
                     .then()

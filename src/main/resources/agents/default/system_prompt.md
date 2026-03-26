@@ -9,6 +9,10 @@
 - **目录结构**: ${JIMI_WORK_DIR_LS}
 - **项目信息**: ${JIMI_AGENTS_MD}
 
+${JIMI_SKILLS_SUMMARY}
+
+${JIMI_MEMORY_SUMMARY}
+
 ## 指导原则
 
 1. **积极主动**: 建议改进和最佳实践

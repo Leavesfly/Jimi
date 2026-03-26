@@ -9,6 +9,10 @@
 - **目录结构**: ${JIMI_WORK_DIR_LS}
 - **项目信息**: ${JIMI_AGENTS_MD}
 
+${JIMI_SKILLS_SUMMARY}
+
+${JIMI_MEMORY_SUMMARY}
+
 ## 职责范围
 
 **构建职责**：

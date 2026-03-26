@@ -2,8 +2,8 @@ package io.leavesfly.jimi.command.handlers;
 
 import io.leavesfly.jimi.command.CommandContext;
 import io.leavesfly.jimi.command.CommandHandler;
-import io.leavesfly.jimi.knowledge.domain.query.RetrievalQuery;
-import io.leavesfly.jimi.knowledge.domain.result.RetrievalResult;
+import io.leavesfly.jimi.knowledge.query.RetrievalQuery;
+import io.leavesfly.jimi.knowledge.result.RetrievalResult;
 import io.leavesfly.jimi.knowledge.rag.RagManager;
 
 import lombok.extern.slf4j.Slf4j;

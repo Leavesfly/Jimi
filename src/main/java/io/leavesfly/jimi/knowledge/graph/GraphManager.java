@@ -2,8 +2,8 @@ package io.leavesfly.jimi.knowledge.graph;
 
 import io.leavesfly.jimi.config.info.GraphConfig;
 import io.leavesfly.jimi.core.engine.JimiRuntime;
-import io.leavesfly.jimi.knowledge.domain.query.GraphQuery;
-import io.leavesfly.jimi.knowledge.domain.result.GraphResult;
+import io.leavesfly.jimi.knowledge.query.GraphQuery;
+import io.leavesfly.jimi.knowledge.result.GraphResult;
 import io.leavesfly.jimi.knowledge.graph.builder.GraphBuilder;
 import io.leavesfly.jimi.knowledge.graph.model.CodeEntity;
 import io.leavesfly.jimi.knowledge.graph.model.CodeRelation;

@@ -1,4 +1,4 @@
-package io.leavesfly.jimi.knowledge.wiki;
+package io.leavesfly.jimi.command.wiki;
 
 import lombok.Builder;
 import lombok.Data;

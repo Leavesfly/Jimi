@@ -42,4 +42,10 @@ public class BuiltinSystemPromptArgs {
      * 包含技能列表的简要描述，供 LLM 决定是否调用 SkillsTool
      */
     private String jimiSkillsSummary;
+
+    /**
+     * 长期记忆摘要
+     * 包含最近会话、任务历史、项目知识等记忆信息，供 LLM 了解历史上下文
+     */
+    private String jimiMemorySummary;
 }
