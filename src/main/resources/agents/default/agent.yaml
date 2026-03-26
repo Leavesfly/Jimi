@@ -13,19 +13,13 @@ model: qwen3.5-plus
 #model: cursor-opus
 #model: composer
 #model: cursor-auto
-#model: qwen3-coder-plus
-
-#model: qwen3-next-80b-a3b-thinking
-#model: qwen3-next-80b-a3b-instruct
-
-#model: qwen-max
 
 #model: deepseek-v3.2-exp
 
 #model: qwen3:4b-thinking-2507-q8_0
 #model: qwen3:4b-instruct-2507-q8_0
+
 #model: glm-4.7
-#model: minimax-m2.1
 
 
 # 可用工具列表
