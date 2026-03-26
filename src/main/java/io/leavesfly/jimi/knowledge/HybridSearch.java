@@ -30,7 +30,7 @@ import java.util.stream.Collectors;
  */
 @Slf4j
 @Component
-public class HybridSearchManager {
+public class HybridSearch {
     
     private static final int RRF_K = 60; // RRF 常数 k
     
@@ -38,13 +38,13 @@ public class HybridSearchManager {
     private final RagManager ragManager;
     
     @Autowired
-    public HybridSearchManager(GraphManager graphManager, RagManager ragManager) {
+    public HybridSearch(GraphManager graphManager, RagManager ragManager) {
         this.graphManager = graphManager;
         this.ragManager = ragManager;
     }
     
     public Mono<Boolean> initialize(JimiRuntime jimiRuntime) {
-        log.info("HybridSearchManager 初始化完成");
+        log.info("HybridSearch 初始化完成");
         return Mono.just(true);
     }
     

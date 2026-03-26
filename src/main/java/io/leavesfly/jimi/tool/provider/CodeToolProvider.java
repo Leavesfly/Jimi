@@ -2,8 +2,8 @@ package io.leavesfly.jimi.tool.provider;
 
 import io.leavesfly.jimi.core.agent.AgentSpec;
 import io.leavesfly.jimi.core.engine.JimiRuntime;
+import io.leavesfly.jimi.knowledge.HybridSearch;
 import io.leavesfly.jimi.knowledge.graph.GraphManager;
-import io.leavesfly.jimi.knowledge.HybridSearchManager;
 import io.leavesfly.jimi.tool.Tool;
 import io.leavesfly.jimi.tool.ToolProvider;
 import io.leavesfly.jimi.tool.core.graph.CallGraphTool;
@@ -29,7 +29,7 @@ public class CodeToolProvider implements ToolProvider {
     private GraphManager graphManager;
     
     @Autowired(required = false)
-    private HybridSearchManager hybridSearchManager;
+    private HybridSearch hybridSearch;
     
     @Override
     public String getName() {
@@ -61,11 +61,11 @@ public class CodeToolProvider implements ToolProvider {
         
         try {
             // 1. CodeLocateTool - 代码定位工具
-            if (hybridSearchManager != null && hybridSearchManager.isEnabled()) {
-                tools.add(new CodeLocateTool(hybridSearchManager));
+            if (hybridSearch != null && hybridSearch.isEnabled()) {
+                tools.add(new CodeLocateTool(hybridSearch));
                 log.info("Registered CodeLocateTool (with hybrid search manager)");
             } else {
-                log.info("HybridSearchManager not available, CodeLocateTool not registered");
+                log.info("HybridSearch not available, CodeLocateTool not registered");
             }
             
             // 2. ImpactAnalysisTool - 影响分析工具
