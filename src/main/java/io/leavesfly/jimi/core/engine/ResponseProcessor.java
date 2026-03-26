@@ -1,7 +1,9 @@
-package io.leavesfly.jimi.core.engine.executor;
+package io.leavesfly.jimi.core.engine;
 
 import io.leavesfly.jimi.core.engine.context.Context;
 
+import io.leavesfly.jimi.core.engine.hook.HookRegistry;
+import io.leavesfly.jimi.core.engine.toolcall.ToolErrorTracker;
 import io.leavesfly.jimi.llm.ChatCompletionChunk;
 import io.leavesfly.jimi.llm.ChatCompletionResult;
 import io.leavesfly.jimi.llm.TokenCounter;
@@ -42,6 +44,12 @@ public class ResponseProcessor {
 
     @Autowired
     private Wire wire;
+
+    @Autowired
+    private ToolErrorTracker toolErrorTracker;
+
+    @Autowired
+    private HookRegistry hookRegistry;
 
 
 
@@ -387,7 +395,7 @@ public class ResponseProcessor {
 
         log.info("准备执行 {} 个工具调用", assistantMessage.getToolCalls().size());
 
-        ToolDispatcher toolDispatcher = new ToolDispatcher(toolRegistry, workDir);
+        ToolDispatcher toolDispatcher = new ToolDispatcher(toolRegistry, workDir, wire, toolErrorTracker, hookRegistry);
 
         return toolDispatcher.executeToolCalls(assistantMessage.getToolCalls(), context)
                 .then(Mono.defer(() -> {

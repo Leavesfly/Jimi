@@ -113,6 +113,7 @@ public class Context {
      *
      * @param messages 单条消息或消息列表
      */
+    @SuppressWarnings("unchecked")
     public Mono<Void> appendMessage(Object messages) {
         return Mono.defer(() -> {
             log.debug("Appending message(s) to context: {}", messages);
@@ -121,7 +122,20 @@ public class Context {
             if (messages instanceof Message) {
                 messageList = Collections.singletonList((Message) messages);
             } else if (messages instanceof List) {
-                messageList = (List<Message>) messages;
+                // 类型安全检查：验证 List 中的元素类型
+                List<?> rawList = (List<?>) messages;
+                messageList = new ArrayList<>();
+                for (Object item : rawList) {
+                    if (item instanceof Message) {
+                        messageList.add((Message) item);
+                    } else if (item != null) {
+                        log.warn("Skipping non-Message item in list: {}", item.getClass().getName());
+                    }
+                }
+                if (messageList.isEmpty() && !rawList.isEmpty()) {
+                    throw new IllegalArgumentException(
+                            "List does not contain any valid Message objects");
+                }
             } else {
                 throw new IllegalArgumentException("Messages must be Message or List<Message>");
             }
@@ -304,6 +318,7 @@ public class Context {
     /**
      * 从用户消息中提取意图（简化版：取前 200 字符）
      */
+    @SuppressWarnings("unchecked")
     private String extractIntentFromMessage(Message message) {
         Object content = message.getContent();
         if (content == null) {
@@ -312,13 +327,21 @@ public class Context {
 
         // 如果是 List<ContentPart>，提取所有文本内容
         if (content instanceof List) {
-            @SuppressWarnings("unchecked")
-            List<ContentPart> parts = (List<ContentPart>) content;
-
-            String fullText = parts.stream()
-                    .filter(part -> part instanceof TextPart)
-                    .map(part -> ((TextPart) part).getText())
-                    .collect(Collectors.joining(" "));
+            List<?> rawList = (List<?>) content;
+            StringBuilder textBuilder = new StringBuilder();
+            for (Object item : rawList) {
+                // 类型安全检查：确保每个元素是 ContentPart
+                if (item instanceof TextPart) {
+                    if (textBuilder.length() > 0) {
+                        textBuilder.append(" ");
+                    }
+                    textBuilder.append(((TextPart) item).getText());
+                } else if (item != null && !(item instanceof ContentPart)) {
+                    log.debug("Skipping non-ContentPart item in content list: {}",
+                            item.getClass().getName());
+                }
+            }
+            String fullText = textBuilder.toString();
 
             // 截取前 200 字符作为高层意图
             return fullText.length() > 200

@@ -2,6 +2,7 @@ package io.leavesfly.jimi.command.custom;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+import io.leavesfly.jimi.common.YamlConfigLoader;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -21,12 +22,23 @@ class CustomCommandLoaderTest {
     @BeforeEach
     void setUp() {
         ObjectMapper yamlObjectMapper = new ObjectMapper(new YAMLFactory());
-        loader = new CustomCommandLoader();
-        // Use reflection to set the private field
+        
+        // 创建 YamlConfigLoader 并注入 yamlObjectMapper
+        YamlConfigLoader yamlConfigLoader = new YamlConfigLoader();
         try {
-            var field = CustomCommandLoader.class.getDeclaredField("yamlObjectMapper");
-            field.setAccessible(true);
-            field.set(loader, yamlObjectMapper);
+            var yamlMapperField = YamlConfigLoader.class.getDeclaredField("yamlObjectMapper");
+            yamlMapperField.setAccessible(true);
+            yamlMapperField.set(yamlConfigLoader, yamlObjectMapper);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+        
+        // 创建 CustomCommandLoader 并注入 yamlConfigLoader
+        loader = new CustomCommandLoader();
+        try {
+            var loaderField = CustomCommandLoader.class.getDeclaredField("yamlConfigLoader");
+            loaderField.setAccessible(true);
+            loaderField.set(loader, yamlConfigLoader);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }

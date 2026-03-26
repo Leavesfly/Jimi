@@ -7,7 +7,6 @@ import org.springframework.stereotype.Service;
 
 import java.nio.file.Path;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 /**
@@ -19,8 +18,8 @@ import java.util.stream.Collectors;
  * - 在启动时自动加载全局Skills
  * 
  * 设计特性：
- * - 线程安全：使用ConcurrentHashMap
- * - 多索引：按名称、分类、触发词建立索引以提升查询性能
+ * - 委托SkillIndex进行索引管理
+ * - 线程安全
  * - 优先级覆盖：项目级Skill覆盖全局Skill（同名时）
  */
 @Slf4j
@@ -31,25 +30,9 @@ public class SkillRegistry {
     private SkillLoader skillLoader;
     
     /**
-     * 按名称索引的Skills
-     * Key: Skill名称
-     * Value: SkillSpec对象
+     * 索引管理器
      */
-    private final Map<String, SkillSpec> skillsByName = new ConcurrentHashMap<>();
-    
-    /**
-     * 按分类索引的Skills
-     * Key: 分类名称
-     * Value: 该分类下的Skills列表
-     */
-    private final Map<String, List<SkillSpec>> skillsByCategory = new ConcurrentHashMap<>();
-    
-    /**
-     * 按触发词索引的Skills
-     * Key: 触发词（小写）
-     * Value: 包含该触发词的Skills列表
-     */
-    private final Map<String, List<SkillSpec>> skillsByTrigger = new ConcurrentHashMap<>();
+    private final SkillIndex index = new SkillIndex();
     
     /**
      * 初始化加载全局Skills
@@ -82,7 +65,7 @@ public class SkillRegistry {
         
         if (loadedCount > 0) {
             log.info("Available skills: {}", 
-                String.join(", ", skillsByName.keySet()));
+                String.join(", ", index.getAllSkillNames()));
         }
     }
     
@@ -114,78 +97,7 @@ public class SkillRegistry {
      * @param skill 要注册的Skill
      */
     public void register(SkillSpec skill) {
-        if (skill == null || skill.getName() == null) {
-            log.warn("Attempted to register invalid skill");
-            return;
-        }
-        
-        String name = skill.getName();
-        
-        // 检查是否覆盖
-        if (skillsByName.containsKey(name)) {
-            SkillSpec existing = skillsByName.get(name);
-            log.info("Skill '{}' already exists (scope: {}), overriding with new skill (scope: {})",
-                name, existing.getScope(), skill.getScope());
-            
-            // 清理旧的索引
-            unregisterFromIndexes(existing);
-        }
-        
-        // 注册到主索引
-        skillsByName.put(name, skill);
-        
-        // 注册到分类索引
-        if (skill.getCategory() != null && !skill.getCategory().isEmpty()) {
-            skillsByCategory
-                .computeIfAbsent(skill.getCategory(), k -> new ArrayList<>())
-                .add(skill);
-        }
-        
-        // 注册到触发词索引
-        if (skill.getTriggers() != null) {
-            for (String trigger : skill.getTriggers()) {
-                String triggerLower = trigger.toLowerCase();
-                skillsByTrigger
-                    .computeIfAbsent(triggerLower, k -> new ArrayList<>())
-                    .add(skill);
-            }
-        }
-        
-        log.debug("Registered skill: {} (scope: {}, category: {}, triggers: {})",
-            name, skill.getScope(), skill.getCategory(), 
-            skill.getTriggers() != null ? skill.getTriggers().size() : 0);
-    }
-    
-    /**
-     * 从索引中移除Skill
-     * 
-     * @param skill 要移除的Skill
-     */
-    private void unregisterFromIndexes(SkillSpec skill) {
-        // 从分类索引移除
-        if (skill.getCategory() != null) {
-            List<SkillSpec> categoryList = skillsByCategory.get(skill.getCategory());
-            if (categoryList != null) {
-                categoryList.remove(skill);
-                if (categoryList.isEmpty()) {
-                    skillsByCategory.remove(skill.getCategory());
-                }
-            }
-        }
-        
-        // 从触发词索引移除
-        if (skill.getTriggers() != null) {
-            for (String trigger : skill.getTriggers()) {
-                String triggerLower = trigger.toLowerCase();
-                List<SkillSpec> triggerList = skillsByTrigger.get(triggerLower);
-                if (triggerList != null) {
-                    triggerList.remove(skill);
-                    if (triggerList.isEmpty()) {
-                        skillsByTrigger.remove(triggerLower);
-                    }
-                }
-            }
-        }
+        index.addToIndex(skill);
     }
     
     /**
@@ -195,7 +107,7 @@ public class SkillRegistry {
      * @return SkillSpec对象，如果不存在返回Optional.empty()
      */
     public Optional<SkillSpec> findByName(String name) {
-        return Optional.ofNullable(skillsByName.get(name));
+        return index.findByName(name);
     }
     
     /**
@@ -205,8 +117,7 @@ public class SkillRegistry {
      * @return 该分类下的Skills列表（不可修改）
      */
     public List<SkillSpec> findByCategory(String category) {
-        List<SkillSpec> skills = skillsByCategory.get(category);
-        return skills != null ? Collections.unmodifiableList(skills) : Collections.emptyList();
+        return index.findByCategory(category);
     }
     
     /**
@@ -217,26 +128,7 @@ public class SkillRegistry {
      * @return 匹配的Skills列表
      */
     public List<SkillSpec> findByTriggers(Set<String> keywords) {
-        Set<SkillSpec> matchedSkills = new HashSet<>();
-        
-        for (String keyword : keywords) {
-            String keywordLower = keyword.toLowerCase();
-            
-            // 精确匹配触发词
-            List<SkillSpec> exactMatches = skillsByTrigger.get(keywordLower);
-            if (exactMatches != null) {
-                matchedSkills.addAll(exactMatches);
-            }
-            
-            // 部分匹配触发词（包含关系）
-            for (Map.Entry<String, List<SkillSpec>> entry : skillsByTrigger.entrySet()) {
-                if (entry.getKey().contains(keywordLower) || keywordLower.contains(entry.getKey())) {
-                    matchedSkills.addAll(entry.getValue());
-                }
-            }
-        }
-        
-        return new ArrayList<>(matchedSkills);
+        return index.findByTriggers(keywords);
     }
     
     /**
@@ -245,7 +137,7 @@ public class SkillRegistry {
      * @return 所有Skills的列表（不可修改）
      */
     public List<SkillSpec> getAllSkills() {
-        return Collections.unmodifiableList(new ArrayList<>(skillsByName.values()));
+        return index.getAllSkills();
     }
     
     /**
@@ -253,8 +145,8 @@ public class SkillRegistry {
      * 
      * @return Skill名称集合（不可修改）
      */
-    public Set<String> getAllSkillNames() {
-        return Collections.unmodifiableSet(skillsByName.keySet());
+    Set<String> getAllSkillNames() {
+        return index.getAllSkillNames();
     }
     
     /**
@@ -262,8 +154,8 @@ public class SkillRegistry {
      * 
      * @return 分类名称集合（不可修改）
      */
-    public Set<String> getAllCategories() {
-        return Collections.unmodifiableSet(skillsByCategory.keySet());
+    Set<String> getAllCategories() {
+        return index.getAllCategories();
     }
     
     /**
@@ -273,7 +165,7 @@ public class SkillRegistry {
      * @return 是否存在
      */
     public boolean hasSkill(String name) {
-        return skillsByName.containsKey(name);
+        return index.contains(name);
     }
     
     /**
@@ -283,12 +175,12 @@ public class SkillRegistry {
      */
     public Map<String, Object> getStatistics() {
         Map<String, Object> stats = new HashMap<>();
-        stats.put("totalSkills", skillsByName.size());
-        stats.put("categories", skillsByCategory.size());
-        stats.put("triggers", skillsByTrigger.size());
+        stats.put("totalSkills", index.size());
+        stats.put("categories", index.getCategoryCount());
+        stats.put("triggers", index.getTriggerCount());
         
         // 按作用域统计
-        Map<SkillSpec.SkillScope, Long> scopeCounts = skillsByName.values().stream()
+        Map<SkillSpec.SkillScope, Long> scopeCounts = index.values().stream()
             .collect(Collectors.groupingBy(SkillSpec::getScope, Collectors.counting()));
         stats.put("globalSkills", scopeCounts.getOrDefault(SkillSpec.SkillScope.GLOBAL, 0L));
         stats.put("projectSkills", scopeCounts.getOrDefault(SkillSpec.SkillScope.PROJECT, 0L));
@@ -296,7 +188,7 @@ public class SkillRegistry {
         return stats;
     }
     
-    // ==================== JWork 扩展方法 ====================
+    // ==================== Skill 管理方法 ====================
     
     /**
      * 安装 Skill（从本地路径）
@@ -358,7 +250,7 @@ public class SkillRegistry {
     public void uninstall(String skillName) {
         log.info("Uninstalling skill: {}", skillName);
         
-        SkillSpec skill = skillsByName.get(skillName);
+        SkillSpec skill = index.get(skillName);
         if (skill == null) {
             throw new IllegalArgumentException("Skill not found: " + skillName);
         }
@@ -369,8 +261,7 @@ public class SkillRegistry {
         }
         
         // 1. 从注册表移除
-        skillsByName.remove(skillName);
-        unregisterFromIndexes(skill);
+        index.removeByName(skillName);
         
         // 2. 从用户目录删除
         Path userSkillsDir = skillLoader.getUserSkillsDirectory();
@@ -405,7 +296,7 @@ public class SkillRegistry {
         }
         
         // 检查是否已存在
-        if (skillsByName.containsKey(name)) {
+        if (index.contains(name)) {
             throw new IllegalArgumentException("技能 '" + name + "' 已存在");
         }
         
@@ -445,7 +336,9 @@ public class SkillRegistry {
             // 清理失败的创建
             try {
                 deleteDirectory(skillDir);
-            } catch (Exception ignored) {}
+            } catch (Exception cleanupEx) {
+                log.warn("Failed to cleanup skill directory after creation failure: {}", skillDir, cleanupEx);
+            }
             throw new RuntimeException("创建技能失败: " + e.getMessage(), e);
         }
     }
@@ -465,7 +358,7 @@ public class SkillRegistry {
             throw new IllegalArgumentException("技能内容不能为空");
         }
         
-        SkillSpec skill = skillsByName.get(name);
+        SkillSpec skill = index.get(name);
         if (skill == null) {
             throw new IllegalArgumentException("技能 '" + name + "' 未找到");
         }
@@ -511,23 +404,10 @@ public class SkillRegistry {
             updatedSkill.setSkillFilePath(skillFile);
             
             // 更新注册表
-            unregisterFromIndexes(skill);
-            skillsByName.put(name, updatedSkill);
-            
-            // 重新建立索引
-            if (updatedSkill.getCategory() != null && !updatedSkill.getCategory().isEmpty()) {
-                skillsByCategory
-                    .computeIfAbsent(updatedSkill.getCategory(), k -> new ArrayList<>())
-                    .add(updatedSkill);
-            }
-            if (updatedSkill.getTriggers() != null) {
-                for (String trigger : updatedSkill.getTriggers()) {
-                    String triggerLower = trigger.toLowerCase();
-                    skillsByTrigger
-                        .computeIfAbsent(triggerLower, k -> new ArrayList<>())
-                        .add(updatedSkill);
-                }
-            }
+            index.removeFromIndex(skill);
+            index.put(name, updatedSkill);
+            index.addCategoryIndex(updatedSkill);
+            index.addTriggerIndex(updatedSkill);
             
             log.info("Updated skill: {}", name);
             return updatedSkill;
@@ -574,7 +454,7 @@ public class SkillRegistry {
      * 获取 Skill 安装信息列表（供 UI 展示）
      */
     public List<SkillInfo> listAllInfo() {
-        return skillsByName.values().stream()
+        return index.values().stream()
             .map(spec -> new SkillInfo(
                 spec.getName(),
                 spec.getDescription(),

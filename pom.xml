@@ -20,23 +20,23 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         
         <!-- Spring Boot -->
-        <spring-boot.version>3.2.5</spring-boot.version>
+        <spring-boot.version>3.2.10</spring-boot.version>
         
         <!-- Dependencies -->
         <picocli.version>4.7.6</picocli.version>
         <jline.version>3.25.1</jline.version>
-        <jackson.version>2.16.2</jackson.version>
+        <jackson.version>2.17.0</jackson.version>
         <snakeyaml.version>2.2</snakeyaml.version>
         <commons-exec.version>1.4.0</commons-exec.version>
         <lombok.version>1.18.32</lombok.version>
         <slf4j.version>2.0.12</slf4j.version>
         <logback.version>1.4.14</logback.version>
-        <caffeine.version>3.1.8</caffeine.version>
+        <caffeine.version>3.2.0</caffeine.version>
         
         <!-- Test -->
         <junit.version>5.10.2</junit.version>
         <mockito.version>5.11.0</mockito.version>
-        <javaparser.version>3.25.5</javaparser.version>
+        <javaparser.version>3.26.4</javaparser.version>
     </properties>
 
     <dependencyManagement>

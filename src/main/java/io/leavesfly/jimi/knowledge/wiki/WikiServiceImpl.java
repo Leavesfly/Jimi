@@ -1,9 +1,9 @@
 package io.leavesfly.jimi.knowledge.wiki;
 
+import io.leavesfly.jimi.core.Engine;
 import io.leavesfly.jimi.core.engine.runtime.Runtime;
 import io.leavesfly.jimi.knowledge.domain.query.WikiQuery;
 import io.leavesfly.jimi.knowledge.domain.result.WikiResult;
-import io.leavesfly.jimi.llm.LLM;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Mono;
 
@@ -17,7 +17,7 @@ import java.util.stream.Stream;
 /**
  * Wiki服务实现（适配 WikiGenerator）
  * 
- * <p>复用现有的 WikiGenerator 实现，提供 SPI 接口适配。
+ * <p>通过 Agent 引擎驱动 Wiki 文档生成，提供 SPI 接口适配。
  */
 @Slf4j
 public class WikiServiceImpl {
@@ -29,6 +29,7 @@ public class WikiServiceImpl {
     
     private volatile Path workDir;
     private volatile Runtime runtime;
+    private volatile Engine engine;
     private volatile boolean enabled = true;
     
     public WikiServiceImpl(WikiGenerator wikiGenerator,
@@ -49,7 +50,30 @@ public class WikiServiceImpl {
         }).thenReturn(true);
     }
     
+    /**
+     * 设置 Agent 引擎实例
+     * <p>
+     * 由外部（如 WikiCommandHandler）在调用 generate 前注入 Engine，
+     * 使 WikiGenerator 能够通过 Agent 引擎驱动文档生成。
+     *
+     * @param engine Agent 引擎实例
+     */
+    public void setEngine(Engine engine) {
+        this.engine = engine;
+    }
+    
     public Mono<WikiResult> generate(WikiQuery query) {
+        return generate(query, this.engine);
+    }
+    
+    /**
+     * 通过 Agent 引擎生成 Wiki 文档
+     *
+     * @param query  Wiki 查询参数
+     * @param engine Agent 引擎实例
+     * @return 生成结果
+     */
+    public Mono<WikiResult> generate(WikiQuery query, Engine engine) {
         if (!isEnabled()) {
             return Mono.just(WikiResult.error("Wiki 功能未启用"));
         }
@@ -61,16 +85,12 @@ public class WikiServiceImpl {
         
         Path wikiPath = projectRoot.resolve(".jimi").resolve("wiki");
         
-        // 从 Runtime 获取 LLM
-
-        LLM llm = runtime != null ? runtime.getLlm() : null;
-        if (llm == null) {
-            // 没有 LLM 时生成占位文档
-            log.info("未配置 LLM，生成占位 Wiki 文档");
-            return generatePlaceholderWiki(wikiPath, projectRoot);
+        if (engine == null) {
+            log.info("未提供 Agent 引擎，生成占位 Wiki 文档");
+            return generatePlaceholderWiki(wikiPath);
         }
         
-        return Mono.fromFuture(wikiGenerator.generateWiki(wikiPath, projectRoot.toString(), llm))
+        return Mono.fromFuture(wikiGenerator.generateWiki(wikiPath, projectRoot.toString(), engine))
                 .map(result -> {
                     if (result.isSuccess()) {
                         return WikiResult.builder()
@@ -89,23 +109,21 @@ public class WikiServiceImpl {
     }
     
     /**
-     * 生成占位 Wiki 文档（无 Engine 时使用）
+     * 生成占位 Wiki 文档（无 Agent 引擎时使用）
      */
-    private Mono<WikiResult> generatePlaceholderWiki(Path wikiPath, Path projectRoot) {
+    private Mono<WikiResult> generatePlaceholderWiki(Path wikiPath) {
         return Mono.fromCallable(() -> {
             try {
                 Files.createDirectories(wikiPath);
                 
-                // 生成 README
                 Path readmePath = wikiPath.resolve("README.md");
                 StringBuilder readme = new StringBuilder();
                 readme.append("# 项目 Wiki\n\n");
                 readme.append("> 生成时间: ").append(java.time.LocalDateTime.now()).append("\n\n");
                 readme.append("此文档待完善。\n\n");
-                readme.append("提示：请配置 LLM 以启用智能生成功能。\n");
+                readme.append("提示：请配置 Agent 引擎以启用智能生成功能。\n");
                 Files.writeString(readmePath, readme.toString());
                 
-                // 生成架构文档目录
                 Path archDir = wikiPath.resolve("architecture");
                 Files.createDirectories(archDir);
                 

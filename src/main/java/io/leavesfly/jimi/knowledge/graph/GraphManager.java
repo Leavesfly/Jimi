@@ -268,6 +268,9 @@ public class GraphManager {
 
         Path storagePath = resolveStoragePath();
         log.info("Saving code graph to: {}", storagePath);
+        
+        // 设置存储路径
+        graphStore.setStoragePath(storagePath);
 
         return graphStore.save()
                 .doOnSuccess(success -> {

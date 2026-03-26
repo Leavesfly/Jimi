@@ -1,4 +1,4 @@
-package io.leavesfly.jimi.core.engine.executor;
+package io.leavesfly.jimi.core.engine;
 
 import lombok.Getter;
 import lombok.Setter;

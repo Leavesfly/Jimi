@@ -1,5 +1,6 @@
 package io.leavesfly.jimi.tool.skill;
 
+import io.leavesfly.jimi.common.HttpClientConstants;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -35,9 +36,6 @@ public class SkillsInstaller {
 
     private static final String GITHUB_RAW_BASE = "https://raw.githubusercontent.com";
     private static final String GITHUB_ARCHIVE_BASE = "https://github.com";
-    private static final int BUFFER_SIZE = 8192;
-    private static final int CONNECT_TIMEOUT = 10000;
-    private static final int READ_TIMEOUT = 30000;
 
     @Autowired
     private SkillLoader skillLoader;
@@ -204,7 +202,9 @@ public class SkillsInstaller {
             // 清理失败的安装
             try {
                 deleteDirectory(targetDir);
-            } catch (Exception ignored) {}
+            } catch (Exception cleanupEx) {
+                log.warn("清理失败的安装目录失败: {}", targetDir, cleanupEx);
+            }
             throw new RuntimeException("复制技能文件失败: " + e.getMessage(), e);
         }
     }
@@ -217,31 +217,33 @@ public class SkillsInstaller {
 
         URL url = new URL(urlString);
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-        conn.setConnectTimeout(CONNECT_TIMEOUT);
-        conn.setReadTimeout(READ_TIMEOUT);
-        conn.setRequestProperty("User-Agent", "Jimi-SkillsInstaller/1.0");
+        try {
+            conn.setConnectTimeout(HttpClientConstants.CONNECT_TIMEOUT);
+            conn.setReadTimeout(HttpClientConstants.READ_TIMEOUT);
+            conn.setRequestProperty("User-Agent", "Jimi-SkillsInstaller/1.0");
 
-        // 处理重定向
-        int responseCode = conn.getResponseCode();
-        if (responseCode == HttpURLConnection.HTTP_MOVED_TEMP ||
-            responseCode == HttpURLConnection.HTTP_MOVED_PERM ||
-            responseCode == HttpURLConnection.HTTP_SEE_OTHER) {
-            String newUrl = conn.getHeaderField("Location");
-            conn.disconnect();
-            downloadFile(newUrl, targetPath);
-            return;
-        }
+            // 处理重定向
+            int responseCode = conn.getResponseCode();
+            if (responseCode == HttpURLConnection.HTTP_MOVED_TEMP ||
+                responseCode == HttpURLConnection.HTTP_MOVED_PERM ||
+                responseCode == HttpURLConnection.HTTP_SEE_OTHER) {
+                String newUrl = conn.getHeaderField("Location");
+                conn.disconnect();
+                downloadFile(newUrl, targetPath);
+                return;
+            }
 
-        if (responseCode != HttpURLConnection.HTTP_OK) {
-            throw new RuntimeException("下载失败，HTTP 状态码: " + responseCode);
-        }
+            if (responseCode != HttpURLConnection.HTTP_OK) {
+                throw new RuntimeException("下载失败，HTTP 状态码: " + responseCode);
+            }
 
-        try (InputStream in = new BufferedInputStream(conn.getInputStream());
-             FileOutputStream out = new FileOutputStream(targetPath.toFile())) {
-            byte[] buffer = new byte[BUFFER_SIZE];
-            int bytesRead;
-            while ((bytesRead = in.read(buffer)) != -1) {
-                out.write(buffer, 0, bytesRead);
+            try (InputStream in = new BufferedInputStream(conn.getInputStream());
+                 FileOutputStream out = new FileOutputStream(targetPath.toFile())) {
+                byte[] buffer = new byte[HttpClientConstants.BUFFER_SIZE];
+                int bytesRead;
+                while ((bytesRead = in.read(buffer)) != -1) {
+                    out.write(buffer, 0, bytesRead);
+                }
             }
         } finally {
             conn.disconnect();
@@ -270,7 +272,7 @@ public class SkillsInstaller {
                 } else {
                     Files.createDirectories(entryPath.getParent());
                     try (FileOutputStream fos = new FileOutputStream(entryPath.toFile())) {
-                        byte[] buffer = new byte[BUFFER_SIZE];
+                        byte[] buffer = new byte[HttpClientConstants.BUFFER_SIZE];
                         int bytesRead;
                         while ((bytesRead = zis.read(buffer)) != -1) {
                             fos.write(buffer, 0, bytesRead);

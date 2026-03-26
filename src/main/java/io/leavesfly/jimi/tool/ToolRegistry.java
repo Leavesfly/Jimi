@@ -11,6 +11,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Mono;
 
+import io.leavesfly.jimi.exception.ToolExecutionException;
+
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
@@ -132,12 +134,21 @@ public class ToolRegistry {
 
     /**
      * 执行工具（原始类型调用）
+     * 包含运行时类型检查以防止 ClassCastException
      */
     @SuppressWarnings("unchecked")
     private <P> Mono<ToolResult> executeToolUnchecked(Tool<?> tool, Object params) {
-        Tool<P> typedTool = (Tool<P>) tool;
-        P typedParams = (P) params;
-        return typedTool.execute(typedParams);
+        try {
+            Tool<P> typedTool = (Tool<P>) tool;
+            P typedParams = (P) params;
+            return typedTool.execute(typedParams);
+        } catch (ClassCastException e) {
+            log.error("Parameter type mismatch for tool: {}, expected: {}, actual: {}",
+                    tool.getName(), tool.getParamsType().getName(),
+                    params != null ? params.getClass().getName() : "null", e);
+            return Mono.error(new ToolExecutionException(
+                    tool.getName(), "Parameter type mismatch", e));
+        }
     }
 
     /**

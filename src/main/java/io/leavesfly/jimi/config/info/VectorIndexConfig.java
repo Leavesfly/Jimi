@@ -55,21 +55,21 @@ public class VectorIndexConfig {
      */
     @JsonProperty("embedding_provider")
     @Builder.Default
-    private String embeddingProvider = "local";
+    private String embeddingProvider = "qwen";
 
     /**
      * 嵌入模型名称
      */
     @JsonProperty("embedding_model")
     @Builder.Default
-    private String embeddingModel = "all-minilm-l6-v2";
+    private String embeddingModel = "text-embedding-v2";
 
     /**
      * 向量维度（由嵌入模型决定）
      */
     @JsonProperty("embedding_dimension")
     @Builder.Default
-    private int embeddingDimension = 384;
+    private int embeddingDimension = 1024;
 
     /**
      * 存储类型（memory, file等）

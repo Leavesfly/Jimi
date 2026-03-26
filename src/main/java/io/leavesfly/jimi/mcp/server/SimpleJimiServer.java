@@ -51,8 +51,10 @@ public class SimpleJimiServer {
                 if (line.trim().isEmpty()) continue;
                 processRequest(line);
             }
-        } catch (Exception e) {
-            log.error("Server error", e);
+        } catch (IOException e) {
+            log.error("Server IO error", e);
+        } catch (RuntimeException e) {
+            log.error("Server runtime error", e);
         }
     }
     

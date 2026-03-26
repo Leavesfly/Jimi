@@ -88,42 +88,70 @@ public abstract class AbstractJsonRpcClient implements JsonRpcClient {
     /**
      * 解析 content 字段为 Content 对象列表
      * 将 JSON 数据转换为具体的 Content 子类实例
+     * 包含类型安全检查以防止 ClassCastException
      */
     @SuppressWarnings("unchecked")
-    private static List<MCPSchema.Content> parseContents(Object contentObj) {
+    private List<MCPSchema.Content> parseContents(Object contentObj) {
         List<MCPSchema.Content> contents = new ArrayList<>();
 
         if (!(contentObj instanceof List)) {
             return contents;
         }
 
-        List<Map<String, Object>> contentList = (List<Map<String, Object>>) contentObj;
+        List<?> contentList = (List<?>) contentObj;
 
-        for (Map<String, Object> item : contentList) {
-            String type = (String) item.get("type");
+        for (Object element : contentList) {
+            // 类型安全检查：确保每个元素是 Map
+            if (!(element instanceof Map)) {
+                log.warn("Skipping non-Map element in content list: {}",
+                        element != null ? element.getClass().getName() : "null");
+                continue;
+            }
+
+            Map<String, Object> item = (Map<String, Object>) element;
+            Object typeObj = item.get("type");
+            // 类型安全检查：确保 type 字段是 String
+            if (!(typeObj instanceof String)) {
+                log.warn("Skipping content item with invalid type field: {}",
+                        typeObj != null ? typeObj.getClass().getName() : "null");
+                continue;
+            }
+            String type = (String) typeObj;
 
             if ("text".equals(type)) {
+                Object textObj = item.get("text");
+                String text = (textObj instanceof String) ? (String) textObj : null;
                 contents.add(MCPSchema.TextContent.builder()
                         .type("text")
-                        .text((String) item.get("text"))
+                        .text(text)
                         .build());
             } else if ("image".equals(type)) {
+                Object dataObj = item.get("data");
+                Object mimeTypeObj = item.get("mimeType");
                 contents.add(MCPSchema.ImageContent.builder()
                         .type("image")
-                        .data((String) item.get("data"))
-                        .mimeType((String) item.get("mimeType"))
+                        .data((dataObj instanceof String) ? (String) dataObj : null)
+                        .mimeType((mimeTypeObj instanceof String) ? (String) mimeTypeObj : null)
                         .build());
             } else if ("resource".equals(type)) {
-                Map<String, Object> resource = (Map<String, Object>) item.get("resource");
-                if (resource != null) {
+                Object resourceObj = item.get("resource");
+                // 类型安全检查：确保 resource 字段是 Map
+                if (resourceObj instanceof Map) {
+                    Map<String, Object> resource = (Map<String, Object>) resourceObj;
+                    Object uriObj = resource.get("uri");
+                    Object resMimeTypeObj = resource.get("mimeType");
+                    Object blobObj = resource.get("blob");
                     contents.add(MCPSchema.EmbeddedResource.builder()
                             .type("resource")
                             .resource(MCPSchema.ResourceContents.builder()
-                                    .uri((String) resource.get("uri"))
-                                    .mimeType((String) resource.get("mimeType"))
-                                    .blob((String) resource.get("blob"))
+                                    .uri((uriObj instanceof String) ? (String) uriObj : null)
+                                    .mimeType((resMimeTypeObj instanceof String) ? (String) resMimeTypeObj : null)
+                                    .blob((blobObj instanceof String) ? (String) blobObj : null)
                                     .build())
                             .build());
+                } else if (resourceObj != null) {
+                    log.warn("Skipping resource content with invalid resource field: {}",
+                            resourceObj.getClass().getName());
                 }
             }
         }

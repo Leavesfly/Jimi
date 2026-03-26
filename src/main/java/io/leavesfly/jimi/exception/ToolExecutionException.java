@@ -18,6 +18,11 @@ public class ToolExecutionException extends JimiException {
         this.toolName = toolName;
     }
     
+    public ToolExecutionException(String toolName, Throwable cause) {
+        super(String.format("Tool '%s' execution failed: %s", toolName, cause.getMessage()), cause);
+        this.toolName = toolName;
+    }
+    
     public String getToolName() {
         return toolName;
     }

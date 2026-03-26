@@ -53,16 +53,22 @@ public class StdIoJsonRpcClient extends AbstractJsonRpcClient {
 
         pb.redirectError(ProcessBuilder.Redirect.INHERIT);
 
+        Process startedProcess = null;
         try {
-            this.process = pb.start();
-            this.writer = new BufferedWriter(new OutputStreamWriter(process.getOutputStream()));
-            this.reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+            startedProcess = pb.start();
+            this.writer = new BufferedWriter(new OutputStreamWriter(startedProcess.getOutputStream()));
+            this.reader = new BufferedReader(new InputStreamReader(startedProcess.getInputStream()));
+            this.process = startedProcess;
 
             this.readerThread = new Thread(this::readLoop, "MCP-Reader");
             this.readerThread.setDaemon(true);
             this.readerThread.start();
         } catch (IOException e) {
             log.error("Failed to start MCP process: {}", e.getMessage());
+            // 清理已启动的进程
+            if (startedProcess != null) {
+                startedProcess.destroy();
+            }
             throw e;
         }
     }

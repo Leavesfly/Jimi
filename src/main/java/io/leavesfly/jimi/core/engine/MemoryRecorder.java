@@ -1,4 +1,4 @@
-package io.leavesfly.jimi.core.engine.executor;
+package io.leavesfly.jimi.core.engine;
 
 import io.leavesfly.jimi.core.engine.context.Context;
 import io.leavesfly.jimi.knowledge.memory.*;

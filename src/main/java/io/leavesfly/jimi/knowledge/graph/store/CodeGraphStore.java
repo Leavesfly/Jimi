@@ -173,6 +173,14 @@ public interface CodeGraphStore {
     Mono<Boolean> load(java.nio.file.Path graphPath);
     
     /**
+     * 设置图存储路径
+     * 用于 save() 方法确定存储位置
+     * 
+     * @param storagePath 存储路径
+     */
+    void setStoragePath(java.nio.file.Path storagePath);
+    
+    /**
      * 图统计信息
      */
     @lombok.Data

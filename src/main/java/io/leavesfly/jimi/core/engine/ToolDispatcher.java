@@ -1,4 +1,4 @@
-package io.leavesfly.jimi.core.engine.executor;
+package io.leavesfly.jimi.core.engine;
 
 
 import io.leavesfly.jimi.core.engine.context.Context;
@@ -14,7 +14,6 @@ import io.leavesfly.jimi.ui.DebugLogger;
 import io.leavesfly.jimi.tool.Tool;
 import io.leavesfly.jimi.tool.ToolRegistry;
 import io.leavesfly.jimi.tool.ToolResult;
-import io.leavesfly.jimi.util.SpringContextUtils;
 import io.leavesfly.jimi.wire.Wire;
 import io.leavesfly.jimi.wire.message.ToolCallMessage;
 import io.leavesfly.jimi.wire.message.ToolResultMessage;
@@ -54,22 +53,21 @@ public class ToolDispatcher {
     private final Path workDir;
 
     /**
-     * 基础构造函数
-     */
-    public ToolDispatcher(ToolRegistry toolRegistry) {
-        this(toolRegistry, null);
-    }
-
-    /**
      * 带工作目录的构造函数（支持 Hook 触发）
+     * 
+     * @param toolRegistry 工具注册表
+     * @param workDir 工作目录
+     * @param wire 消息总线
+     * @param toolErrorTracker 工具错误跟踪器
+     * @param hookRegistry Hook 注册表
      */
-    public ToolDispatcher(ToolRegistry toolRegistry, Path workDir) {
+    public ToolDispatcher(ToolRegistry toolRegistry, Path workDir, Wire wire, 
+                          ToolErrorTracker toolErrorTracker, HookRegistry hookRegistry) {
         this.toolRegistry = toolRegistry;
         this.workDir = workDir;
-        wire = SpringContextUtils.getBean(Wire.class);
-
-        toolErrorTracker = SpringContextUtils.getBean(ToolErrorTracker.class);
-        this.hookRegistry = SpringContextUtils.getBean(HookRegistry.class);
+        this.wire = wire;
+        this.toolErrorTracker = toolErrorTracker;
+        this.hookRegistry = hookRegistry;
     }
 
 

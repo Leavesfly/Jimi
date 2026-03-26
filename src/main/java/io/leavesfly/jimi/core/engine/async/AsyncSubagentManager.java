@@ -6,12 +6,15 @@ import io.leavesfly.jimi.core.agent.AgentSpec;
 import io.leavesfly.jimi.core.AgentExecutor;
 import io.leavesfly.jimi.core.JimiEngine;
 import io.leavesfly.jimi.core.compaction.SimpleCompaction;
+import io.leavesfly.jimi.core.engine.ContextManager;
+import io.leavesfly.jimi.core.engine.MemoryRecorder;
+import io.leavesfly.jimi.core.engine.ResponseProcessor;
+import io.leavesfly.jimi.core.engine.hook.HookRegistry;
 import io.leavesfly.jimi.core.engine.runtime.Runtime;
 import io.leavesfly.jimi.core.engine.context.Context;
 import io.leavesfly.jimi.llm.message.Message;
 import io.leavesfly.jimi.llm.message.MessageRole;
 import io.leavesfly.jimi.llm.message.TextPart;
-import io.leavesfly.jimi.tool.Tool;
 import io.leavesfly.jimi.tool.ToolProvider;
 import io.leavesfly.jimi.tool.ToolRegistry;
 import io.leavesfly.jimi.tool.ToolRegistryFactory;
@@ -100,6 +103,16 @@ public class AsyncSubagentManager {
 
     @Autowired
     private AsyncSubagentPersistence persistence;
+
+    // ==================== AgentExecutor 依赖组件 ====================
+    @Autowired
+    private MemoryRecorder memoryRecorder;
+    @Autowired
+    private ResponseProcessor responseProcessor;
+    @Autowired
+    private ContextManager contextManager;
+    @Autowired
+    private HookRegistry hookRegistry;
 
     /**
      * 启动 Watch 模式子代理（持续监控）
@@ -253,6 +266,10 @@ public class AsyncSubagentManager {
                         .wire(subWire)
                         .toolRegistry(toolRegistry)
                         .compaction(new SimpleCompaction())
+                        .memoryRecorder(memoryRecorder)
+                        .responseProcessor(responseProcessor)
+                        .contextManager(contextManager)
+                        .hookRegistry(hookRegistry)
                         .isSubagent(true)
                         .build();
                 JimiEngine engine = JimiEngine.create(executor);
@@ -446,6 +463,10 @@ public class AsyncSubagentManager {
                         .wire(subWire)
                         .toolRegistry(toolRegistry)
                         .compaction(new SimpleCompaction())
+                        .memoryRecorder(memoryRecorder)
+                        .responseProcessor(responseProcessor)
+                        .contextManager(contextManager)
+                        .hookRegistry(hookRegistry)
                         .isSubagent(true)
                         .build();
                 JimiEngine engine = JimiEngine.create(fireAndForgetExecutor);

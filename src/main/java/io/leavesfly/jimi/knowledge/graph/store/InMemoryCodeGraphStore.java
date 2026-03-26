@@ -35,6 +35,12 @@ public class InMemoryCodeGraphStore implements CodeGraphStore {
     // 图存储路径
     private Path graphPath;
     
+    @Override
+    public void setStoragePath(Path storagePath) {
+        this.graphPath = storagePath;
+        log.debug("Graph storage path set to: {}", storagePath);
+    }
+    
     // 实体存储: entityId -> CodeEntity
     private final Map<String, CodeEntity> entities = new ConcurrentHashMap<>();
     

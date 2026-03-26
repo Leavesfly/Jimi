@@ -364,10 +364,18 @@ public class InMemoryVectorStore implements VectorStore {
                 Path md5File = indexPath.resolve("md5_cache.json");
                 if (Files.exists(md5File)) {
                     @SuppressWarnings("unchecked")
-                    Map<String, String> loadedMD5 = objectMapper.readValue(
-                            md5File.toFile(), Map.class);
+                    Map<?, ?> rawMap = objectMapper.readValue(md5File.toFile(), Map.class);
                     fileMD5Cache.clear();
-                    fileMD5Cache.putAll(loadedMD5);
+                    // 类型安全检查：验证 Map 中的键值类型
+                    for (Map.Entry<?, ?> entry : rawMap.entrySet()) {
+                        if (entry.getKey() instanceof String && entry.getValue() instanceof String) {
+                            fileMD5Cache.put((String) entry.getKey(), (String) entry.getValue());
+                        } else {
+                            log.warn("Skipping invalid MD5 cache entry: key={}, value={}",
+                                    entry.getKey() != null ? entry.getKey().getClass().getName() : "null",
+                                    entry.getValue() != null ? entry.getValue().getClass().getName() : "null");
+                        }
+                    }
                     log.debug("Loaded MD5 cache: {} files", fileMD5Cache.size());
                 }
 

@@ -140,16 +140,16 @@ public class WikiCommandHandler implements CommandHandler {
             Files.createDirectories(wikiPath);
             log.info("Created wiki directory: {}", wikiPath);
 
-            // 使用 WikiGenerator 并发生成（如果可用）
+            // 使用 WikiGenerator + Agent 引擎生成（如果可用）
             if (wikiGenerator != null) {
-                out.printInfo("⚡ 使用并发生成引擎...");
+                out.printInfo("⚡ 使用 Agent 引擎生成...");
                 out.println();
 
                 long startTime = System.currentTimeMillis();
 
-                // 异步生成
+                // 通过 Agent 引擎驱动生成
                 WikiGenerator.GenerationResult result = wikiGenerator
-                        .generateWiki(wikiPath, workDir, context.getSoul().getRuntime().getLlm())
+                        .generateWiki(wikiPath, workDir, context.getSoul())
                         .join();
 
                 long duration = System.currentTimeMillis() - startTime;
@@ -164,14 +164,14 @@ public class WikiCommandHandler implements CommandHandler {
                 } else {
                     out.println();
                     out.printError("❌ Wiki生成失败: " + result.getErrorMessage());
-                    out.printInfo("💡 尝试使用传统模式...");
+                    out.printInfo("💡 尝试使用 Agent 引擎直接生成...");
 
-                    // Fallback 到传统模式
+                    // Fallback 到 Agent 引擎直接生成模式
                     generateWithPrompt(context, workDir, out);
                 }
             } else {
-                // 使用传统 Prompt 生成模式
-                out.printInfo("📝 使用 LLM 生成模式...");
+                // 直接使用 Agent 引擎生成
+                out.printInfo("📝 使用 Agent 引擎生成...");
                 out.println();
                 generateWithPrompt(context, workDir, out);
             }
@@ -363,10 +363,9 @@ public class WikiCommandHandler implements CommandHandler {
             return;
         }
 
-        if (wikiIndexManager == null || !wikiIndexManager.isAvailable()) {
+        if (wikiIndexManager == null) {
             out.println();
-            out.printWarning("⚠️  向量索引未启用，无法进行语义搜索");
-            out.printInfo("提示：请配置 vector_index 并执行 /index build");
+            out.printWarning("⚠️  Wiki 索引管理器未初始化，无法搜索");
             out.println();
             return;
         }
@@ -377,9 +376,12 @@ public class WikiCommandHandler implements CommandHandler {
 
             out.println();
             out.printStatus("🔍 正在搜索: " + query);
+            if (!wikiIndexManager.isVectorSearchAvailable()) {
+                out.printInfo("💡 使用文本关键词匹配模式");
+            }
             out.println();
 
-            // 搜索Wiki
+            // 搜索Wiki（自动选择向量搜索或文本匹配）
             List<WikiIndexManager.WikiSearchResult> results = wikiIndexManager.searchWiki(query, 5);
 
             if (results.isEmpty()) {
@@ -390,7 +392,7 @@ public class WikiCommandHandler implements CommandHandler {
 
                 for (int i = 0; i < results.size(); i++) {
                     WikiIndexManager.WikiSearchResult result = results.get(i);
-                    out.printInfo(String.format("%d. %s (相似度: %.2f)",
+                    out.printInfo(String.format("%d. %s (相关度: %.2f)",
                             i + 1, result.getDocPath(), result.getScore()));
 
                     // 显示内容片段
@@ -427,10 +429,9 @@ public class WikiCommandHandler implements CommandHandler {
             return;
         }
 
-        if (wikiIndexManager == null || !wikiIndexManager.isAvailable()) {
+        if (wikiIndexManager == null) {
             out.println();
-            out.printWarning("⚠️  向量索引未启用，无法进行问答");
-            out.printInfo("提示：请配置 vector_index 并执行 /index build");
+            out.printWarning("⚠️  Wiki 索引管理器未初始化，无法进行问答");
             out.println();
             return;
         }

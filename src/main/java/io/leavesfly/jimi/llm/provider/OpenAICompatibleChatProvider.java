@@ -39,13 +39,7 @@ public class OpenAICompatibleChatProvider implements ChatProvider {
     private final ObjectMapper objectMapper;
     private final String providerName;
     private final RateLimiter rateLimiter;  // 限流器
-
-    // <think>标签解析状态（流式处理）
-    private boolean insideThinkTag = false;
-    private StringBuilder thinkTagBuffer = new StringBuilder();
-
-    // API错误标志位，用于立即终止流
-    private volatile boolean apiErrorOccurred = false;
+    private final StreamResponseProcessor streamProcessor;  // 流式响应处理器
 
     public OpenAICompatibleChatProvider(
             String modelName,
@@ -89,6 +83,9 @@ public class OpenAICompatibleChatProvider implements ChatProvider {
 
         this.webClient = builder.build();
 
+        // 初始化流式响应处理器
+        this.streamProcessor = new StreamResponseProcessor(objectMapper, providerName);
+
         log.info("Created {} ChatProvider: model={}, baseUrl={}",
                 providerName, modelName, providerConfig.getBaseUrl());
     }
@@ -118,7 +115,9 @@ public class OpenAICompatibleChatProvider implements ChatProvider {
                 if (DebugLogger.isEnabled()) {
                     try {
                         DebugLogger.logLLMRequestBody(objectMapper.writeValueAsString(requestBody));
-                    } catch (Exception ignored) {}
+                    } catch (Exception e) {
+                        log.debug("Failed to serialize request body for debug logging", e);
+                    }
                 }
 
                 return webClient.post()
@@ -170,9 +169,7 @@ public class OpenAICompatibleChatProvider implements ChatProvider {
                 applyRateLimit();
 
                 // 重置流式处理状态(每次新请求都重置)
-                insideThinkTag = false;
-                thinkTagBuffer = new StringBuilder();
-                apiErrorOccurred = false;  // 重置错误标志
+                streamProcessor.reset();
 
                 ObjectNode requestBody = buildRequestBody(systemPrompt, history, tools, true);
 
@@ -183,7 +180,9 @@ public class OpenAICompatibleChatProvider implements ChatProvider {
                 if (DebugLogger.isEnabled()) {
                     try {
                         DebugLogger.logLLMRequestBody(objectMapper.writeValueAsString(requestBody));
-                    } catch (Exception ignored) {}
+                    } catch (Exception e) {
+                        log.debug("Failed to serialize request body for debug logging", e);
+                    }
                 }
 
                 return webClient.post()
@@ -211,11 +210,11 @@ public class OpenAICompatibleChatProvider implements ChatProvider {
                         .filter(data -> data != null && !data.isEmpty())
                         .flatMap(data -> {
                             // 检查是否已经发生错误，如果是则跳过所有后续数据
-                            if (apiErrorOccurred) {
+                            if (streamProcessor.hasApiError()) {
                                 return Mono.empty();
                             }
                             try {
-                                ChatCompletionChunk chunk = parseStreamChunk(data);
+                                ChatCompletionChunk chunk = streamProcessor.parseChunk(data);
                                 return Mono.just(chunk);
                             } catch (Exception e) {
                                 return Mono.empty();
@@ -434,223 +433,6 @@ public class OpenAICompatibleChatProvider implements ChatProvider {
         }
     }
 
-    private ChatCompletionChunk parseStreamChunk(String data) {
-        try {
-            JsonNode chunk = objectMapper.readTree(data);
-
-            // 检查是否为错误响应
-            if (chunk.has("type") && "error".equals(chunk.get("type").asText())) {
-                handleApiError(chunk);
-                apiErrorOccurred = true;  // 设置错误标志
-                // 返回DONE以结束流程
-                return ChatCompletionChunk.builder()
-                        .type(ChatCompletionChunk.ChunkType.DONE)
-                        .build();
-            }
-
-            // 检查 choices 是否存在且非空
-            if (!chunk.has("choices") || chunk.get("choices").isNull() || chunk.get("choices").isEmpty()) {
-                log.warn("{} stream chunk missing choices: {}", providerName, data);
-                return ChatCompletionChunk.builder()
-                        .type(ChatCompletionChunk.ChunkType.CONTENT)
-                        .contentDelta("")
-                        .build();
-            }
-
-            JsonNode choice = chunk.get("choices").get(0);
-            JsonNode delta = choice.get("delta");
-
-            // 检查是否完成
-            if (choice.has("finish_reason") && !choice.get("finish_reason").isNull()) {
-                ChatCompletionChunk.ChatCompletionChunkBuilder builder = ChatCompletionChunk.builder()
-                        .type(ChatCompletionChunk.ChunkType.DONE);
-
-                // 解析使用统计
-                if (chunk.has("usage") && !chunk.get("usage").isNull()) {
-                    JsonNode usageNode = chunk.get("usage");
-                    // 检查每个字段是否存在
-                    if (usageNode.has("prompt_tokens") && usageNode.has("completion_tokens") && usageNode.has("total_tokens")) {
-                        builder.usage(ChatCompletionResult.Usage.builder()
-                                .promptTokens(usageNode.get("prompt_tokens").asInt())
-                                .completionTokens(usageNode.get("completion_tokens").asInt())
-                                .totalTokens(usageNode.get("total_tokens").asInt())
-                                .build());
-                    }
-                }
-
-                return builder.build();
-            }
-
-            // 检查 delta 是否存在
-            if (delta == null || delta.isNull()) {
-                return ChatCompletionChunk.builder()
-                        .type(ChatCompletionChunk.ChunkType.CONTENT)
-                        .contentDelta("")
-                        .build();
-            }
-
-            // 处理推理内容（支持多种字段名）
-            // 1. reasoning_content - DeepSeek-R1 使用
-            // 2. reasoning - Ollama qwen3-thinking 使用
-            // 3. 记录原始 delta 以便调试
-            StringBuilder keysBuilder = new StringBuilder();
-            delta.fieldNames().forEachRemaining(key -> keysBuilder.append(key).append(", "));
-
-            // 检查 reasoning_content 字段
-            boolean hasReasoningContent = delta.has("reasoning_content");
-            boolean isReasoningContentNull = hasReasoningContent && delta.get("reasoning_content").isNull();
-
-            String reasoningField = null;
-            if (delta.has("reasoning_content") && !delta.get("reasoning_content").isNull()) {
-                reasoningField = delta.get("reasoning_content").asText();
-            } else if (delta.has("reasoning") && !delta.get("reasoning").isNull()) {
-                reasoningField = delta.get("reasoning").asText();
-            }
-
-            if (reasoningField != null && !reasoningField.isEmpty()) {
-                return ChatCompletionChunk.builder()
-                        .type(ChatCompletionChunk.ChunkType.CONTENT)
-                        .contentDelta(reasoningField)
-                        .isReasoning(true)  // 标记为推理内容
-                        .build();
-            }
-
-            // 处理普通内容增量
-            if (delta.has("content") && !delta.get("content").isNull()) {
-                String contentDelta = delta.get("content").asText();
-                if (contentDelta != null && !contentDelta.isEmpty()) {
-                    // 否则解析 <think> 标签
-                    return parseThinkTags(contentDelta);
-                }
-            }
-
-            // 处理工具调用
-            if (delta.has("tool_calls")) {
-                JsonNode toolCallsArray = delta.get("tool_calls");
-                if (toolCallsArray.isArray() && toolCallsArray.size() > 0) {
-                    JsonNode toolCall = toolCallsArray.get(0);
-
-                    String toolCallId = toolCall.has("id") ? toolCall.get("id").asText() : null;
-                    String functionName = null;
-                    String argumentsDelta = null;
-
-                    if (toolCall.has("function")) {
-                        JsonNode function = toolCall.get("function");
-                        if (function.has("name") && !function.get("name").isNull()) {
-                            functionName = function.get("name").asText();
-                        }
-                        if (function.has("arguments") && !function.get("arguments").isNull()) {
-                            argumentsDelta = function.get("arguments").asText();
-                        }
-                    }
-
-                    return ChatCompletionChunk.builder()
-                            .type(ChatCompletionChunk.ChunkType.TOOL_CALL)
-                            .toolCallId(toolCallId)
-                            .functionName(functionName)
-                            .argumentsDelta(argumentsDelta)
-                            .build();
-                }
-            }
-
-            // 默认返回空内容块
-            return ChatCompletionChunk.builder()
-                    .type(ChatCompletionChunk.ChunkType.CONTENT)
-                    .contentDelta("")
-                    .build();
-
-        } catch (Exception e) {
-            // 静默处理解析错误，返回空内容继续流程
-            return ChatCompletionChunk.builder()
-                    .type(ChatCompletionChunk.ChunkType.CONTENT)
-                    .contentDelta("")
-                    .build();
-        }
-    }
-
-    /**
-     * 解析内容中的 <think> 标签
-     * 支持流式处理,正确识别标签边界
-     *
-     * @param contentDelta 内容增量
-     * @return 处理后的chunk
-     */
-    private ChatCompletionChunk parseThinkTags(String contentDelta) {
-        // 将缓冲区和Delta合并后再处理
-        thinkTagBuffer.append(contentDelta);
-        String fullContent = thinkTagBuffer.toString();
-
-        StringBuilder processedContent = new StringBuilder();
-        // 记录第一个实际字符的reasoning状态（而不是最后一个标签的状态）
-        Boolean contentIsReasoning = null;
-
-        int i = 0;
-        int lastProcessedIndex = 0; // 记录已处理的位置
-
-        while (i < fullContent.length()) {
-            // 检查是否遇到<think>标签开始
-            if (!insideThinkTag && fullContent.startsWith("<think>", i)) {
-                insideThinkTag = true;
-                i += 7; // 跳过"<think>"
-                lastProcessedIndex = i;
-                continue;
-            }
-
-            // 检查是否遇到</think>标签结束
-            if (insideThinkTag && fullContent.startsWith("</think>", i)) {
-                insideThinkTag = false;
-                i += 8; // 跳过"</think>"
-                lastProcessedIndex = i;
-                continue;
-            }
-
-            // 检查是否可能是部分标签(需要等待下一个chunk)
-            if (i >= fullContent.length() - 8) {
-                // 剩余的字符不够组成完整标签,检查是否是标签的开头
-                String remaining = fullContent.substring(i);
-                if ("<think>".startsWith(remaining) || "</think>".startsWith(remaining)) {
-                    break;
-                }
-            }
-
-            // 添加普通字符
-            processedContent.append(fullContent.charAt(i));
-            // 记录第一个实际字符时的reasoning状态
-            if (contentIsReasoning == null) {
-                contentIsReasoning = insideThinkTag;
-            }
-            lastProcessedIndex = i + 1;
-            i++;
-        }
-
-        // 更新缓冲区：保留未处理的部分
-        if (lastProcessedIndex < fullContent.length()) {
-            // 有未处理的部分（如部分标签），保留在缓冲区
-            thinkTagBuffer = new StringBuilder(fullContent.substring(lastProcessedIndex));
-        } else {
-            // 所有内容都处理完毕，清空缓冲区
-            thinkTagBuffer = new StringBuilder();
-        }
-
-        // 如果没有实际内容(只有标签),返回空chunk
-        if (processedContent.length() == 0) {
-            return ChatCompletionChunk.builder()
-                    .type(ChatCompletionChunk.ChunkType.CONTENT)
-                    .contentDelta("")
-                    .build();
-        }
-
-        // 返回处理后的内容,带上正确的reasoning标记（使用第一个字符时的状态）
-        boolean isReasoning = contentIsReasoning != null && contentIsReasoning;
-
-        return ChatCompletionChunk.builder()
-                .type(ChatCompletionChunk.ChunkType.CONTENT)
-                .contentDelta(processedContent.toString())
-                .isReasoning(isReasoning)
-                .build();
-    }
-
-
     /**
      * 校验 arguments 是否为有效的 JSON 格式
      */
@@ -675,54 +457,6 @@ public class OpenAICompatibleChatProvider implements ChatProvider {
     private void applyRateLimit() {
         if (rateLimiter != null) {
             rateLimiter.acquirePermit();
-        }
-    }
-
-    /**
-     * 处理API错误响应
-     * 输出友好的错误提示（不包含堆栈信息）
-     */
-    private void handleApiError(JsonNode errorResponse) {
-        if (!errorResponse.has("error")) {
-            log.warn("{} API 返回错误响应", providerName);
-            return;
-        }
-
-        JsonNode error = errorResponse.get("error");
-        String errorType = error.has("type") ? error.get("type").asText() : "unknown";
-        String errorMessage = error.has("message") ? error.get("message").asText() : "unknown error";
-        String httpCode = error.has("http_code") ? error.get("http_code").asText() : "unknown";
-
-        // 根据错误类型输出友好提示（不包含堆栈）
-        switch (errorType) {
-            case "insufficient_balance_error":
-                log.warn("\n========================================\n" +
-                                "{} API Error: 账户余额不足\n" +
-                                "解决方法: 请前往 {} 平台充值账户余额\n" +
-                                "========================================",
-                        providerName, providerName);
-                break;
-            case "rate_limit_error":
-                log.warn("{} API Error: 请求频率超限，请稍后重试", providerName);
-                break;
-            case "invalid_api_key":
-            case "authentication_error":
-                log.warn("{} API Error: API密钥无效，请检查配置", providerName);
-                break;
-            case "model_not_found":
-            case "invalid_model":
-                log.warn("{} API Error: 模型不存在，请检查配置中的model参数", providerName);
-                break;
-            case "context_length_exceeded":
-                log.warn("{} API Error: 上下文长度超限，请使用 /compress 或 /clear 命令", providerName);
-                break;
-            case "server_error":
-            case "internal_error":
-                log.warn("{} API Error: 服务器内部错误，请稍后重试", providerName);
-                break;
-            default:
-                log.warn("{} API Error: {} ({})", providerName, errorType, httpCode);
-                break;
         }
     }
 }

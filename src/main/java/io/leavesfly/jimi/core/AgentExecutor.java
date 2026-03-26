@@ -1,9 +1,13 @@
 package io.leavesfly.jimi.core;
 
+import io.leavesfly.jimi.common.HttpClientConstants;
 import io.leavesfly.jimi.core.agent.Agent;
 import io.leavesfly.jimi.core.compaction.Compaction;
+import io.leavesfly.jimi.core.engine.ContextManager;
+import io.leavesfly.jimi.core.engine.ExecutionState;
+import io.leavesfly.jimi.core.engine.MemoryRecorder;
+import io.leavesfly.jimi.core.engine.ResponseProcessor;
 import io.leavesfly.jimi.core.engine.context.Context;
-import io.leavesfly.jimi.core.engine.executor.*;
 import io.leavesfly.jimi.core.engine.hook.HookContext;
 import io.leavesfly.jimi.core.engine.hook.HookRegistry;
 import io.leavesfly.jimi.core.engine.hook.HookType;
@@ -17,7 +21,6 @@ import io.leavesfly.jimi.llm.message.Message;
 import io.leavesfly.jimi.llm.message.TextPart;
 import io.leavesfly.jimi.tool.ToolRegistry;
 
-import io.leavesfly.jimi.util.SpringContextUtils;
 import io.leavesfly.jimi.wire.Wire;
 import io.leavesfly.jimi.wire.message.*;
 import lombok.extern.slf4j.Slf4j;
@@ -79,14 +82,14 @@ public class AgentExecutor {
         this.isSubagent = builder.isSubagent;
         this.agentName = agent.getName();
 
-        // 初始化拆分组件（通过 SpringContextUtils 从容器获取原型 Bean）
+        // 初始化拆分组件
         this.executionState = new ExecutionState();
 
-        // 从 Spring 容器获取原型 Bean，然后设置依赖参数
-        this.memoryRecorder = SpringContextUtils.getBean(MemoryRecorder.class);
-        this.responseProcessor = SpringContextUtils.getBean(ResponseProcessor.class);
-        this.contextManager = SpringContextUtils.getBean(ContextManager.class);
-        this.hookRegistry = SpringContextUtils.getBean(HookRegistry.class);
+        // 通过 Builder 传入的依赖（由工厂类从 Spring 容器获取并传递）
+        this.memoryRecorder = Objects.requireNonNull(builder.memoryRecorder, "memoryRecorder is required");
+        this.responseProcessor = Objects.requireNonNull(builder.responseProcessor, "responseProcessor is required");
+        this.contextManager = Objects.requireNonNull(builder.contextManager, "contextManager is required");
+        this.hookRegistry = Objects.requireNonNull(builder.hookRegistry, "hookRegistry is required");
     }
 
 
@@ -124,6 +127,12 @@ public class AgentExecutor {
         private ToolRegistry toolRegistry;
         private Compaction compaction;
 
+        // 依赖组件（必需，由工厂类从 Spring 容器获取并传递）
+        private MemoryRecorder memoryRecorder;
+        private ResponseProcessor responseProcessor;
+        private ContextManager contextManager;
+        private HookRegistry hookRegistry;
+
         // 可选参数
         private boolean isSubagent = false;
 
@@ -159,6 +168,28 @@ public class AgentExecutor {
 
         public Builder compaction(Compaction compaction) {
             this.compaction = compaction;
+            return this;
+        }
+
+        // ==================== 依赖组件 ====================
+
+        public Builder memoryRecorder(MemoryRecorder memoryRecorder) {
+            this.memoryRecorder = memoryRecorder;
+            return this;
+        }
+
+        public Builder responseProcessor(ResponseProcessor responseProcessor) {
+            this.responseProcessor = responseProcessor;
+            return this;
+        }
+
+        public Builder contextManager(ContextManager contextManager) {
+            this.contextManager = contextManager;
+            return this;
+        }
+
+        public Builder hookRegistry(HookRegistry hookRegistry) {
+            this.hookRegistry = hookRegistry;
             return this;
         }
 
@@ -232,13 +263,14 @@ public class AgentExecutor {
                     .then(context.checkpoint(false))
                     .then(context.appendMessage(userMessage))
                     .then(context.updateTokenCount(newTokenCount))
-                    .doOnSuccess(v -> log.debug("Added user input: {} tokens (total: {})", userInputTokens, newTokenCount))
+                    .doOnSuccess(v -> log.info("Added user input: {} tokens (total: {})", userInputTokens, newTokenCount))
                     // Agent 主循环
                     .then(agentLoop(skipKnowledge))
 
                     .doOnSuccess(v -> {
                         log.info("Agent execution completed");
-                        memoryRecorder.recordTaskHistory(executionState, context, "success").subscribe();
+                        memoryRecorder.recordTaskHistory(executionState, context, "success")
+                            .subscribe(unused -> {}, error -> log.warn("Failed to record task history", error));
                         executionState.incrementTasksCompleted();
 
                         // 触发 POST_USER_INPUT hook（异步，不阻塞主流程）
@@ -248,11 +280,13 @@ public class AgentExecutor {
                                 .userInput(userInputText)
                                 .agentName(agentName)
                                 .build();
-                        triggerHookSafely(HookType.POST_USER_INPUT, postInputHookContext).subscribe();
+                        triggerHookSafely(HookType.POST_USER_INPUT, postInputHookContext)
+                            .subscribe(unused -> {}, error -> log.warn("Hook POST_USER_INPUT execution failed", error));
                     })
                     .doOnError(e -> {
                         log.error("Agent execution failed", e);
-                        memoryRecorder.recordTaskHistory(executionState, context, "failed").subscribe();
+                        memoryRecorder.recordTaskHistory(executionState, context, "failed")
+                            .subscribe(unused -> {}, error -> log.warn("Failed to record task history on error", error));
 
                         // 触发 ON_ERROR hook（异步，不阻塞主流程）
                         HookContext errorHookContext = HookContext.builder()
@@ -262,7 +296,8 @@ public class AgentExecutor {
                                 .errorStackTrace(getStackTraceString(e))
                                 .agentName(agentName)
                                 .build();
-                        triggerHookSafely(HookType.ON_ERROR, errorHookContext).subscribe();
+                        triggerHookSafely(HookType.ON_ERROR, errorHookContext)
+                            .subscribe(unused -> {}, error -> log.warn("Hook ON_ERROR execution failed", error));
                     });
         });
     }
@@ -278,12 +313,17 @@ public class AgentExecutor {
     }
 
     /**
-     * 获取异常堆栈字符串
+     * 获取异常堆栈字符串，限制最大长度
      */
     private String getStackTraceString(Throwable throwable) {
         java.io.StringWriter stringWriter = new java.io.StringWriter();
         throwable.printStackTrace(new java.io.PrintWriter(stringWriter));
-        return stringWriter.toString();
+        String result = stringWriter.toString();
+        // 限制堆栈字符串最大长度，防止内存问题
+        if (result.length() > HttpClientConstants.MAX_STACK_TRACE_LENGTH) {
+            return result.substring(0, HttpClientConstants.MAX_STACK_TRACE_LENGTH) + "\n... (truncated)";
+        }
+        return result;
     }
 
     /**
@@ -338,7 +378,7 @@ public class AgentExecutor {
         // 发送步骤开始消息
         wire.send(new StepBegin(globalStepNo, isSubagent, agentName));
 
-        log.debug("Agent '{}' local step {}, global step {}/{}",
+        log.info("Agent '{}' local step {}, global step {}/{}",
                 agentName != null ? agentName : "main", stepNo, globalStepNo, maxSteps);
 
         return Mono.defer(() -> {

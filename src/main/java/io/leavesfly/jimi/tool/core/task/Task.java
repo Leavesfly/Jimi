@@ -7,6 +7,10 @@ import io.leavesfly.jimi.core.agent.AgentRegistry;
 import io.leavesfly.jimi.core.agent.AgentSpec;
 import io.leavesfly.jimi.core.agent.SubagentSpec;
 import io.leavesfly.jimi.core.compaction.SimpleCompaction;
+import io.leavesfly.jimi.core.engine.ContextManager;
+import io.leavesfly.jimi.core.engine.MemoryRecorder;
+import io.leavesfly.jimi.core.engine.ResponseProcessor;
+import io.leavesfly.jimi.core.engine.hook.HookRegistry;
 import io.leavesfly.jimi.core.session.Session;
 import io.leavesfly.jimi.core.AgentExecutor;
 import io.leavesfly.jimi.core.JimiEngine;
@@ -14,7 +18,6 @@ import io.leavesfly.jimi.core.agent.Agent;
 import io.leavesfly.jimi.core.engine.context.Context;
 import io.leavesfly.jimi.llm.message.Message;
 import io.leavesfly.jimi.llm.message.MessageRole;
-import io.leavesfly.jimi.llm.message.TextPart;
 import io.leavesfly.jimi.core.engine.runtime.Runtime;
 import io.leavesfly.jimi.tool.AbstractTool;
 import io.leavesfly.jimi.tool.ToolResult;
@@ -98,6 +101,12 @@ public class Task extends AbstractTool<Task.Params> implements WireAware {
     private final AgentRegistry agentRegistry;
     private final ToolRegistryFactory toolRegistryFactory;
 
+    // AgentExecutor 依赖组件
+    private final MemoryRecorder memoryRecorder;
+    private final ResponseProcessor responseProcessor;
+    private final ContextManager contextManager;
+    private final HookRegistry hookRegistry;
+
     private final Map<String, Agent> subagents;
     private final Map<String, AgentSpec> subagentAgentSpecs;
     private Map<String, SubagentSpec> subagentSpecs;
@@ -139,12 +148,18 @@ public class Task extends AbstractTool<Task.Params> implements WireAware {
     }
 
     @Autowired
-    public Task(ObjectMapper objectMapper, AgentRegistry agentRegistry, ToolRegistryFactory toolRegistryFactory) {
+    public Task(ObjectMapper objectMapper, AgentRegistry agentRegistry, ToolRegistryFactory toolRegistryFactory,
+                MemoryRecorder memoryRecorder, ResponseProcessor responseProcessor,
+                ContextManager contextManager, HookRegistry hookRegistry) {
         super("Task", "Task tool (description will be set when initialized)", Params.class);
 
         this.objectMapper = objectMapper;
         this.agentRegistry = agentRegistry;
         this.toolRegistryFactory = toolRegistryFactory;
+        this.memoryRecorder = memoryRecorder;
+        this.responseProcessor = responseProcessor;
+        this.contextManager = contextManager;
+        this.hookRegistry = hookRegistry;
         this.subagents = new HashMap<>();
         this.subagentAgentSpecs = new HashMap<>();
     }
@@ -360,6 +375,10 @@ public class Task extends AbstractTool<Task.Params> implements WireAware {
                 .wire(parentWire != null ? parentWire : new WireImpl())
                 .toolRegistry(subToolRegistry)
                 .compaction(new SimpleCompaction())
+                .memoryRecorder(memoryRecorder)
+                .responseProcessor(responseProcessor)
+                .contextManager(contextManager)
+                .hookRegistry(hookRegistry)
                 .isSubagent(true)
                 .build();
         return JimiEngine.create(executor);

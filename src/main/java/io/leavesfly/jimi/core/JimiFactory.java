@@ -6,6 +6,10 @@ import io.leavesfly.jimi.core.agent.AgentSpec;
 import io.leavesfly.jimi.config.JimiConfig;
 import io.leavesfly.jimi.core.compaction.Compaction;
 
+import io.leavesfly.jimi.core.engine.ContextManager;
+import io.leavesfly.jimi.core.engine.MemoryRecorder;
+import io.leavesfly.jimi.core.engine.ResponseProcessor;
+import io.leavesfly.jimi.core.engine.hook.HookRegistry;
 import io.leavesfly.jimi.knowledge.KnowledgeService;
 import io.leavesfly.jimi.llm.LLM;
 import io.leavesfly.jimi.llm.LLMFactory;
@@ -52,6 +56,16 @@ public class JimiFactory {
     private Wire wire;  // 注入 Wire Bean，避免 new 创建
     @Autowired
     private Compaction compaction;  // 注入 Compaction Bean
+
+    // ==================== AgentExecutor 依赖组件 ====================
+    @Autowired
+    private MemoryRecorder memoryRecorder;
+    @Autowired
+    private ResponseProcessor responseProcessor;
+    @Autowired
+    private ContextManager contextManager;
+    @Autowired
+    private HookRegistry hookRegistry;
 
     // ==================== 组件提供者（封装可选依赖） ====================
     @Autowired
@@ -227,6 +241,10 @@ public class JimiFactory {
                         .wire(wire)
                         .toolRegistry(toolRegistry)
                         .compaction(compaction)
+                        .memoryRecorder(memoryRecorder)
+                        .responseProcessor(responseProcessor)
+                        .contextManager(contextManager)
+                        .hookRegistry(hookRegistry)
                         .build();
                 JimiEngine soul = JimiEngine.create(executor);
 
