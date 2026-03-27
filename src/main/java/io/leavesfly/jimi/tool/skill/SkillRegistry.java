@@ -438,6 +438,13 @@ public class SkillRegistry {
         sb.append("- install: 安装新技能（支持 GitHub 仓库或压缩包 URL）\n");
         sb.append("- create: 创建新技能 | edit: 编辑现有技能 | remove: 删除技能\n\n");
 
+        sb.append("## 触发规则\n");
+        sb.append("当用户的输入或当前任务涉及以下场景时，你应该主动使用 Skills(action='invoke', name='技能名称') 加载对应技能：\n");
+        sb.append("1. 用户输入中包含某个技能的触发词（triggers）\n");
+        sb.append("2. 用户的任务与某个技能的描述高度相关\n");
+        sb.append("3. 你在执行任务时遇到需要专业指导的领域，且有匹配的技能可用\n");
+        sb.append("加载技能后，请严格按照技能内容中的指令执行。\n\n");
+
         for (SkillSpec skill : skills) {
             sb.append("- **").append(skill.getName()).append("**");
             if (skill.getDescription() != null && !skill.getDescription().isEmpty()) {
@@ -448,8 +455,7 @@ public class SkillRegistry {
             }
             sb.append("\n");
         }
-
-        sb.append("\n当任务需要专业指导时: Skills(action='invoke', name='技能名称')\n");
+        
         sb.append("</available_skills>");
 
         return sb.toString();
