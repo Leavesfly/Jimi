@@ -419,6 +419,7 @@ public class SkillRegistry {
     
     /**
      * 生成技能摘要列表（用于 System Prompt 注入）
+     * 引导文案与 SkillsTool.DESCRIPTION 保持一致，涵盖全部操作能力。
      * 
      * @return Markdown 格式的技能摘要
      */
@@ -431,7 +432,10 @@ public class SkillRegistry {
         
         StringBuilder sb = new StringBuilder();
         sb.append("<available_skills>\n");
-        sb.append("以下是可用的技能列表。当任务需要专业指导时，使用 Skills 工具的 invoke 操作加载完整内容：\n\n");
+        sb.append("以下是已安装的技能列表。你可以通过 Skills 工具管理和调用技能：\n");
+        sb.append("- invoke: 加载技能完整内容（返回完整指令和目录路径）\n");
+        sb.append("- install: 安装新技能（支持 GitHub 仓库或压缩包 URL）\n");
+        sb.append("- create: 创建新技能 | edit: 编辑现有技能 | remove: 删除技能\n\n");
         
         for (SkillSpec skill : skills) {
             sb.append("- **").append(skill.getName()).append("**");
@@ -444,7 +448,7 @@ public class SkillRegistry {
             sb.append("\n");
         }
         
-        sb.append("\n使用方法: Skills(action='invoke', name='技能名称')\n");
+        sb.append("\n当任务需要专业指导时: Skills(action='invoke', name='技能名称')\n");
         sb.append("</available_skills>");
         
         return sb.toString();
