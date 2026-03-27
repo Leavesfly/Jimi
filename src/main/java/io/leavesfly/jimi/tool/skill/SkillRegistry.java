@@ -393,7 +393,7 @@ public class SkillRegistry {
             sb.append("---\n\n");
             sb.append(newContent);
 
-            java.nio.file.Files.writeString(skillFile, sb.toString());
+            Files.writeString(skillFile, sb.toString());
 
             // 重新加载技能
             SkillSpec updatedSkill = skillLoader.parseSkillFile(skillFile);
