@@ -59,7 +59,18 @@ public class InteractionHandler {
                     AttributedStyle.DEFAULT.foreground(AttributedStyle.YELLOW).bold())
                     .toAnsi();
 
-            String response = lineReader.readLine(prompt).trim().toLowerCase();
+            int maxRetries = 3;
+            String response = "";
+            for (int attempt = 0; attempt < maxRetries; attempt++) {
+                response = lineReader.readLine(prompt).trim().toLowerCase();
+                if (!response.isEmpty()) {
+                    break;
+                }
+                log.warn("[InteractionHandler] Received empty input for approval (attempt {}/{}), retrying...",
+                        attempt + 1, maxRetries);
+            }
+
+            log.debug("[InteractionHandler] Approval input received: '{}'", response);
 
             ApprovalResponse approvalResponse = switch (response) {
                 case "y", "yes" -> {
@@ -70,7 +81,16 @@ public class InteractionHandler {
                     outputFormatter.printSuccess("✅ 已批准（本次会话全部同类操作）");
                     yield ApprovalResponse.APPROVE_FOR_SESSION;
                 }
+                case "n", "no" -> {
+                    outputFormatter.printError("❌ 已拒绝");
+                    yield ApprovalResponse.REJECT;
+                }
                 default -> {
+                    if (response.isEmpty()) {
+                        log.warn("[InteractionHandler] All {} retry attempts returned empty input, rejecting by default", maxRetries);
+                    } else {
+                        log.info("[InteractionHandler] Unrecognized input '{}', treating as reject", response);
+                    }
                     outputFormatter.printError("❌ 已拒绝");
                     yield ApprovalResponse.REJECT;
                 }
