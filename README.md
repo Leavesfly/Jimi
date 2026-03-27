@@ -36,19 +36,15 @@
 
 ### 🧩 Skills技能包
 
-内置11个开发技能包，领域知识模块化管理：
+内置6个开发技能包，领域知识模块化管理：
 
 | 技能包 | 功能 |
 |-------|------|
 | api-design | API设计规范 |
-| backend-dev-suite | 后端开发套件 |
 | code-quality-suite | 代码质量套件 |
-| code-review | 代码审查 |
 | database-design | 数据库设计 |
-| docker-setup | Docker配置 |
 | git-commit-guide | Git提交规范 |
 | java-best-practices | Java最佳实践 |
-| security-checklist | 安全检查清单 |
 | unit-testing | 单元测试 |
 
 关键词自动激活，按需加载到上下文。
