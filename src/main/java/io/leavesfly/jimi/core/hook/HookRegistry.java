@@ -1,4 +1,4 @@
-package io.leavesfly.jimi.core.engine.hook;
+package io.leavesfly.jimi.core.hook;
 
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;

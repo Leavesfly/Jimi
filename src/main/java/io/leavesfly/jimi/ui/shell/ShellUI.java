@@ -1,7 +1,7 @@
 package io.leavesfly.jimi.ui.shell;
 
-import io.leavesfly.jimi.core.engine.hook.HookContext;
-import io.leavesfly.jimi.core.engine.hook.HookType;
+import io.leavesfly.jimi.core.hook.HookContext;
+import io.leavesfly.jimi.core.hook.HookType;
 import io.leavesfly.jimi.core.interaction.approval.ApprovalRequest;
 import io.leavesfly.jimi.core.interaction.HumanInputRequest;
 import io.leavesfly.jimi.llm.ChatCompletionResult;

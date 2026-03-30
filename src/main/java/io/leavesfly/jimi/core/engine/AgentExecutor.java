@@ -6,9 +6,9 @@ import io.leavesfly.jimi.core.compaction.Compaction;
 import io.leavesfly.jimi.core.engine.context.ContextManager;
 import io.leavesfly.jimi.knowledge.memory.MemoryRecorder;
 import io.leavesfly.jimi.core.engine.context.Context;
-import io.leavesfly.jimi.core.engine.hook.HookContext;
-import io.leavesfly.jimi.core.engine.hook.HookRegistry;
-import io.leavesfly.jimi.core.engine.hook.HookType;
+import io.leavesfly.jimi.core.hook.HookContext;
+import io.leavesfly.jimi.core.hook.HookRegistry;
+import io.leavesfly.jimi.core.hook.HookType;
 import io.leavesfly.jimi.exception.MaxStepsReachedException;
 import io.leavesfly.jimi.exception.RunCancelledException;
 

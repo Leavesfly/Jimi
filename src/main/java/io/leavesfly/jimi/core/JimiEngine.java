@@ -2,6 +2,7 @@ package io.leavesfly.jimi.core;
 
 import io.leavesfly.jimi.core.agent.Agent;
 import io.leavesfly.jimi.core.engine.AgentExecutor;
+import io.leavesfly.jimi.core.engine.Engine;
 import io.leavesfly.jimi.core.engine.EngineConstants;
 import io.leavesfly.jimi.core.engine.JimiRuntime;
 import io.leavesfly.jimi.core.engine.context.Context;

@@ -1,4 +1,4 @@
-package io.leavesfly.jimi.core.engine.hook;
+package io.leavesfly.jimi.core.hook;
 
 import io.leavesfly.jimi.common.YamlConfigLoader;
 import lombok.extern.slf4j.Slf4j;

@@ -1,11 +1,9 @@
 package io.leavesfly.jimi.command.wiki;
 
-import io.leavesfly.jimi.core.Engine;
-import io.leavesfly.jimi.knowledge.rag.CodeChunk;
+import io.leavesfly.jimi.core.engine.Engine;
 import lombok.Builder;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -13,7 +11,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;

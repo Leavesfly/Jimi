@@ -1,5 +1,6 @@
 package io.leavesfly.jimi.core.async;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
@@ -10,6 +11,7 @@ import org.springframework.stereotype.Service;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -280,19 +282,19 @@ public class AsyncSubagentPersistence {
     @lombok.AllArgsConstructor
     public static class AsyncSubagentIndexEntry {
         
-        @com.fasterxml.jackson.annotation.JsonProperty("id")
+        @JsonProperty("id")
         private String id;
         
-        @com.fasterxml.jackson.annotation.JsonProperty("name")
+        @JsonProperty("name")
         private String name;
         
-        @com.fasterxml.jackson.annotation.JsonProperty("status")
+        @JsonProperty("status")
         private String status;
         
-        @com.fasterxml.jackson.annotation.JsonProperty("start_time")
-        private java.time.Instant startTime;
+        @JsonProperty("start_time")
+        private Instant startTime;
         
-        @com.fasterxml.jackson.annotation.JsonProperty("duration_ms")
+        @JsonProperty("duration_ms")
         private long durationMs;
         
         public static AsyncSubagentIndexEntry fromRecord(AsyncSubagentRecord record) {

@@ -1,4 +1,4 @@
-package io.leavesfly.jimi.core.engine.hook;
+package io.leavesfly.jimi.core.hook;
 
 import io.leavesfly.jimi.command.custom.ExecutionSpec;
 import lombok.AllArgsConstructor;

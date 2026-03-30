@@ -2,9 +2,9 @@ package io.leavesfly.jimi.command.handlers;
 
 import io.leavesfly.jimi.command.CommandContext;
 import io.leavesfly.jimi.command.CommandHandler;
-import io.leavesfly.jimi.core.engine.hook.HookRegistry;
-import io.leavesfly.jimi.core.engine.hook.HookSpec;
-import io.leavesfly.jimi.core.engine.hook.HookType;
+import io.leavesfly.jimi.core.hook.HookRegistry;
+import io.leavesfly.jimi.core.hook.HookSpec;
+import io.leavesfly.jimi.core.hook.HookType;
 import io.leavesfly.jimi.ui.shell.output.OutputFormatter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;

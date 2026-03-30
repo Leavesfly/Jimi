@@ -11,7 +11,7 @@ import io.leavesfly.jimi.core.engine.context.ContextManager;
 import io.leavesfly.jimi.core.engine.JimiRuntime;
 import io.leavesfly.jimi.knowledge.memory.MemoryRecorder;
 import io.leavesfly.jimi.core.engine.ResponseProcessor;
-import io.leavesfly.jimi.core.engine.hook.HookRegistry;
+import io.leavesfly.jimi.core.hook.HookRegistry;
 import io.leavesfly.jimi.llm.LLM;
 import io.leavesfly.jimi.llm.LLMFactory;
 import io.leavesfly.jimi.core.session.Session;

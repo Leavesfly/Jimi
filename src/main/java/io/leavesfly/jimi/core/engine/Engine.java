@@ -1,4 +1,4 @@
-package io.leavesfly.jimi.core;
+package io.leavesfly.jimi.core.engine;
 
 import io.leavesfly.jimi.llm.message.ContentPart;
 import reactor.core.publisher.Mono;

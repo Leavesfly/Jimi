@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.leavesfly.jimi.core.JimiFactory;
 import io.leavesfly.jimi.config.JimiConfig;
 import io.leavesfly.jimi.core.JimiEngine;
-import io.leavesfly.jimi.core.engine.hook.HookRegistry;
+import io.leavesfly.jimi.core.hook.HookRegistry;
 import io.leavesfly.jimi.core.session.Session;
 import io.leavesfly.jimi.core.session.SessionManager;
 import io.leavesfly.jimi.mcp.server.SimpleJimiServer;
