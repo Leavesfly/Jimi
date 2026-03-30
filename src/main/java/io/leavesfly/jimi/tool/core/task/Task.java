@@ -10,7 +10,6 @@ import io.leavesfly.jimi.core.compaction.SimpleCompaction;
 import io.leavesfly.jimi.core.engine.context.ContextManager;
 import io.leavesfly.jimi.core.engine.JimiRuntime;
 import io.leavesfly.jimi.knowledge.memory.MemoryRecorder;
-import io.leavesfly.jimi.core.engine.ResponseProcessor;
 import io.leavesfly.jimi.core.hook.HookRegistry;
 import io.leavesfly.jimi.core.session.Session;
 import io.leavesfly.jimi.core.engine.AgentExecutor;
@@ -103,7 +102,6 @@ public class Task extends AbstractTool<Task.Params> implements WireAware {
 
     // AgentExecutor 依赖组件
     private final MemoryRecorder memoryRecorder;
-    private final ResponseProcessor responseProcessor;
     private final ContextManager contextManager;
     private final HookRegistry hookRegistry;
 
@@ -149,7 +147,7 @@ public class Task extends AbstractTool<Task.Params> implements WireAware {
 
     @Autowired
     public Task(ObjectMapper objectMapper, AgentRegistry agentRegistry, ToolRegistryFactory toolRegistryFactory,
-                MemoryRecorder memoryRecorder, ResponseProcessor responseProcessor,
+                MemoryRecorder memoryRecorder,
                 ContextManager contextManager, HookRegistry hookRegistry) {
         super("Task", "Task tool (description will be set when initialized)", Params.class);
 
@@ -157,7 +155,6 @@ public class Task extends AbstractTool<Task.Params> implements WireAware {
         this.agentRegistry = agentRegistry;
         this.toolRegistryFactory = toolRegistryFactory;
         this.memoryRecorder = memoryRecorder;
-        this.responseProcessor = responseProcessor;
         this.contextManager = contextManager;
         this.hookRegistry = hookRegistry;
         this.subagents = new HashMap<>();
@@ -376,7 +373,6 @@ public class Task extends AbstractTool<Task.Params> implements WireAware {
                 .toolRegistry(subToolRegistry)
                 .compaction(new SimpleCompaction())
                 .memoryRecorder(memoryRecorder)
-                .responseProcessor(responseProcessor)
                 .contextManager(contextManager)
                 .hookRegistry(hookRegistry)
                 .isSubagent(true)

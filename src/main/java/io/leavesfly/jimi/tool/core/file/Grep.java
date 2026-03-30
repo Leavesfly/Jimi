@@ -2,7 +2,7 @@ package io.leavesfly.jimi.tool.core.file;
 
 import com.fasterxml.jackson.annotation.JsonPropertyDescription;
 import io.leavesfly.jimi.core.engine.context.BuiltinSystemPromptArgs;
-import io.leavesfly.jimi.tool.AbstractTool;
+import io.leavesfly.jimi.tool.SyncTool;
 import io.leavesfly.jimi.tool.ToolResult;
 import io.leavesfly.jimi.tool.ToolResultBuilder;
 import lombok.AllArgsConstructor;
@@ -13,7 +13,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Component;
-import reactor.core.publisher.Mono;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -30,14 +29,16 @@ import java.util.regex.PatternSyntaxException;
 
 /**
  * Grep 工具 - 使用正则表达式搜索文件内容
- * 简化实现，使用Java内置的文件遍历和正则表达式
+ * <p>
+ * 继承 SyncTool 基类，简化实现，使用 Java 内置的文件遍历和正则表达式。
+ * 只需实现 executeSync() 方法，无需关心 Reactor 的 Mono 包装。
  * 
  * 使用 @Scope("prototype") 使每次获取都是新实例
  */
 @Slf4j
 @Component
 @Scope(ConfigurableBeanFactory.SCOPE_PROTOTYPE)
-public class Grep extends AbstractTool<Grep.Params> {
+public class Grep extends SyncTool<Grep.Params> {
     
     private static final int MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
     private static final int BINARY_CHECK_SIZE = 8192; // 检查前8KB判断是否为二进制
@@ -121,57 +122,55 @@ public class Grep extends AbstractTool<Grep.Params> {
     }
     
     @Override
-    public Mono<ToolResult> execute(Params params) {
-        return Mono.defer(() -> {
-            try {
-                // 验证参数
-                if (params.pattern == null || params.pattern.trim().isEmpty()) {
-                    return Mono.just(ToolResult.error(
-                        "Pattern is required. Please provide a valid regex pattern.",
-                        "Missing pattern"
-                    ));
-                }
-                
-                // 编译正则表达式
-                int flags = params.ignoreCase ? Pattern.CASE_INSENSITIVE : 0;
-                Pattern pattern;
-                try {
-                    pattern = Pattern.compile(params.pattern, flags);
-                } catch (PatternSyntaxException e) {
-                    return Mono.just(ToolResult.error(
-                        String.format("Invalid regex pattern: %s", e.getMessage()),
-                        "Invalid pattern"
-                    ));
-                }
-                
-                // 确定搜索路径
-                Path searchPath = ".".equals(params.path) ? workDir : Path.of(params.path);
-                
-                if (!searchPath.isAbsolute()) {
-                    searchPath = workDir.resolve(searchPath);
-                }
-                
-                if (!Files.exists(searchPath)) {
-                    return Mono.just(ToolResult.error(
-                        String.format("Path does not exist: %s", params.path),
-                        "Path not found"
-                    ));
-                }
-                
-                // 执行搜索
-                SearchResult result = performSearch(searchPath, pattern, params);
-                
-                // 生成输出
-                return Mono.just(formatResult(result, params));
-                
-            } catch (Exception e) {
-                log.error("Failed to grep: {}", params.pattern, e);
-                return Mono.just(ToolResult.error(
-                    String.format("Failed to grep. Error: %s", e.getMessage()),
-                    "Failed to grep"
-                ));
+    protected ToolResult executeSync(Params params) {
+        try {
+            // 验证参数
+            if (params.pattern == null || params.pattern.trim().isEmpty()) {
+                return ToolResult.error(
+                    "Pattern is required. Please provide a valid regex pattern.",
+                    "Missing pattern"
+                );
             }
-        });
+            
+            // 编译正则表达式
+            int flags = params.ignoreCase ? Pattern.CASE_INSENSITIVE : 0;
+            Pattern pattern;
+            try {
+                pattern = Pattern.compile(params.pattern, flags);
+            } catch (PatternSyntaxException e) {
+                return ToolResult.error(
+                    String.format("Invalid regex pattern: %s", e.getMessage()),
+                    "Invalid pattern"
+                );
+            }
+            
+            // 确定搜索路径
+            Path searchPath = ".".equals(params.path) ? workDir : Path.of(params.path);
+            
+            if (!searchPath.isAbsolute()) {
+                searchPath = workDir.resolve(searchPath);
+            }
+            
+            if (!Files.exists(searchPath)) {
+                return ToolResult.error(
+                    String.format("Path does not exist: %s", params.path),
+                    "Path not found"
+                );
+            }
+            
+            // 执行搜索
+            SearchResult result = performSearch(searchPath, pattern, params);
+            
+            // 生成输出
+            return formatResult(result, params);
+            
+        } catch (Exception e) {
+            log.error("Failed to grep: {}", params.pattern, e);
+            return ToolResult.error(
+                String.format("Failed to grep. Error: %s", e.getMessage()),
+                "Failed to grep"
+            );
+        }
     }
     
     /**

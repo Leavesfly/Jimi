@@ -1,311 +1,233 @@
 package io.leavesfly.jimi.core.engine;
 
 import io.leavesfly.jimi.common.HttpClientConstants;
+import io.leavesfly.jimi.common.ReactorUtils;
 import io.leavesfly.jimi.core.agent.Agent;
 import io.leavesfly.jimi.core.compaction.Compaction;
-import io.leavesfly.jimi.core.engine.context.ContextManager;
-import io.leavesfly.jimi.knowledge.memory.MemoryRecorder;
 import io.leavesfly.jimi.core.engine.context.Context;
+import io.leavesfly.jimi.core.engine.context.ContextManager;
+import io.leavesfly.jimi.core.engine.toolcall.ToolDispatcher;
+import io.leavesfly.jimi.core.engine.toolcall.ToolErrorTracker;
 import io.leavesfly.jimi.core.hook.HookContext;
 import io.leavesfly.jimi.core.hook.HookRegistry;
 import io.leavesfly.jimi.core.hook.HookType;
-import io.leavesfly.jimi.exception.MaxStepsReachedException;
-import io.leavesfly.jimi.exception.RunCancelledException;
-
-import io.leavesfly.jimi.llm.LLM;
+import io.leavesfly.jimi.knowledge.memory.MemoryRecorder;
+import io.leavesfly.jimi.llm.TokenCounter;
 import io.leavesfly.jimi.llm.message.ContentPart;
 import io.leavesfly.jimi.llm.message.Message;
 import io.leavesfly.jimi.llm.message.TextPart;
 import io.leavesfly.jimi.tool.ToolRegistry;
-
+import io.leavesfly.jimi.ui.DebugLogger;
 import io.leavesfly.jimi.wire.Wire;
-import io.leavesfly.jimi.wire.message.*;
+import io.leavesfly.jimi.wire.message.ContentPartMessage;
+import io.leavesfly.jimi.wire.message.StepBegin;
+import io.leavesfly.jimi.wire.message.StepInterrupted;
+import io.leavesfly.jimi.wire.message.TokenUsageMessage;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Mono;
 
+import java.io.StringWriter;
 import java.util.ArrayList;
 import java.util.List;
-
 import java.util.Objects;
 
 /**
- * Agent 执行器
+ * Agent 执行器（编排层）
  * <p>
  * 职责：
- * - Agent 主循环调度
- * - 协调各组件完成执行流程
- * <p>
- * 设计原则：
- * - 单一职责：仅负责执行流程协调
- * - 组合优于继承：通过组合组件完成功能
- * - Builder 模式：简化构造过程
+ * - 生命周期管理（初始化、成功/失败回调）
+ * - Hook 触发
+ * - Memory 记录
+ * - 委托 ReactLoop 执行核心 ReAct 循环
  */
 @Slf4j
 public class AgentExecutor {
 
-    // ==================== 核心依赖（必需） ====================
-    private final String agentName;
+    // ==================== 核心依赖 ====================
     private final Agent agent;
+    private final String agentName;
     private final JimiRuntime jimiRuntime;
     private final Context context;
     private final Wire wire;
     private final ToolRegistry toolRegistry;
     private final Compaction compaction;
-
-    // ==================== 拆分组件 ====================
-    private final ExecutionState executionState;
-    private final MemoryRecorder memoryRecorder;
-    private final ResponseProcessor responseProcessor;
-    private final ContextManager contextManager;
-    private final HookRegistry hookRegistry;
-
-    // ==================== 可选配置 ====================
     private final boolean isSubagent;
 
+    // ==================== 组件依赖 ====================
+    private final ExecutionState executionState;
+    private final MemoryRecorder memoryRecorder;
+    private final ContextManager contextManager;
+    private final HookRegistry hookRegistry;
+    private final ToolErrorTracker toolErrorTracker;
 
-    /**
-     * 私有构造函数，通过 Builder 创建实例
-     */
     private AgentExecutor(Builder builder) {
-        // 必需参数
         this.agent = Objects.requireNonNull(builder.agent, "agent is required");
         this.jimiRuntime = Objects.requireNonNull(builder.jimiRuntime, "jimiRuntime is required");
         this.context = Objects.requireNonNull(builder.context, "context is required");
         this.wire = Objects.requireNonNull(builder.wire, "wire is required");
         this.toolRegistry = Objects.requireNonNull(builder.toolRegistry, "toolRegistry is required");
         this.compaction = Objects.requireNonNull(builder.compaction, "compaction is required");
-
-        // 可选参数
         this.isSubagent = builder.isSubagent;
         this.agentName = agent.getName();
 
-        // 初始化拆分组件
         this.executionState = new ExecutionState();
-
-        // 通过 Builder 传入的依赖（由工厂类从 Spring 容器获取并传递）
         this.memoryRecorder = Objects.requireNonNull(builder.memoryRecorder, "memoryRecorder is required");
-        this.responseProcessor = Objects.requireNonNull(builder.responseProcessor, "responseProcessor is required");
         this.contextManager = Objects.requireNonNull(builder.contextManager, "contextManager is required");
         this.hookRegistry = Objects.requireNonNull(builder.hookRegistry, "hookRegistry is required");
+        this.toolErrorTracker = builder.toolErrorTracker != null ? builder.toolErrorTracker : new ToolErrorTracker();
     }
 
-
-    /**
-     * 创建 Builder
-     */
     public static Builder builder() {
         return new Builder();
     }
 
-    /**
-     * AgentExecutor Builder
-     * <p>
-     * 使用示例：
-     * <pre>
-     * AgentExecutor executor = AgentExecutor.builder()
-     *     .agent(agent)
-     *     .jimiRuntime(jimiRuntime)
-     *     .context(context)
-     *     .wire(wire)
-     *     .toolRegistry(toolRegistry)
-     *     .compaction(compaction)
-     *     // 可选配置
-     *     .skillComponents(SkillComponents.of(matcher, provider))
-     *     .memoryComponents(MemoryComponents.of(config, injector, extractor))
-     *     .build();
-     * </pre>
-     */
-    public static class Builder {
-        // 必需参数
-        private Agent agent;
-        private JimiRuntime jimiRuntime;
-        private Context context;
-        private Wire wire;
-        private ToolRegistry toolRegistry;
-        private Compaction compaction;
+    // ==================== 执行入口 ====================
 
-        // 依赖组件（必需，由工厂类从 Spring 容器获取并传递）
-        private MemoryRecorder memoryRecorder;
-        private ResponseProcessor responseProcessor;
-        private ContextManager contextManager;
-        private HookRegistry hookRegistry;
-
-        // 可选参数
-        private boolean isSubagent = false;
-
-        private Builder() {
-        }
-
-        // ==================== 必需参数 ====================
-
-        public Builder agent(Agent agent) {
-            this.agent = agent;
-            return this;
-        }
-
-        public Builder runtime(JimiRuntime jimiRuntime) {
-            this.jimiRuntime = jimiRuntime;
-            return this;
-        }
-
-        public Builder context(Context context) {
-            this.context = context;
-            return this;
-        }
-
-        public Builder wire(Wire wire) {
-            this.wire = wire;
-            return this;
-        }
-
-        public Builder toolRegistry(ToolRegistry toolRegistry) {
-            this.toolRegistry = toolRegistry;
-            return this;
-        }
-
-        public Builder compaction(Compaction compaction) {
-            this.compaction = compaction;
-            return this;
-        }
-
-        // ==================== 依赖组件 ====================
-
-        public Builder memoryRecorder(MemoryRecorder memoryRecorder) {
-            this.memoryRecorder = memoryRecorder;
-            return this;
-        }
-
-        public Builder responseProcessor(ResponseProcessor responseProcessor) {
-            this.responseProcessor = responseProcessor;
-            return this;
-        }
-
-        public Builder contextManager(ContextManager contextManager) {
-            this.contextManager = contextManager;
-            return this;
-        }
-
-        public Builder hookRegistry(HookRegistry hookRegistry) {
-            this.hookRegistry = hookRegistry;
-            return this;
-        }
-
-        // ==================== 可选参数 ====================
-
-        public Builder isSubagent(boolean isSubagent) {
-            this.isSubagent = isSubagent;
-            return this;
-        }
-
-
-        /**
-         * 构建 AgentExecutor 实例
-         */
-        public AgentExecutor build() {
-            return new AgentExecutor(this);
-        }
-    }
-
-
-    // ==================== 执行方法 ====================
-
-    /**
-     * 执行 Agent 任务
-     *
-     * @param userInput 用户输入
-     * @return 执行完成的 Mono
-     */
     public Mono<Void> execute(List<ContentPart> userInput) {
         return execute(userInput, false);
     }
 
-    /**
-     * 执行 Agent 任务
-     *
-     * @param userInput     用户输入
-     * @param skipKnowledge 是否跳过知识检索和 Skill 匹配（用于系统内部续问场景）
-     * @return 执行完成的 Mono
-     */
     public Mono<Void> execute(List<ContentPart> userInput, boolean skipKnowledge) {
         return Mono.defer(() -> {
-
-            // 初始化任务跟踪
+            // 1. 初始化
             executionState.initializeTask();
-
-            // 创建用户消息
-            Message userMessage = Message.user(userInput);
-
-            // 估算用户输入的 Token 数
-            int userInputTokens = responseProcessor.estimateTokensFromMessage(userMessage);
-            int newTokenCount = context.getTokenCount() + userInputTokens;
-            executionState.addTokens(userInputTokens);
-
-            // 提取用户查询文本
-            String userQuery = memoryRecorder.extractHighLevelIntent(userInput);
-            executionState.setCurrentUserQuery(userQuery);
-
-            // 构建用户输入文本（用于 Hook 上下文）
             String userInputText = extractUserInputText(userInput);
+            Message userMessage = Message.user(userInput);
+            int userInputTokens = TokenCounter.estimateTokens(userMessage);
 
-            // 触发 PRE_USER_INPUT hook
-            HookContext preInputHookContext = HookContext.builder()
+            executionState.addTokens(userInputTokens);
+            executionState.setCurrentUserQuery(memoryRecorder.extractHighLevelIntent(userInput));
+
+            // 2. 触发 PRE_USER_INPUT Hook
+            HookContext preHookContext = HookContext.builder()
                     .hookType(HookType.PRE_USER_INPUT)
                     .workDir(jimiRuntime.getWorkDir())
                     .userInput(userInputText)
                     .agentName(agentName)
                     .build();
 
-            // 创建检查点 0，添加用户消息（Context 内部自动提取高层意图），并更新 Token 计数
-            return triggerHookSafely(HookType.PRE_USER_INPUT, preInputHookContext)
+            return triggerHookSafely(HookType.PRE_USER_INPUT, preHookContext)
+                    // 3. 准备上下文
                     .then(context.checkpoint(false))
                     .then(context.appendMessage(userMessage))
-                    .then(context.updateTokenCount(newTokenCount))
-                    .doOnSuccess(v -> log.info("Added user input: {} tokens (total: {})", userInputTokens, newTokenCount))
-                    // Agent 主循环
-                    .then(agentLoop(skipKnowledge))
-
-                    .doOnSuccess(v -> {
-                        log.info("Agent execution completed");
-                        memoryRecorder.recordTaskHistory(executionState, context, "success")
-                                .subscribe(unused -> {
-                                }, error -> log.warn("Failed to record task history", error));
-                        executionState.incrementTasksCompleted();
-
-                        // 触发 POST_USER_INPUT hook（异步，不阻塞主流程）
-                        HookContext postInputHookContext = HookContext.builder()
-                                .hookType(HookType.POST_USER_INPUT)
-                                .workDir(jimiRuntime.getWorkDir())
-                                .userInput(userInputText)
-                                .agentName(agentName)
-                                .build();
-                        triggerHookSafely(HookType.POST_USER_INPUT, postInputHookContext)
-                                .subscribe(unused -> {
-                                }, error -> log.warn("Hook POST_USER_INPUT execution failed", error));
-                    })
-                    .doOnError(e -> {
-                        log.error("Agent execution failed", e);
-                        memoryRecorder.recordTaskHistory(executionState, context, "failed")
-                                .subscribe(unused -> {
-                                }, error -> log.warn("Failed to record task history on error", error));
-
-                        // 触发 ON_ERROR hook（异步，不阻塞主流程）
-                        HookContext errorHookContext = HookContext.builder()
-                                .hookType(HookType.ON_ERROR)
-                                .workDir(jimiRuntime.getWorkDir())
-                                .errorMessage(e.getMessage())
-                                .errorStackTrace(getStackTraceString(e))
-                                .agentName(agentName)
-                                .build();
-                        triggerHookSafely(HookType.ON_ERROR, errorHookContext)
-                                .subscribe(unused -> {
-                                }, error -> log.warn("Hook ON_ERROR execution failed", error));
-                    });
+                    .then(context.updateTokenCount(context.getTokenCount() + userInputTokens))
+                    .doOnSuccess(v -> log.info("Added user input: {} tokens", userInputTokens))
+                    // 4. 执行 ReAct 循环
+                    .then(runReactLoop())
+                    // 5. 生命周期回调
+                    .doOnSuccess(v -> onExecutionSuccess(userInputText))
+                    .doOnError(this::onExecutionError);
         });
     }
 
-    /**
-     * 从用户输入内容中提取文本
-     */
+    // ==================== ReAct 循环 ====================
+
+    private Mono<Void> runReactLoop() {
+        // 创建 ToolDispatcher
+        ToolDispatcher toolDispatcher = new ToolDispatcher(
+                toolRegistry, jimiRuntime.getWorkDir(), wire, toolErrorTracker, hookRegistry);
+
+        // 创建 ReactLoop
+        int maxSteps = jimiRuntime.getConfig().getLoopControl().getMaxStepsPerRun();
+        ReactLoop reactLoop = new ReactLoop(
+                jimiRuntime.getLlm(), toolDispatcher, jimiRuntime.getSession(), maxSteps);
+
+        // 配置回调
+        configureReactLoopCallbacks(reactLoop);
+
+        // 执行循环
+        List<Object> toolSchemas = new ArrayList<>(toolRegistry.getToolSchemas(agent.getTools()));
+        return reactLoop.run(context, agent.getSystemPrompt(), toolSchemas)
+                .onErrorResume(e -> {
+                    wire.send(new StepInterrupted());
+                    return Mono.error(e);
+                });
+    }
+
+    private void configureReactLoopCallbacks(ReactLoop reactLoop) {
+        // 步骤开始回调
+        reactLoop.setOnStepBegin((localStep, globalStep) -> {
+            executionState.setStepsInTask(localStep);
+            wire.send(new StepBegin(globalStep, isSubagent, agentName));
+            log.info("Agent '{}' step {}/{}", agentName != null ? agentName : "main", localStep, globalStep);
+        });
+
+        // 步骤前检查（上下文压缩）
+        reactLoop.setBeforeStep(stepNo ->
+                contextManager.checkAndCompact(context, jimiRuntime.getLlm(), compaction)
+                        .then(context.checkpoint(false))
+                        .then());
+
+        // 流式内容回调
+        reactLoop.setOnContentChunk(chunk -> {
+            String contentDelta = chunk.getContentDelta();
+            if (contentDelta != null && !contentDelta.isEmpty()) {
+                ContentPartMessage.ContentType type = chunk.isReasoning()
+                        ? ContentPartMessage.ContentType.REASONING
+                        : ContentPartMessage.ContentType.NORMAL;
+                wire.send(new ContentPartMessage(new TextPart(contentDelta), type));
+            }
+        });
+
+        // Assistant 消息完成回调（Token 统计）
+        reactLoop.setOnAssistantMessage((message, acc) -> {
+            if (acc.getUsage() != null) {
+                int newTokens = acc.getUsage().getTotalTokens();
+                context.updateTokenCount(context.getTokenCount() + newTokens).subscribe();
+                wire.send(new TokenUsageMessage(acc.getUsage()));
+                DebugLogger.logLLMResponse(
+                        message.getTextContent() != null ? message.getTextContent().length() : 0,
+                        message.getToolCalls() != null ? message.getToolCalls().size() : 0,
+                        acc.getUsage().getPromptTokens(),
+                        acc.getUsage().getCompletionTokens(),
+                        acc.getUsage().getTotalTokens());
+            } else {
+                int estimated = TokenCounter.estimateTokens(message);
+                context.updateTokenCount(context.getTokenCount() + estimated).subscribe();
+            }
+        });
+    }
+
+    // ==================== 生命周期回调 ====================
+
+    private void onExecutionSuccess(String userInputText) {
+        log.info("Agent execution completed");
+        memoryRecorder.recordTaskHistory(executionState, context, "success")
+                .subscribe(unused -> {}, error -> log.warn("Failed to record task history", error));
+        executionState.incrementTasksCompleted();
+
+        HookContext postHookContext = HookContext.builder()
+                .hookType(HookType.POST_USER_INPUT)
+                .workDir(jimiRuntime.getWorkDir())
+                .userInput(userInputText)
+                .agentName(agentName)
+                .build();
+        triggerHookSafely(HookType.POST_USER_INPUT, postHookContext)
+                .subscribe(unused -> {}, error -> log.warn("Hook POST_USER_INPUT failed", error));
+    }
+
+    private void onExecutionError(Throwable exception) {
+        log.error("Agent execution failed", exception);
+        memoryRecorder.recordTaskHistory(executionState, context, "failed")
+                .subscribe(unused -> {}, error -> log.warn("Failed to record task history on error", error));
+
+        HookContext errorHookContext = HookContext.builder()
+                .hookType(HookType.ON_ERROR)
+                .workDir(jimiRuntime.getWorkDir())
+                .errorMessage(exception.getMessage())
+                .errorStackTrace(getStackTraceString(exception))
+                .agentName(agentName)
+                .build();
+        triggerHookSafely(HookType.ON_ERROR, errorHookContext)
+                .subscribe(unused -> {}, error -> log.warn("Hook ON_ERROR failed", error));
+    }
+
+    // ==================== 辅助方法 ====================
+
+    private Mono<Void> triggerHookSafely(HookType hookType, HookContext hookContext) {
+        return ReactorUtils.triggerHookSafely(hookRegistry, hookType, hookContext);
+    }
+
     private String extractUserInputText(List<ContentPart> userInput) {
         return userInput.stream()
                 .filter(part -> part instanceof TextPart)
@@ -313,148 +235,53 @@ public class AgentExecutor {
                 .reduce("", (a, b) -> a.isEmpty() ? b : a + "\n" + b);
     }
 
-    /**
-     * 获取异常堆栈字符串，限制最大长度
-     */
     private String getStackTraceString(Throwable throwable) {
-        java.io.StringWriter stringWriter = new java.io.StringWriter();
+        StringWriter stringWriter = new StringWriter();
         throwable.printStackTrace(new java.io.PrintWriter(stringWriter));
         String result = stringWriter.toString();
-        // 限制堆栈字符串最大长度，防止内存问题
         if (result.length() > HttpClientConstants.MAX_STACK_TRACE_LENGTH) {
             return result.substring(0, HttpClientConstants.MAX_STACK_TRACE_LENGTH) + "\n... (truncated)";
         }
         return result;
     }
 
-    /**
-     * 安全触发 Hook，捕获异常避免影响主流程
-     */
-    private Mono<Void> triggerHookSafely(HookType hookType, HookContext hookContext) {
-        try {
-            return hookRegistry.trigger(hookType, hookContext)
-                    .onErrorResume(e -> {
-                        log.warn("Hook trigger failed for type {}: {}", hookType, e.getMessage());
-                        return Mono.empty();
-                    });
-        } catch (Exception e) {
-            log.warn("Hook trigger failed for type {}: {}", hookType, e.getMessage());
-            return Mono.empty();
-        }
-    }
+    // ==================== Getter ====================
 
-    /**
-     * Agent 主循环
-     */
-    private Mono<Void> agentLoop(boolean skipKnowledge) {
-        return Mono.defer(() -> agentLoopStep(1));
-    }
+    public Agent getAgent() { return agent; }
+    public JimiRuntime getRuntime() { return jimiRuntime; }
+    public Context getContext() { return context; }
+    public Wire getWire() { return wire; }
+    public ToolRegistry getToolRegistry() { return toolRegistry; }
+    public boolean isSubagent() { return isSubagent; }
+    public Compaction getCompaction() { return compaction; }
 
-    /**
-     * Agent 循环步骤
-     *
-     * @param stepNo 当前步骤号
-     */
-    private Mono<Void> agentLoopStep(int stepNo) {
-        // 检查是否已取消
-        if (jimiRuntime.getSession().isCancelled()) {
-            log.info("Agent '{}' cancelled at step {}", agentName != null ? agentName : "main", stepNo);
-            wire.send(new StepInterrupted());
-            return Mono.error(new RunCancelledException());
-        }
+    // ==================== Builder ====================
 
-        // 记录步数
-        executionState.setStepsInTask(stepNo);
+    public static class Builder {
+        private Agent agent;
+        private JimiRuntime jimiRuntime;
+        private Context context;
+        private Wire wire;
+        private ToolRegistry toolRegistry;
+        private Compaction compaction;
+        private MemoryRecorder memoryRecorder;
+        private ContextManager contextManager;
+        private HookRegistry hookRegistry;
+        private ToolErrorTracker toolErrorTracker;
+        private boolean isSubagent = false;
 
-        // 获取并递增全局步数
-        int globalStepNo = jimiRuntime.getSession().incrementAndGetGlobalStep();
+        public Builder agent(Agent agent) { this.agent = agent; return this; }
+        public Builder runtime(JimiRuntime runtime) { this.jimiRuntime = runtime; return this; }
+        public Builder context(Context context) { this.context = context; return this; }
+        public Builder wire(Wire wire) { this.wire = wire; return this; }
+        public Builder toolRegistry(ToolRegistry toolRegistry) { this.toolRegistry = toolRegistry; return this; }
+        public Builder compaction(Compaction compaction) { this.compaction = compaction; return this; }
+        public Builder memoryRecorder(MemoryRecorder memoryRecorder) { this.memoryRecorder = memoryRecorder; return this; }
+        public Builder contextManager(ContextManager contextManager) { this.contextManager = contextManager; return this; }
+        public Builder hookRegistry(HookRegistry hookRegistry) { this.hookRegistry = hookRegistry; return this; }
+        public Builder toolErrorTracker(ToolErrorTracker tracker) { this.toolErrorTracker = tracker; return this; }
+        public Builder isSubagent(boolean isSubagent) { this.isSubagent = isSubagent; return this; }
 
-        // 检查全局最大步数
-        int maxSteps = jimiRuntime.getConfig().getLoopControl().getMaxStepsPerRun();
-        if (globalStepNo > maxSteps) {
-            return Mono.error(new MaxStepsReachedException(maxSteps));
-        }
-
-        // 发送步骤开始消息
-        wire.send(new StepBegin(globalStepNo, isSubagent, agentName));
-
-        log.info("Agent '{}' local step {}, global step {}/{}",
-                agentName != null ? agentName : "main", stepNo, globalStepNo, maxSteps);
-
-        return Mono.defer(() -> {
-            // 检查上下文是否超限，触发压缩
-            Mono<Void> pipeline = contextManager.checkAndCompact(context, jimiRuntime.getLlm(), compaction)
-                    .then(context.checkpoint(false))
-                    .then();
-
-
-            return pipeline
-                    .then(step())
-                    .flatMap(finished -> {
-                        if (finished) {
-                            log.info("Agent '{}' loop finished at local step {}, global step {}",
-                                    agentName != null ? agentName : "main", stepNo, globalStepNo);
-                            return Mono.empty();
-                        } else {
-                            return agentLoopStep(stepNo + 1);
-                        }
-                    })
-                    .then()
-                    .onErrorResume(e -> {
-                        log.error("Error in Agent '{}' at local step {}, global step {}",
-                                agentName != null ? agentName : "main", stepNo, globalStepNo, e);
-                        wire.send(new StepInterrupted());
-                        return Mono.error(e);
-                    });
-        });
-    }
-
-    /**
-     * 执行单步
-     */
-    private Mono<Boolean> step() {
-        return Mono.defer(() -> {
-            LLM llm = jimiRuntime.getLlm();
-            List<Object> toolSchemas = new ArrayList<>(toolRegistry.getToolSchemas(agent.getTools()));
-
-            String systemPrompt = agent.getSystemPrompt();
-
-            return llm.getChatProvider()
-                    .generateStream(systemPrompt, context.getHistory(), toolSchemas)
-                    .contextWrite(ctx -> ctx.put("workDir", jimiRuntime.getWorkDir()))
-                    .reduce(new ResponseProcessor.StreamAccumulator(), responseProcessor::processStreamChunk)
-                    .flatMap(acc -> responseProcessor.handleStreamCompletion(acc, context, executionState, toolRegistry, jimiRuntime.getWorkDir()))
-                    .onErrorResume(responseProcessor::handleLLMError);
-        });
-    }
-
-    // ==================== Getter 方法 ====================
-
-    public Agent getAgent() {
-        return agent;
-    }
-
-    public JimiRuntime getRuntime() {
-        return jimiRuntime;
-    }
-
-    public Context getContext() {
-        return context;
-    }
-
-    public Wire getWire() {
-        return wire;
-    }
-
-    public ToolRegistry getToolRegistry() {
-        return toolRegistry;
-    }
-
-    public boolean isSubagent() {
-        return isSubagent;
-    }
-
-    public Compaction getCompaction() {
-        return compaction;
+        public AgentExecutor build() { return new AgentExecutor(this); }
     }
 }

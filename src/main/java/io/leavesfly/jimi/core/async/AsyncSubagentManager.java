@@ -9,7 +9,6 @@ import io.leavesfly.jimi.core.compaction.SimpleCompaction;
 import io.leavesfly.jimi.core.engine.context.ContextManager;
 import io.leavesfly.jimi.core.engine.JimiRuntime;
 import io.leavesfly.jimi.knowledge.memory.MemoryRecorder;
-import io.leavesfly.jimi.core.engine.ResponseProcessor;
 import io.leavesfly.jimi.core.hook.HookRegistry;
 import io.leavesfly.jimi.core.engine.context.Context;
 import io.leavesfly.jimi.llm.message.Message;
@@ -107,8 +106,6 @@ public class AsyncSubagentManager {
     // ==================== AgentExecutor 依赖组件 ====================
     @Autowired
     private MemoryRecorder memoryRecorder;
-    @Autowired
-    private ResponseProcessor responseProcessor;
     @Autowired
     private ContextManager contextManager;
     @Autowired
@@ -267,7 +264,6 @@ public class AsyncSubagentManager {
                         .toolRegistry(toolRegistry)
                         .compaction(new SimpleCompaction())
                         .memoryRecorder(memoryRecorder)
-                        .responseProcessor(responseProcessor)
                         .contextManager(contextManager)
                         .hookRegistry(hookRegistry)
                         .isSubagent(true)
@@ -464,7 +460,6 @@ public class AsyncSubagentManager {
                         .toolRegistry(toolRegistry)
                         .compaction(new SimpleCompaction())
                         .memoryRecorder(memoryRecorder)
-                        .responseProcessor(responseProcessor)
                         .contextManager(contextManager)
                         .hookRegistry(hookRegistry)
                         .isSubagent(true)

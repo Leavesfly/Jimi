@@ -1,6 +1,7 @@
 package io.leavesfly.jimi.core.engine.toolcall;
 
 
+import io.leavesfly.jimi.common.ReactorUtils;
 import io.leavesfly.jimi.core.engine.context.Context;
 import io.leavesfly.jimi.core.hook.HookContext;
 import io.leavesfly.jimi.core.hook.HookRegistry;
@@ -74,33 +75,46 @@ public class ToolDispatcher {
     /**
      * 执行工具调用列表（并行 + 串行混合调度）
      * <p>
-     * 策略：将工具调用按顺序分组为"批次"（batch），
-     * 连续的并发安全工具合并为一个并行批次，非并发安全工具单独为一个串行批次。
-     * 批次之间严格按顺序执行，批次内部并行执行。
+     * 执行流程：
+     * 1. 按并发安全性分组（连续的读操作可并行，写操作串行）
+     * 2. 按批次顺序执行（批次间串行，批次内可并行）
+     * 3. 收集所有结果并追加到上下文
      *
      * @param toolCalls 工具调用列表
      * @param context   上下文
      * @return 完成的 Mono
      */
     public Mono<Void> executeToolCalls(List<ToolCall> toolCalls, Context context) {
+        // === 1. 按并发安全性分组 ===
         List<ToolCallBatch> batches = groupIntoBatches(toolCalls);
         log.info("Grouped {} tool calls into {} batches for execution", toolCalls.size(), batches.size());
 
-        // 按批次顺序执行，每个批次内部根据类型决定并行或串行
+        // === 2. 按批次顺序执行（批次间串行，批次内并行） ===
         return Flux.fromIterable(batches)
                 .concatMap(batch -> executeBatch(batch, context))
+                // === 3. 收集所有结果并追加到上下文 ===
                 .collectList()
-                .flatMap(allResults -> {
-                    // 将所有批次的结果展平
-                    List<Message> flatResults = new ArrayList<>();
-                    for (List<Message> batchResult : allResults) {
-                        flatResults.addAll(batchResult);
-                    }
-                    log.info("Collected {} tool results after mixed execution", flatResults.size());
-                    return context.appendMessage(flatResults)
-                            .doOnSuccess(v -> log.info("Successfully appended {} tool results to context", flatResults.size()))
-                            .doOnError(e -> log.error("Failed to append tool results to context", e));
-                });
+                .flatMap(allResults -> appendAllResults(allResults, context));
+    }
+
+    /**
+     * 将所有批次的执行结果追加到上下文
+     *
+     * @param allResults 所有批次的结果列表（嵌套列表）
+     * @param context    上下文
+     * @return 完成的 Mono
+     */
+    private Mono<Void> appendAllResults(List<List<Message>> allResults, Context context) {
+        // 展平嵌套列表
+        List<Message> flatResults = allResults.stream()
+                .flatMap(List::stream)
+                .toList();
+
+        log.info("Collected {} tool results after mixed execution", flatResults.size());
+
+        return context.appendMessage(flatResults)
+                .doOnSuccess(v -> log.info("Successfully appended {} tool results to context", flatResults.size()))
+                .doOnError(e -> log.error("Failed to append tool results to context", e));
     }
 
     /**
@@ -231,10 +245,15 @@ public class ToolDispatcher {
 
     /**
      * 执行已验证的工具调用
+     * <p>
+     * 执行流程：
+     * 1. 触发 PRE_TOOL_CALL hook
+     * 2. 执行工具调用
+     * 3. 处理结果（发送 Wire 消息、触发 POST hook、转换为上下文消息）
      */
     private Mono<Message> executeValidToolCall(String toolName, String arguments, String toolCallId, String toolSignature, Context context) {
 
-        // 触发 PRE_TOOL_CALL hook
+        // 构建 Hook 上下文
         HookContext preHookContext = HookContext.builder()
                 .hookType(HookType.PRE_TOOL_CALL)
                 .workDir(workDir)
@@ -242,46 +261,48 @@ public class ToolDispatcher {
                 .toolCallId(toolCallId)
                 .build();
 
-        return triggerHookSafely(HookType.PRE_TOOL_CALL, preHookContext)
+        // === 1. 触发 PRE hook -> 2. 执行工具 -> 3. 处理结果 ===
+        return ReactorUtils.triggerHookSafely(hookRegistry, HookType.PRE_TOOL_CALL, preHookContext)
                 .then(toolRegistry.execute(toolName, arguments))
-                .doOnNext(result -> {
-                    // 发送工具执行结果消息到 Wire
-                    wire.send(new ToolResultMessage(toolCallId, result));
-
-                    // 触发 POST_TOOL_CALL hook（异步，不阻塞主流程）
-                    HookContext postHookContext = HookContext.builder()
-                            .hookType(HookType.POST_TOOL_CALL)
-                            .workDir(workDir)
-                            .toolName(toolName)
-                            .toolCallId(toolCallId)
-                            .toolResult(formatToolResult(result))
-                            .build();
-                    triggerHookSafely(HookType.POST_TOOL_CALL, postHookContext).subscribe();
-                })
-                .map(result -> convertToolResultToMessage(result, toolCallId, toolSignature, context))
-                .onErrorResume(e -> {
-                    log.error("Tool execution failed: {}", toolName, e);
-                    ToolResult errorResult = ToolResult.error("Tool execution error: " + e.getMessage(), "Execution failed");
-                    wire.send(new ToolResultMessage(toolCallId, errorResult));
-
-                    return Mono.just(Message.tool(toolCallId, "Tool execution error: " + e.getMessage()));
-                });
+                .flatMap(result -> processToolResult(result, toolName, toolCallId, toolSignature, context))
+                .onErrorResume(e -> handleToolError(e, toolName, toolCallId));
     }
 
     /**
-     * 安全触发 Hook，捕获异常避免影响主流程
+     * 处理工具执行结果
+     * <p>
+     * - 发送结果到 Wire
+     * - 异步触发 POST_TOOL_CALL hook
+     * - 将结果转换为上下文消息
      */
-    private Mono<Void> triggerHookSafely(HookType hookType, HookContext hookContext) {
-        try {
-            return hookRegistry.trigger(hookType, hookContext)
-                    .onErrorResume(e -> {
-                        log.warn("Hook trigger failed for type {}: {}", hookType, e.getMessage());
-                        return Mono.empty();
-                    });
-        } catch (Exception e) {
-            log.warn("Hook trigger failed for type {}: {}", hookType, e.getMessage());
-            return Mono.empty();
-        }
+    private Mono<Message> processToolResult(ToolResult result, String toolName, String toolCallId,
+                                            String toolSignature, Context context) {
+        // 发送工具执行结果消息到 Wire
+        wire.send(new ToolResultMessage(toolCallId, result));
+
+        // 异步触发 POST_TOOL_CALL hook（不阻塞主流程）
+        HookContext postHookContext = HookContext.builder()
+                .hookType(HookType.POST_TOOL_CALL)
+                .workDir(workDir)
+                .toolName(toolName)
+                .toolCallId(toolCallId)
+                .toolResult(formatToolResult(result))
+                .build();
+        ReactorUtils.triggerHookSafely(hookRegistry, HookType.POST_TOOL_CALL, postHookContext).subscribe();
+
+        // 转换为上下文消息
+        Message message = convertToolResultToMessage(result, toolCallId, toolSignature, context);
+        return Mono.just(message);
+    }
+
+    /**
+     * 处理工具执行错误
+     */
+    private Mono<Message> handleToolError(Throwable e, String toolName, String toolCallId) {
+        log.error("Tool execution failed: {}", toolName, e);
+        ToolResult errorResult = ToolResult.error("Tool execution error: " + e.getMessage(), "Execution failed");
+        wire.send(new ToolResultMessage(toolCallId, errorResult));
+        return Mono.just(Message.tool(toolCallId, "Tool execution error: " + e.getMessage()));
     }
 
     /**

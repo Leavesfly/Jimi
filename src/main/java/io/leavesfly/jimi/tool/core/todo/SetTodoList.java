@@ -5,7 +5,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import io.leavesfly.jimi.core.session.Session;
-import io.leavesfly.jimi.tool.AbstractTool;
+import io.leavesfly.jimi.tool.SyncTool;
 import io.leavesfly.jimi.tool.ToolResult;
 import io.leavesfly.jimi.tool.ToolResultBuilder;
 import io.leavesfly.jimi.wire.Wire;
@@ -19,7 +19,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Component;
-import reactor.core.publisher.Mono;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -30,17 +29,18 @@ import java.util.stream.Collectors;
 
 /**
  * 设置待办事项列表工具
- * 用于管理和显示待办事项
+ * <p>
+ * 继承 SyncTool 基类，用于管理和显示待办事项。
+ * 只需实现 executeSync() 方法，无需关心 Reactor 的 Mono 包装。
  * 
  * 使用 @Scope("prototype") 使每次获取都是新实例
  */
 @Slf4j
 @Component
 @Scope(ConfigurableBeanFactory.SCOPE_PROTOTYPE)
-public class SetTodoList extends AbstractTool<SetTodoList.Params> implements WireAware {
+public class SetTodoList extends SyncTool<SetTodoList.Params> implements WireAware {
     
-    private static final String TODO_DIR = ".jimi";
-    private static final String TODO_FILE = "todos.json";
+    private static final String TODO_FILE_SUFFIX = "_todos.json";
     
     private Session session;
     private Wire wire;
@@ -211,150 +211,150 @@ public class SetTodoList extends AbstractTool<SetTodoList.Params> implements Wir
     }
     
     @Override
-    public Mono<ToolResult> execute(Params params) {
-        return Mono.defer(() -> {
-            ToolResultBuilder trb = new ToolResultBuilder();
-            
-            // 1. 加载已持久化的待办列表
-            List<Todo> list = loadTodos();
-            
-            // 2. 如果提供了 todos 参数，用它覆盖现有列表
-            if (params != null && params.getTodos() != null && !params.getTodos().isEmpty()) {
-                list = new ArrayList<>();
-                for (Todo t : params.getTodos()) {
-                    String title = (t != null && t.getTitle() != null) ? t.getTitle().trim() : "(未命名)";
-                    String status = (t != null) ? normalizeStatus(t.getStatus()) : "Pending";
+    protected ToolResult executeSync(Params params) {
+        ToolResultBuilder trb = new ToolResultBuilder();
+        
+        // 1. 加载已持久化的待办列表
+        List<Todo> list = loadTodos();
+        
+        // 2. 如果提供了 todos 参数，用它覆盖现有列表
+        if (params != null && params.getTodos() != null && !params.getTodos().isEmpty()) {
+            list = new ArrayList<>();
+            for (Todo t : params.getTodos()) {
+                String title = (t != null && t.getTitle() != null) ? t.getTitle().trim() : "(未命名)";
+                String status = (t != null) ? normalizeStatus(t.getStatus()) : "Pending";
+                list.add(Todo.builder()
+                    .id(t != null ? t.getId() : null)
+                    .title(title)
+                    .status(status)
+                    .parentId(t != null ? t.getParentId() : null)
+                    .build());
+            }
+        }
+        
+        // 3. 更新现有待办的状态（按ID或标题匹配）
+        if (params != null && params.getUpdates() != null) {
+            for (Todo upd : params.getUpdates()) {
+                if (upd == null) continue;
+                String key = upd.getId() != null ? upd.getId() : upd.getTitle();
+                if (key == null) continue;
+                
+                Todo found = findTodo(list, key);
+                if (found != null) {
+                    if (upd.getStatus() != null) {
+                        found.setStatus(normalizeStatus(upd.getStatus()));
+                    }
+                    if (upd.getTitle() != null) {
+                        found.setTitle(upd.getTitle().trim());
+                    }
+                    if (upd.getParentId() != null) {
+                        found.setParentId(upd.getParentId());
+                    }
+                }
+            }
+        }
+        
+        // 4. 添加新的待办（仅当ID/标题不存在时添加）
+        if (params != null && params.getAdds() != null) {
+            for (Todo add : params.getAdds()) {
+                if (add == null || add.getTitle() == null) continue;
+                String key = add.getId() != null ? add.getId() : add.getTitle();
+                
+                if (findTodo(list, key) == null) {
                     list.add(Todo.builder()
-                        .id(t != null ? t.getId() : null)
-                        .title(title)
-                        .status(status)
-                        .parentId(t != null ? t.getParentId() : null)
+                        .id(add.getId())
+                        .title(add.getTitle().trim())
+                        .status(normalizeStatus(add.getStatus()))
+                        .parentId(add.getParentId())
                         .build());
                 }
             }
-            
-            // 3. 更新现有待办的状态（按ID或标题匹配）
-            if (params != null && params.getUpdates() != null) {
-                for (Todo upd : params.getUpdates()) {
-                    if (upd == null) continue;
-                    String key = upd.getId() != null ? upd.getId() : upd.getTitle();
-                    if (key == null) continue;
-                    
-                    Todo found = findTodo(list, key);
-                    if (found != null) {
-                        if (upd.getStatus() != null) {
-                            found.setStatus(normalizeStatus(upd.getStatus()));
-                        }
-                        if (upd.getTitle() != null) {
-                            found.setTitle(upd.getTitle().trim());
-                        }
-                        if (upd.getParentId() != null) {
-                            found.setParentId(upd.getParentId());
+        }
+        
+        // 5. 删除指定的待办项
+        if (params != null && params.getDeletes() != null && !params.getDeletes().isEmpty()) {
+            list.removeIf(t -> {
+                for (String key : params.getDeletes()) {
+                    if (key != null && !key.isBlank()) {
+                        String trimmedKey = key.trim();
+                        if ((t.getId() != null && t.getId().equals(trimmedKey)) ||
+                            (t.getTitle() != null && t.getTitle().equals(trimmedKey))) {
+                            return true;
                         }
                     }
                 }
-            }
-            
-            // 4. 添加新的待办（仅当ID/标题不存在时添加）
-            if (params != null && params.getAdds() != null) {
-                for (Todo add : params.getAdds()) {
-                    if (add == null || add.getTitle() == null) continue;
-                    String key = add.getId() != null ? add.getId() : add.getTitle();
-                    
-                    if (findTodo(list, key) == null) {
-                        list.add(Todo.builder()
-                            .id(add.getId())
-                            .title(add.getTitle().trim())
-                            .status(normalizeStatus(add.getStatus()))
-                            .parentId(add.getParentId())
-                            .build());
-                    }
-                }
-            }
-            
-            // 5. 删除指定的待办项
-            if (params != null && params.getDeletes() != null && !params.getDeletes().isEmpty()) {
-                list.removeIf(t -> {
-                    for (String key : params.getDeletes()) {
-                        if (key != null && !key.isBlank()) {
-                            String trimmedKey = key.trim();
-                            if ((t.getId() != null && t.getId().equals(trimmedKey)) ||
-                                (t.getTitle() != null && t.getTitle().equals(trimmedKey))) {
-                                return true;
-                            }
-                        }
-                    }
-                    return false;
-                });
-            }
-            
-            // 6. 移除完成项
-            if (params != null && params.isRemoveCompleted()) {
-                List<Todo> filtered = new ArrayList<>();
-                for (Todo t : list) {
-                    String s = normalizeStatus(t.getStatus());
-                    if (!"Done".equals(s)) {
-                        filtered.add(t);
-                    }
-                }
-                list = filtered;
-            }
-            
-            // 7. 持久化待办列表
-            saveTodos(list);
-            
-            // 8. 生成输出
-            if (list.isEmpty()) {
-                // 发送空列表通知
-                sendTodoUpdate(list, 0, 0, 0, 0, 0);
-                trb.write("暂无待办事项。\n");
-                return Mono.just(trb.ok("空的待办清单", "空列表"));
-            }
-            
-            // 统计各状态数量
-            int pending = 0, inProgress = 0, done = 0, cancelled = 0, error = 0;
+                return false;
+            });
+        }
+        
+        // 6. 移除完成项
+        if (params != null && params.isRemoveCompleted()) {
+            List<Todo> filtered = new ArrayList<>();
             for (Todo t : list) {
                 String s = normalizeStatus(t.getStatus());
-                switch (s) {
-                    case "Pending": pending++; break;
-                    case "In Progress": inProgress++; break;
-                    case "Done": done++; break;
-                    case "Cancelled": cancelled++; break;
-                    case "Error": error++; break;
-                    default: pending++; break;
+                if (!"Done".equals(s)) {
+                    filtered.add(t);
                 }
-                String indent = t.getParentId() != null ? "  " : "";
-                String idStr = t.getId() != null ? "#" + t.getId() + " " : "";
-                trb.write(String.format("%s- %s%s [%s]\n", indent, idStr, t.getTitle(), s));
             }
-            
-            // 9. 发送 Wire 消息通知 UI
-            sendTodoUpdate(list, pending, inProgress, done, cancelled, error);
-            
-            StringBuilder briefBuilder = new StringBuilder();
-            briefBuilder.append(String.format("共%d项：", list.size()));
-            if (pending > 0) briefBuilder.append(String.format("Pending %d, ", pending));
-            if (inProgress > 0) briefBuilder.append(String.format("In Progress %d, ", inProgress));
-            if (done > 0) briefBuilder.append(String.format("Done %d, ", done));
-            if (cancelled > 0) briefBuilder.append(String.format("Cancelled %d, ", cancelled));
-            if (error > 0) briefBuilder.append(String.format("Error %d, ", error));
-            String brief = briefBuilder.toString().replaceAll(", $", "");
-            log.info("Todo list applied: size={}, pending={}, inProgress={}, done={}, cancelled={}, error={}", 
-                list.size(), pending, inProgress, done, cancelled, error);
-            
-            return Mono.just(trb.ok("待办清单已更新" , brief));
-        });
+            list = filtered;
+        }
+        
+        // 7. 持久化待办列表
+        saveTodos(list);
+        
+        // 8. 生成输出
+        if (list.isEmpty()) {
+            // 发送空列表通知
+            sendTodoUpdate(list, 0, 0, 0, 0, 0);
+            trb.write("暂无待办事项。\n");
+            return trb.ok("空的待办清单", "空列表");
+        }
+        
+        // 统计各状态数量
+        int pending = 0, inProgress = 0, done = 0, cancelled = 0, error = 0;
+        for (Todo t : list) {
+            String s = normalizeStatus(t.getStatus());
+            switch (s) {
+                case "Pending": pending++; break;
+                case "In Progress": inProgress++; break;
+                case "Done": done++; break;
+                case "Cancelled": cancelled++; break;
+                case "Error": error++; break;
+                default: pending++; break;
+            }
+            String indent = t.getParentId() != null ? "  " : "";
+            String idStr = t.getId() != null ? "#" + t.getId() + " " : "";
+            trb.write(String.format("%s- %s%s [%s]\n", indent, idStr, t.getTitle(), s));
+        }
+        
+        // 9. 发送 Wire 消息通知 UI
+        sendTodoUpdate(list, pending, inProgress, done, cancelled, error);
+        
+        StringBuilder briefBuilder = new StringBuilder();
+        briefBuilder.append(String.format("共%d项：", list.size()));
+        if (pending > 0) briefBuilder.append(String.format("Pending %d, ", pending));
+        if (inProgress > 0) briefBuilder.append(String.format("In Progress %d, ", inProgress));
+        if (done > 0) briefBuilder.append(String.format("Done %d, ", done));
+        if (cancelled > 0) briefBuilder.append(String.format("Cancelled %d, ", cancelled));
+        if (error > 0) briefBuilder.append(String.format("Error %d, ", error));
+        String brief = briefBuilder.toString().replaceAll(", $", "");
+        log.info("Todo list applied: size={}, pending={}, inProgress={}, done={}, cancelled={}, error={}", 
+            list.size(), pending, inProgress, done, cancelled, error);
+        
+        return trb.ok("待办清单已更新" , brief);
     }
     
     /**
      * 获取持久化文件路径
+     * 使用会话级别隔离：{sessionsDir}/{sessionId}_todos.json
      */
     private Path getTodoFilePath() {
-        if (session == null) {
+        if (session == null || session.getHistoryFile() == null) {
             return null;
         }
-        Path workDir = session.getWorkDir();
-        return workDir.resolve(TODO_DIR).resolve(TODO_FILE);
+        // historyFile: {sessionsDir}/{sessionId}.jsonl
+        // todoFile:    {sessionsDir}/{sessionId}_todos.json
+        return session.getHistoryFile().resolveSibling(session.getId() + TODO_FILE_SUFFIX);
     }
     
     /**
