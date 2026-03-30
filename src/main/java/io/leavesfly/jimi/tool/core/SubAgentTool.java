@@ -1,4 +1,4 @@
-package io.leavesfly.jimi.tool.core.task;
+package io.leavesfly.jimi.tool.core;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyDescription;
@@ -47,7 +47,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Task 工具 - 子 Agent 任务委托
+ * SubAgentTool 工具 - 子 Agent 任务委托
  * <p>
  * 这是 Jimi 的核心特性之一，允许将复杂任务委托给专门的子 Agent 处理。
  * <p>
@@ -67,7 +67,7 @@ import java.util.Map;
 @Slf4j
 @Component
 @Scope(ConfigurableBeanFactory.SCOPE_PROTOTYPE)
-public class Task extends AbstractTool<Task.Params> implements WireAware {
+public class SubAgentTool extends AbstractTool<SubAgentTool.Params> implements WireAware {
 
     /**
      * 响应过短时的继续提示词（可配置）
@@ -115,7 +115,7 @@ public class Task extends AbstractTool<Task.Params> implements WireAware {
     private volatile Mono<Void> cachedLoadMono;
 
     /**
-     * Task 工具参数
+     * SubAgentTool 工具参数
      */
     @Data
     @Builder
@@ -146,10 +146,10 @@ public class Task extends AbstractTool<Task.Params> implements WireAware {
     }
 
     @Autowired
-    public Task(ObjectMapper objectMapper, AgentRegistry agentRegistry, ToolRegistryFactory toolRegistryFactory,
-                MemoryRecorder memoryRecorder,
-                ContextManager contextManager, HookRegistry hookRegistry) {
-        super("Task", "Task tool (description will be set when initialized)", Params.class);
+    public SubAgentTool(ObjectMapper objectMapper, AgentRegistry agentRegistry, ToolRegistryFactory toolRegistryFactory,
+                        MemoryRecorder memoryRecorder,
+                        ContextManager contextManager, HookRegistry hookRegistry) {
+        super("SubAgentTool", "SubAgentTool tool (description will be set when initialized)", Params.class);
 
         this.objectMapper = objectMapper;
         this.agentRegistry = agentRegistry;
@@ -275,7 +275,7 @@ public class Task extends AbstractTool<Task.Params> implements WireAware {
 
     @Override
     public Mono<ToolResult> execute(Params params) {
-        log.info("Task tool called: {} -> {}", params != null ? params.getDescription() : null, params != null ? params.getSubagentName() : null);
+        log.info("SubAgentTool tool called: {} -> {}", params != null ? params.getDescription() : null, params != null ? params.getSubagentName() : null);
 
         // 参数校验
         if (params == null) {

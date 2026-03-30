@@ -32,7 +32,7 @@ tools:
   - WriteFile
 
   #→ Shell:
-  - Bash
+  - BashTool
   
   #→ Web:
   - FetchURL
@@ -46,7 +46,7 @@ tools:
   - ImpactAnalysisTool
   - MetaTool
   - SetTodoList
-  - Task
+  - SubAgentTool
   - Skills
 
 # 子 Agent 配置

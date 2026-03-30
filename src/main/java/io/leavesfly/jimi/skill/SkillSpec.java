@@ -1,4 +1,4 @@
-package io.leavesfly.jimi.tool.skill;
+package io.leavesfly.jimi.skill;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;

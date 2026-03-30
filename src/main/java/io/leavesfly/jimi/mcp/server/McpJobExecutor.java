@@ -58,8 +58,8 @@ public class McpJobExecutor {
             
             engine.run(input).block();
             String result = output.toString().isEmpty() ? 
-                "Task completed. Steps: " + String.join(", ", steps) : output.toString();
-            log.info("Task completed with {} steps", steps.size());
+                "SubAgentTool completed. Steps: " + String.join(", ", steps) : output.toString();
+            log.info("SubAgentTool completed with {} steps", steps.size());
             return textResult(result);
         } catch (Exception e) {
             log.error("Error executing Jimi task", e);

@@ -1,4 +1,4 @@
-package io.leavesfly.jimi.tool.skill;
+package io.leavesfly.jimi.skill;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;

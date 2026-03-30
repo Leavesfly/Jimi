@@ -1,4 +1,4 @@
-package io.leavesfly.jimi.tool.core.interaction;
+package io.leavesfly.jimi.tool.core;
 
 import com.fasterxml.jackson.annotation.JsonPropertyDescription;
 import io.leavesfly.jimi.core.interaction.HumanInputResponse;

@@ -7,10 +7,10 @@ import io.leavesfly.jimi.core.engine.context.BuiltinSystemPromptArgs;
 import io.leavesfly.jimi.core.engine.JimiRuntime;
 import io.leavesfly.jimi.core.sandbox.SandboxValidator;
 import io.leavesfly.jimi.core.session.Session;
-import io.leavesfly.jimi.tool.core.bash.Bash;
+import io.leavesfly.jimi.tool.core.BashTool;
 import io.leavesfly.jimi.tool.core.file.*;
-import io.leavesfly.jimi.tool.core.skill.SkillsTool;
-import io.leavesfly.jimi.tool.core.todo.SetTodoList;
+import io.leavesfly.jimi.tool.core.SkillsTool;
+import io.leavesfly.jimi.tool.core.SetTodoList;
 import io.leavesfly.jimi.tool.core.web.FetchURL;
 import io.leavesfly.jimi.tool.core.web.WebSearch;
 import io.leavesfly.jimi.tool.provider.MCPToolProvider;
@@ -131,7 +131,7 @@ public class ToolRegistryFactory {
             StrReplaceFile.class,
             Glob.class,
             Grep.class,
-            Bash.class,
+            BashTool.class,
             FetchURL.class,
             WebSearch.class,
             SetTodoList.class,
@@ -196,9 +196,9 @@ public class ToolRegistryFactory {
             glob.setBuiltinArgs(builtinArgs);
         } else if (tool instanceof Grep grep) {
             grep.setBuiltinArgs(builtinArgs);
-        } else if (tool instanceof Bash bash) {
-            bash.setApproval(approval);
-            if (sandboxValidator != null) bash.setSandboxValidator(sandboxValidator);
+        } else if (tool instanceof BashTool bashTool) {
+            bashTool.setApproval(approval);
+            if (sandboxValidator != null) bashTool.setSandboxValidator(sandboxValidator);
         } else if (tool instanceof SetTodoList todoList && session != null) {
             todoList.setSession(session);
         }

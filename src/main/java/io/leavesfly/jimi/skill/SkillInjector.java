@@ -1,4 +1,4 @@
-package io.leavesfly.jimi.tool.skill;
+package io.leavesfly.jimi.skill;
 
 import io.leavesfly.jimi.core.engine.context.Context;
 import io.leavesfly.jimi.llm.message.Message;

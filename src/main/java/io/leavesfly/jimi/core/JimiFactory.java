@@ -20,7 +20,7 @@ import io.leavesfly.jimi.core.interaction.approval.Approval;
 import io.leavesfly.jimi.core.engine.context.Context;
 import io.leavesfly.jimi.tool.ToolRegistry;
 import io.leavesfly.jimi.tool.ToolRegistryFactory;
-import io.leavesfly.jimi.tool.skill.SkillRegistry;
+import io.leavesfly.jimi.skill.SkillRegistry;
 import io.leavesfly.jimi.wire.Wire;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;

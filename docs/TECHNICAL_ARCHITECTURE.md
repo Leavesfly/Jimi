@@ -1294,7 +1294,7 @@ public class TaskToolProvider implements ToolProvider {
     
     @Override
     public String getName() {
-        return "Task";
+        return "SubAgentTool";
     }
     
     @Override
@@ -1306,7 +1306,7 @@ public class TaskToolProvider implements ToolProvider {
     public boolean supports(AgentSpec agentSpec, Runtime runtime) {
         // 检查Agent是否配置了Task工具
         return agentSpec.getTools() != null 
-            && agentSpec.getTools().contains("Task");
+            && agentSpec.getTools().contains("SubAgentTool");
     }
     
     @Override
@@ -1330,7 +1330,7 @@ model: qwen-max
 tools:
   - ReadFile
   - WriteFile
-  - Bash
+  - BashTool
   - Think
 
 exclude_tools:

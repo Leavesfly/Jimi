@@ -45,7 +45,8 @@ public class ImpactAnalyzer {
             result.setAnalysisType(analysisType);
             result.setMaxDepth(maxDepth);
             
-            CodeEntity targetEntity = graphStore.getEntity(entityId).block();
+            // 使用同步方法避免 block()
+            CodeEntity targetEntity = graphStore.getEntitySync(entityId);
             if (targetEntity == null) {
                 result.setSuccess(false);
                 result.setErrorMessage("Entity not found: " + entityId);
@@ -141,19 +142,20 @@ public class ImpactAnalyzer {
             MethodCallImpact result = new MethodCallImpact();
             result.setMethodEntityId(methodEntityId);
             
-            CodeEntity method = graphStore.getEntity(methodEntityId).block();
+            // 使用同步方法避免 block()
+            CodeEntity method = graphStore.getEntitySync(methodEntityId);
             if (method == null || method.getType() != EntityType.METHOD) {
                 return result;
             }
             
             result.setMethod(method);
             
-            // 查找所有调用该方法的方法 (直接调用者)
-            List<CodeRelation> callers = graphStore.getRelationsByTarget(methodEntityId).block();
+            // 查找所有调用该方法的方法 (直接调用者) - 使用同步方法
+            List<CodeRelation> callers = graphStore.getRelationsByTargetSync(methodEntityId);
             if (callers != null) {
                 List<CodeEntity> directCallers = callers.stream()
                     .filter(rel -> rel.getType() == RelationType.CALLS)
-                    .map(rel -> graphStore.getEntity(rel.getSourceId()).block())
+                    .map(rel -> graphStore.getEntitySync(rel.getSourceId()))
                     .filter(Objects::nonNull)
                     .filter(e -> e.getType() == EntityType.METHOD || 
                                e.getType() == EntityType.CONSTRUCTOR)
@@ -170,12 +172,12 @@ public class ImpactAnalyzer {
                 result.setIndirectCallers(new ArrayList<>(indirectCallers));
             }
             
-            // 查找该方法调用的所有方法 (直接被调用者)
-            List<CodeRelation> callees = graphStore.getRelationsBySource(methodEntityId).block();
+            // 查找该方法调用的所有方法 (直接被调用者) - 使用同步方法
+            List<CodeRelation> callees = graphStore.getRelationsBySourceSync(methodEntityId);
             if (callees != null) {
                 List<CodeEntity> directCallees = callees.stream()
                     .filter(rel -> rel.getType() == RelationType.CALLS)
-                    .map(rel -> graphStore.getEntity(rel.getTargetId()).block())
+                    .map(rel -> graphStore.getEntitySync(rel.getTargetId()))
                     .filter(Objects::nonNull)
                     .filter(e -> e.getType() == EntityType.METHOD || 
                                e.getType() == EntityType.CONSTRUCTOR)
@@ -201,7 +203,8 @@ public class ImpactAnalyzer {
             ClassInheritanceImpact result = new ClassInheritanceImpact();
             result.setClassEntityId(classEntityId);
             
-            CodeEntity classEntity = graphStore.getEntity(classEntityId).block();
+            // 使用同步方法避免 block()
+            CodeEntity classEntity = graphStore.getEntitySync(classEntityId);
             if (classEntity == null || 
                 (classEntity.getType() != EntityType.CLASS && 
                  classEntity.getType() != EntityType.INTERFACE)) {
@@ -210,43 +213,43 @@ public class ImpactAnalyzer {
             
             result.setClassEntity(classEntity);
             
-            // 查找父类
-            List<CodeRelation> extendsRelations = graphStore.getRelationsBySource(classEntityId).block();
+            // 查找父类 - 使用同步方法
+            List<CodeRelation> extendsRelations = graphStore.getRelationsBySourceSync(classEntityId);
             if (extendsRelations != null) {
                 List<CodeEntity> parents = extendsRelations.stream()
                     .filter(rel -> rel.getType() == RelationType.EXTENDS)
-                    .map(rel -> graphStore.getEntity(rel.getTargetId()).block())
+                    .map(rel -> graphStore.getEntitySync(rel.getTargetId()))
                     .filter(Objects::nonNull)
                     .collect(Collectors.toList());
                 result.setParentClasses(parents);
             }
             
-            // 查找子类
-            List<CodeRelation> extendedByRelations = graphStore.getRelationsByTarget(classEntityId).block();
+            // 查找子类 - 使用同步方法
+            List<CodeRelation> extendedByRelations = graphStore.getRelationsByTargetSync(classEntityId);
             if (extendedByRelations != null) {
                 List<CodeEntity> children = extendedByRelations.stream()
                     .filter(rel -> rel.getType() == RelationType.EXTENDS)
-                    .map(rel -> graphStore.getEntity(rel.getSourceId()).block())
+                    .map(rel -> graphStore.getEntitySync(rel.getSourceId()))
                     .filter(Objects::nonNull)
                     .collect(Collectors.toList());
                 result.setChildClasses(children);
             }
             
-            // 查找实现的接口
+            // 查找实现的接口 - 使用同步方法
             if (extendsRelations != null) {
                 List<CodeEntity> interfaces = extendsRelations.stream()
                     .filter(rel -> rel.getType() == RelationType.IMPLEMENTS)
-                    .map(rel -> graphStore.getEntity(rel.getTargetId()).block())
+                    .map(rel -> graphStore.getEntitySync(rel.getTargetId()))
                     .filter(Objects::nonNull)
                     .collect(Collectors.toList());
                 result.setImplementedInterfaces(interfaces);
             }
             
-            // 查找实现该接口的类
+            // 查找实现该接口的类 - 使用同步方法
             if (classEntity.getType() == EntityType.INTERFACE && extendedByRelations != null) {
                 List<CodeEntity> implementers = extendedByRelations.stream()
                     .filter(rel -> rel.getType() == RelationType.IMPLEMENTS)
-                    .map(rel -> graphStore.getEntity(rel.getSourceId()).block())
+                    .map(rel -> graphStore.getEntitySync(rel.getSourceId()))
                     .filter(Objects::nonNull)
                     .collect(Collectors.toList());
                 result.setImplementingClasses(implementers);
@@ -270,8 +273,8 @@ public class ImpactAnalyzer {
         
         visited.add(entityId);
         
-        // 获取所有指向该实体的关系 (入边)
-        List<CodeRelation> incomingRelations = graphStore.getRelationsByTarget(entityId).block();
+        // 获取所有指向该实体的关系 (入边) - 使用同步方法避免 block()
+        List<CodeRelation> incomingRelations = graphStore.getRelationsByTargetSync(entityId);
         
         if (incomingRelations != null) {
             for (CodeRelation relation : incomingRelations) {
@@ -279,7 +282,7 @@ public class ImpactAnalyzer {
                 if (isDependencyRelation(relation.getType())) {
                     relations.add(relation);
                     
-                    CodeEntity dependent = graphStore.getEntity(relation.getSourceId()).block();
+                    CodeEntity dependent = graphStore.getEntitySync(relation.getSourceId());
                     if (dependent != null && !entities.contains(dependent)) {
                         entities.add(dependent);
                         analyzeDownstream(dependent.getId(), maxDepth, currentDepth + 1,
@@ -302,15 +305,15 @@ public class ImpactAnalyzer {
         
         visited.add(entityId);
         
-        // 获取该实体的所有关系 (出边)
-        List<CodeRelation> outgoingRelations = graphStore.getRelationsBySource(entityId).block();
+        // 获取该实体的所有关系 (出边) - 使用同步方法避免 block()
+        List<CodeRelation> outgoingRelations = graphStore.getRelationsBySourceSync(entityId);
         
         if (outgoingRelations != null) {
             for (CodeRelation relation : outgoingRelations) {
                 if (isDependencyRelation(relation.getType())) {
                     relations.add(relation);
                     
-                    CodeEntity dependency = graphStore.getEntity(relation.getTargetId()).block();
+                    CodeEntity dependency = graphStore.getEntitySync(relation.getTargetId());
                     if (dependency != null && !entities.contains(dependency)) {
                         entities.add(dependency);
                         analyzeUpstream(dependency.getId(), maxDepth, currentDepth + 1,
@@ -332,11 +335,12 @@ public class ImpactAnalyzer {
         
         visited.add(methodId);
         
-        List<CodeRelation> callers = graphStore.getRelationsByTarget(methodId).block();
+        // 使用同步方法避免 block()
+        List<CodeRelation> callers = graphStore.getRelationsByTargetSync(methodId);
         if (callers != null) {
             for (CodeRelation rel : callers) {
                 if (rel.getType() == RelationType.CALLS) {
-                    CodeEntity caller = graphStore.getEntity(rel.getSourceId()).block();
+                    CodeEntity caller = graphStore.getEntitySync(rel.getSourceId());
                     if (caller != null && 
                         (caller.getType() == EntityType.METHOD || 
                          caller.getType() == EntityType.CONSTRUCTOR)) {

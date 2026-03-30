@@ -68,7 +68,7 @@ class ToolVisualizationDemo {
         ToolCall[] calls = {
                 createToolCall("call_101", "ReadFile", "{\"path\":\"/src/main.java\"}"),
                 createToolCall("call_102", "SearchWeb", "{\"query\":\"Java best practices\"}"),
-                createToolCall("call_103", "Bash", "{\"command\":\"ls -la\"}")
+                createToolCall("call_103", "BashTool", "{\"command\":\"ls -la\"}")
         };
         
         System.out.println("并行执行 3 个工具...\n");
@@ -155,15 +155,15 @@ class ToolVisualizationDemo {
         
         // 3. Shell 工具
         System.out.println("3. Shell 工具:");
-        executeAndDisplay(viz, "call_303", "Bash", 
+        executeAndDisplay(viz, "call_303", "BashTool",
                 "{\"command\":\"find . -name '*.java' | wc -l\"}", 
                 ToolResult.ok("42", "找到 42 个文件"));
         
         System.out.println();
         
-        // 4. Task 工具
-        System.out.println("4. Task 工具:");
-        executeAndDisplay(viz, "call_304", "Task", 
+        // 4. SubAgentTool 工具
+        System.out.println("4. SubAgentTool 工具:");
+        executeAndDisplay(viz, "call_304", "SubAgentTool",
                 "{\"description\":\"Fix bug\",\"subagent_name\":\"code_fixer\"}", 
                 ToolResult.ok("...", "子 Agent 任务完成"));
         
@@ -189,7 +189,7 @@ class ToolVisualizationDemo {
         
         ToolVisualization viz = new ToolVisualization();
         
-        ToolCall longRunningCall = createToolCall("call_401", "Bash", 
+        ToolCall longRunningCall = createToolCall("call_401", "BashTool",
                 "{\"command\":\"sleep 2 && echo done\"}");
         
         System.out.println("执行长时间运行的工具（观察旋转动画）...\n");
@@ -254,7 +254,7 @@ class ToolVisualizationDemo {
         Thread.sleep(300);
         
         // Step 6: 验证
-        executeAndDisplay(viz, "call_506", "Bash", 
+        executeAndDisplay(viz, "call_506", "BashTool",
                 "{\"command\":\"mvn test -Dtest=UserServiceTest\"}", 
                 ToolResult.ok("...", "测试通过 (3/3)"));
         Thread.sleep(500);
@@ -323,9 +323,9 @@ class ToolVisualizationDemo {
         
         System.out.println("\n  3. ✅ 智能摘要提取");
         System.out.println("     - ReadFile → 显示文件路径");
-        System.out.println("     - Bash → 显示命令");
+        System.out.println("     - BashTool → 显示命令");
         System.out.println("     - SearchWeb → 显示查询");
-        System.out.println("     - Task → 显示任务描述");
+        System.out.println("     - SubAgentTool → 显示任务描述");
         
         System.out.println("\n  4. ✅ 结果展示");
         System.out.println("     - 成功/失败状态");

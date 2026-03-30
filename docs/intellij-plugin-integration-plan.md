@@ -527,7 +527,7 @@ public class JimiRpcServer {
         session.getEngine()
             .run(params.getInput())
             .subscribeOn(Schedulers.boundedElastic())
-            .doOnError(e -> log.error("Task execution failed", e))
+            .doOnError(e -> log.error("SubAgentTool execution failed", e))
             .subscribe();
         
         return Mono.just(JsonRpcResponse.success(req.getId(), Map.of(

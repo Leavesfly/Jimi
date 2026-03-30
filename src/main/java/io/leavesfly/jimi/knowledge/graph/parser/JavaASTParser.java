@@ -1,7 +1,7 @@
 package io.leavesfly.jimi.knowledge.graph.parser;
 
 import com.github.javaparser.JavaParser;
-import com.github.javaparser.ParseResult;
+
 import com.github.javaparser.ast.CompilationUnit;
 import com.github.javaparser.ast.Node;
 import com.github.javaparser.ast.PackageDeclaration;
@@ -17,6 +17,7 @@ import org.springframework.stereotype.Component;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Set;
 
 /**
  * Java AST 解析器
@@ -25,7 +26,19 @@ import java.nio.file.Path;
  */
 @Slf4j
 @Component
-public class JavaASTParser {
+public class JavaASTParser implements LanguageParser {
+    
+    private static final Set<String> SUPPORTED_EXTENSIONS = Set.of(".java");
+    
+    @Override
+    public String getLanguageName() {
+        return "Java";
+    }
+    
+    @Override
+    public Set<String> getSupportedExtensions() {
+        return SUPPORTED_EXTENSIONS;
+    }
     
     private final JavaParser javaParser;
     
@@ -40,8 +53,9 @@ public class JavaASTParser {
      * @param projectRoot 项目根目录 (用于计算相对路径)
      * @return 解析结果
      */
-    public io.leavesfly.jimi.knowledge.graph.parser.ParseResult parseFile(Path filePath, Path projectRoot) {
-        io.leavesfly.jimi.knowledge.graph.parser.ParseResult result = io.leavesfly.jimi.knowledge.graph.parser.ParseResult.builder()
+    @Override
+    public ParseResult parseFile(Path filePath, Path projectRoot) {
+        ParseResult result = ParseResult.builder()
             .filePath(projectRoot.relativize(filePath).toString())
             .build();
         
@@ -49,12 +63,12 @@ public class JavaASTParser {
             // 读取文件内容
             String content = Files.readString(filePath);
             
-            // 解析 Java 代码
-            ParseResult<CompilationUnit> parseResult = javaParser.parse(content);
+            // 解析 Java 代码 (使用 JavaParser 库的 ParseResult)
+            com.github.javaparser.ParseResult<CompilationUnit> parseResult = javaParser.parse(content);
             
             if (!parseResult.isSuccessful() || !parseResult.getResult().isPresent()) {
                 log.warn("Failed to parse file: {}", filePath);
-                return io.leavesfly.jimi.knowledge.graph.parser.ParseResult.failure(
+                return ParseResult.failure(
                     result.getFilePath(), 
                     "Parse failed");
             }
@@ -309,19 +323,99 @@ public class JavaASTParser {
     
     /**
      * 解析方法调用
+     * 尝试创建 CALLS 关系（简化版本，处理同类方法调用和已知类型的调用）
      */
     private void parseMethodCalls(Node node, CodeEntity methodEntity, 
                                   io.leavesfly.jimi.knowledge.graph.parser.ParseResult result) {
+        String currentClassQualifiedName = extractClassQualifiedName(methodEntity.getQualifiedName());
+        
         // 查找方法调用表达式
         node.findAll(MethodCallExpr.class).forEach(methodCall -> {
             String calledMethodName = methodCall.getNameAsString();
+            int paramCount = methodCall.getArguments().size();
             
-            // 尝试解析调用的方法 (简化版，仅记录方法名)
-            // 完整实现需要符号解析器
+            // 记录调用属性（用于调试和分析）
             methodEntity.addAttribute("calls_" + calledMethodName, true);
             
-            // TODO: 添加 CALLS 关系 (需要符号解析确定目标方法的完整限定名)
+            // 尝试解析调用目标
+            String targetMethodId = resolveMethodCallTarget(methodCall, calledMethodName, 
+                                                            paramCount, currentClassQualifiedName);
+            
+            if (targetMethodId != null) {
+                // 创建 CALLS 关系
+                result.addRelation(CodeRelation.builder()
+                    .sourceId(methodEntity.getId())
+                    .targetId(targetMethodId)
+                    .type(RelationType.CALLS)
+                    .build());
+            }
         });
+    }
+    
+    /**
+     * 尝试解析方法调用的目标方法 ID
+     * 
+     * @param methodCall 方法调用表达式
+     * @param methodName 方法名
+     * @param paramCount 参数数量
+     * @param currentClassQualifiedName 当前类的全限定名
+     * @return 目标方法的 ID，无法解析时返回 null
+     */
+    private String resolveMethodCallTarget(MethodCallExpr methodCall, String methodName, 
+                                           int paramCount, String currentClassQualifiedName) {
+        // 尝试获取调用范围（调用者）
+        if (methodCall.getScope().isEmpty()) {
+            // 无范围调用，可能是同类方法调用或静态导入
+            // 假设是同类方法调用
+            if (currentClassQualifiedName != null) {
+                String signature = methodName + "(" + paramCount + ")";
+                return CodeEntity.generateId(EntityType.METHOD, 
+                    currentClassQualifiedName + "." + signature);
+            }
+        } else {
+            // 有范围调用，如 object.method() 或 ClassName.staticMethod()
+            String scope = methodCall.getScope().get().toString();
+            
+            // 如果范围是简单的类名（首字母大写），假设是静态方法调用
+            if (scope.matches("[A-Z][a-zA-Z0-9]*")) {
+                String signature = methodName + "(" + paramCount + ")";
+                return CodeEntity.generateId(EntityType.METHOD, scope + "." + signature);
+            }
+            
+            // 对于 this.method() 形式
+            if ("this".equals(scope) && currentClassQualifiedName != null) {
+                String signature = methodName + "(" + paramCount + ")";
+                return CodeEntity.generateId(EntityType.METHOD, 
+                    currentClassQualifiedName + "." + signature);
+            }
+            
+            // 其他情况（如 object.method()）需要符号解析器支持
+            // 这里返回 null，暂不处理
+        }
+        
+        return null;
+    }
+    
+    /**
+     * 从方法的全限定名中提取类的全限定名
+     */
+    private String extractClassQualifiedName(String methodQualifiedName) {
+        if (methodQualifiedName == null) {
+            return null;
+        }
+        // 方法全限定名格式: com.example.ClassName.methodName(paramCount)
+        // 需要提取: com.example.ClassName
+        int lastDotIndex = methodQualifiedName.lastIndexOf('.');
+        if (lastDotIndex > 0) {
+            String beforeMethod = methodQualifiedName.substring(0, lastDotIndex);
+            // 再去掉签名部分
+            int signatureStart = beforeMethod.indexOf('(');
+            if (signatureStart > 0) {
+                beforeMethod = beforeMethod.substring(0, signatureStart);
+            }
+            return beforeMethod;
+        }
+        return null;
     }
     
     /**

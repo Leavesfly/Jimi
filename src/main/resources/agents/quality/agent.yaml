@@ -15,7 +15,7 @@ model: qwen3.5-plus
 
 # 可用工具（专注于代码审查）
 tools:
-  - Bash              # 执行 shell 命令
+  - BashTool              # 执行 shell 命令
   - ReadFile          # 读取文件内容
   - WriteFile         # 写入文件内容
   - StrReplaceFile    # 替换文件中的字符串

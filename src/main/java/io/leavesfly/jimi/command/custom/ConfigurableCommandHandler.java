@@ -361,7 +361,7 @@ public class ConfigurableCommandHandler implements CommandHandler {
         out.println("任务: " + task);
         
         // TODO: 实现 Agent 委托逻辑
-        // 这里需要使用 Task 工具来委托给子 Agent
+        // 这里需要使用 SubAgentTool 工具来委托给子 Agent
         throw new UnsupportedOperationException("Agent delegation not yet implemented");
     }
     

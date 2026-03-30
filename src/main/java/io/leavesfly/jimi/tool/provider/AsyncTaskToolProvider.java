@@ -5,7 +5,7 @@ import io.leavesfly.jimi.core.engine.JimiRuntime;
 import io.leavesfly.jimi.tool.Tool;
 import io.leavesfly.jimi.tool.ToolProvider;
 
-import io.leavesfly.jimi.tool.core.async.AsyncTask;
+import io.leavesfly.jimi.tool.core.AsyncTask;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
@@ -25,7 +25,7 @@ import java.util.List;
  * - Agent 的 subagents 配置不为空
  * 
  * 与 TaskToolProvider 的区别：
- * - TaskToolProvider 提供同步的 Task 工具
+ * - TaskToolProvider 提供同步的 SubAgentTool 工具
  * - AsyncTaskToolProvider 提供异步的 AsyncTask 工具
  * - 两者可以共存，由 LLM 根据场景选择使用
  * 

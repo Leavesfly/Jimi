@@ -2,7 +2,7 @@ package io.leavesfly.jimi.common;
 
 import io.leavesfly.jimi.core.interaction.approval.Approval;
 import io.leavesfly.jimi.tool.ToolResult;
-import io.leavesfly.jimi.tool.core.bash.Bash;
+import io.leavesfly.jimi.tool.core.BashTool;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
@@ -12,7 +12,6 @@ import reactor.core.publisher.Mono;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.file.Path;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
@@ -117,15 +116,15 @@ public class ScriptRunner {
             String command = buildCommand(effectiveType, scriptPath, environment);
             int effectiveTimeout = timeout > 0 ? timeout : DEFAULT_TIMEOUT;
 
-            Bash bash = applicationContext.getBean(Bash.class);
-            bash.setApproval(new Approval(true));
+            BashTool bashTool = applicationContext.getBean(BashTool.class);
+            bashTool.setApproval(new Approval(true));
 
-            Bash.Params params = Bash.Params.builder()
+            BashTool.Params params = BashTool.Params.builder()
                     .command(command)
                     .timeout(effectiveTimeout)
                     .build();
 
-            return bash.execute(params);
+            return bashTool.execute(params);
         } catch (Exception e) {
             log.error("Failed to execute script file: {}", scriptPath, e);
             return Mono.just(ToolResult.error(

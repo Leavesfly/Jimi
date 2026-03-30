@@ -156,7 +156,7 @@ class MetaCommandsDemo {
         System.out.println("  • Grep");
         System.out.println("");
         System.out.println("→ Shell:");
-        System.out.println("  • Bash");
+        System.out.println("  • BashTool");
         System.out.println("");
         System.out.println("→ Web:");
         System.out.println("  • SearchWeb");
@@ -165,7 +165,7 @@ class MetaCommandsDemo {
         System.out.println("→ 其他:");
         System.out.println("  • Think");
         System.out.println("  • Todo");
-        System.out.println("  • Task");
+        System.out.println("  • SubAgentTool");
         System.out.println("  • DMail");
         System.out.println("");
         System.out.println("总计: 13 个工具");

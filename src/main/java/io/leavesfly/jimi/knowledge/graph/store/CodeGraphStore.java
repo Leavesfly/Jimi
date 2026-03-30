@@ -180,6 +180,40 @@ public interface CodeGraphStore {
      */
     void setStoragePath(java.nio.file.Path storagePath);
     
+    // ==================== 同步访问方法 ====================
+    // 供内部组件（如 PathFinder、ImpactAnalyzer）使用，避免在 Reactive 上下文中调用 block()
+    
+    /**
+     * 同步获取实体
+     */
+    default CodeEntity getEntitySync(String id) {
+        return getEntity(id).block();
+    }
+    
+    /**
+     * 同步获取从某个实体出发的所有关系
+     */
+    default List<CodeRelation> getRelationsBySourceSync(String sourceId) {
+        List<CodeRelation> result = getRelationsBySource(sourceId).block();
+        return result != null ? result : java.util.Collections.emptyList();
+    }
+    
+    /**
+     * 同步获取指向某个实体的所有关系
+     */
+    default List<CodeRelation> getRelationsByTargetSync(String targetId) {
+        List<CodeRelation> result = getRelationsByTarget(targetId).block();
+        return result != null ? result : java.util.Collections.emptyList();
+    }
+    
+    /**
+     * 同步按类型获取实体
+     */
+    default List<CodeEntity> getEntitiesByTypeSync(EntityType type) {
+        List<CodeEntity> result = getEntitiesByType(type).block();
+        return result != null ? result : java.util.Collections.emptyList();
+    }
+    
     /**
      * 图统计信息
      */

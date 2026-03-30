@@ -118,7 +118,7 @@ public class ExecutionSpec {
             throw new IllegalArgumentException("Agent name is required for agent execution");
         }
         if (task == null || task.trim().isEmpty()) {
-            throw new IllegalArgumentException("Task description is required for agent execution");
+            throw new IllegalArgumentException("SubAgentTool description is required for agent execution");
         }
     }
     

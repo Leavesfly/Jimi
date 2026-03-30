@@ -2,7 +2,7 @@ package io.leavesfly.jimi.config;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import io.leavesfly.jimi.config.info.*;
-import io.leavesfly.jimi.tool.skill.SkillConfig;
+import io.leavesfly.jimi.skill.SkillConfig;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;

@@ -96,7 +96,7 @@ public class ToolsMemoryExtractor {
             case "run_in_terminal" -> "execution";
             case "write", "create_file" -> "code_creation";
             case "search_replace" -> "code_modification";
-            case "Task" -> "subagent_task";
+            case "SubAgentTool" -> "subagent_task";
 
             // 低价值工具，跳过提取
             case "think", "add_tasks", "update_tasks" -> "skip";
@@ -144,7 +144,7 @@ public class ToolsMemoryExtractor {
             case "search_codebase", "search_symbol" -> 0.9;  // 代码搜索结果可信度高
             case "read_file", "list_dir" -> 0.85;           // 文件读取结果准确
             case "run_in_terminal" -> 0.8;                  // 执行结果真实
-            case "Task" -> 0.75;                            // Subagent结果需验证
+            case "SubAgentTool" -> 0.75;                            // Subagent结果需验证
             default -> 0.7;
         };
 

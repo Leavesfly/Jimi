@@ -16,6 +16,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
@@ -63,8 +64,8 @@ public class InMemoryCodeGraphStore implements CodeGraphStore {
         return Mono.fromRunnable(() -> {
             entities.put(entity.getId(), entity);
             
-            // 更新文件索引
-            fileIndex.computeIfAbsent(entity.getFilePath(), k -> new ArrayList<>())
+            // 更新文件索引 - 使用线程安全的 CopyOnWriteArrayList
+            fileIndex.computeIfAbsent(entity.getFilePath(), k -> new CopyOnWriteArrayList<>())
                 .add(entity.getId());
             
             log.debug("Added entity: {}", entity.getDescription());
@@ -77,7 +78,7 @@ public class InMemoryCodeGraphStore implements CodeGraphStore {
             int count = 0;
             for (CodeEntity entity : entityList) {
                 entities.put(entity.getId(), entity);
-                fileIndex.computeIfAbsent(entity.getFilePath(), k -> new ArrayList<>())
+                fileIndex.computeIfAbsent(entity.getFilePath(), k -> new CopyOnWriteArrayList<>())
                     .add(entity.getId());
                 count++;
             }
@@ -156,10 +157,10 @@ public class InMemoryCodeGraphStore implements CodeGraphStore {
         return Mono.fromRunnable(() -> {
             relations.put(relation.getId(), relation);
             
-            // 更新邻接表
-            outgoingEdges.computeIfAbsent(relation.getSourceId(), k -> new ArrayList<>())
+            // 更新邻接表 - 使用线程安全的 CopyOnWriteArrayList
+            outgoingEdges.computeIfAbsent(relation.getSourceId(), k -> new CopyOnWriteArrayList<>())
                 .add(relation.getId());
-            incomingEdges.computeIfAbsent(relation.getTargetId(), k -> new ArrayList<>())
+            incomingEdges.computeIfAbsent(relation.getTargetId(), k -> new CopyOnWriteArrayList<>())
                 .add(relation.getId());
             
             log.debug("Added relation: {}", relation.getDescription());
@@ -172,9 +173,9 @@ public class InMemoryCodeGraphStore implements CodeGraphStore {
             int count = 0;
             for (CodeRelation relation : relationList) {
                 relations.put(relation.getId(), relation);
-                outgoingEdges.computeIfAbsent(relation.getSourceId(), k -> new ArrayList<>())
+                outgoingEdges.computeIfAbsent(relation.getSourceId(), k -> new CopyOnWriteArrayList<>())
                     .add(relation.getId());
-                incomingEdges.computeIfAbsent(relation.getTargetId(), k -> new ArrayList<>())
+                incomingEdges.computeIfAbsent(relation.getTargetId(), k -> new CopyOnWriteArrayList<>())
                     .add(relation.getId());
                 count++;
             }
@@ -619,17 +620,17 @@ public class InMemoryCodeGraphStore implements CodeGraphStore {
         incomingEdges.clear();
         fileIndex.clear();
         
-        // 重建文件索引
+        // 重建文件索引 - 使用线程安全的 CopyOnWriteArrayList
         for (CodeEntity entity : entities.values()) {
-            fileIndex.computeIfAbsent(entity.getFilePath(), k -> new ArrayList<>())
+            fileIndex.computeIfAbsent(entity.getFilePath(), k -> new CopyOnWriteArrayList<>())
                 .add(entity.getId());
         }
         
-        // 重建邻接表
+        // 重建邻接表 - 使用线程安全的 CopyOnWriteArrayList
         for (CodeRelation relation : relations.values()) {
-            outgoingEdges.computeIfAbsent(relation.getSourceId(), k -> new ArrayList<>())
+            outgoingEdges.computeIfAbsent(relation.getSourceId(), k -> new CopyOnWriteArrayList<>())
                 .add(relation.getId());
-            incomingEdges.computeIfAbsent(relation.getTargetId(), k -> new ArrayList<>())
+            incomingEdges.computeIfAbsent(relation.getTargetId(), k -> new CopyOnWriteArrayList<>())
                 .add(relation.getId());
         }
         
@@ -638,6 +639,45 @@ public class InMemoryCodeGraphStore implements CodeGraphStore {
     }
     
     // ==================== 辅助类 ====================
+    
+    // ==================== 同步访问方法实现 ====================
+    // 直接访问内存数据结构，避免 Reactive 包装开销
+    
+    @Override
+    public CodeEntity getEntitySync(String id) {
+        return entities.get(id);
+    }
+    
+    @Override
+    public List<CodeRelation> getRelationsBySourceSync(String sourceId) {
+        List<String> relationIds = outgoingEdges.get(sourceId);
+        if (relationIds == null) {
+            return Collections.emptyList();
+        }
+        return relationIds.stream()
+            .map(relations::get)
+            .filter(Objects::nonNull)
+            .collect(Collectors.toList());
+    }
+    
+    @Override
+    public List<CodeRelation> getRelationsByTargetSync(String targetId) {
+        List<String> relationIds = incomingEdges.get(targetId);
+        if (relationIds == null) {
+            return Collections.emptyList();
+        }
+        return relationIds.stream()
+            .map(relations::get)
+            .filter(Objects::nonNull)
+            .collect(Collectors.toList());
+    }
+    
+    @Override
+    public List<CodeEntity> getEntitiesByTypeSync(EntityType type) {
+        return entities.values().stream()
+            .filter(entity -> entity.getType() == type)
+            .collect(Collectors.toList());
+    }
     
     /**
      * 图元数据

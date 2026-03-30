@@ -12,6 +12,7 @@ import io.leavesfly.jimi.core.compaction.SimpleCompaction;
 import io.leavesfly.jimi.core.sandbox.SandboxValidator;
 import io.leavesfly.jimi.exception.ConfigException;
 import io.leavesfly.jimi.knowledge.graph.GraphManager;
+import io.leavesfly.jimi.knowledge.graph.parser.LanguageParserRegistry;
 import io.leavesfly.jimi.knowledge.rag.*;
 import io.leavesfly.jimi.wire.Wire;
 import io.leavesfly.jimi.wire.WireImpl;
@@ -118,8 +119,8 @@ public class JimiConfiguration {
     public VectorIndexConfig vectorIndexConfig(JimiConfig jimiConfig) { return jimiConfig.getVectorIndex(); }
 
     @Bean
-    public GraphManager graphManager(GraphConfig graphConfig) {
-        return new GraphManager(graphConfig);
+    public GraphManager graphManager(GraphConfig graphConfig, LanguageParserRegistry parserRegistry) {
+        return new GraphManager(graphConfig, parserRegistry);
     }
 
     @Bean

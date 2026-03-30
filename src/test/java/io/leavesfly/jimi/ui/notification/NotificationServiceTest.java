@@ -75,12 +75,12 @@ class NotificationServiceTest {
     void testNotifyAsyncComplete() {
         // 测试成功完成
         assertDoesNotThrow(() -> {
-            notificationService.notifyAsyncComplete("abc123", "Task completed successfully", true, enabledConfig);
+            notificationService.notifyAsyncComplete("abc123", "SubAgentTool completed successfully", true, enabledConfig);
         });
         
         // 测试失败完成
         assertDoesNotThrow(() -> {
-            notificationService.notifyAsyncComplete("def456", "Task failed with error", false, enabledConfig);
+            notificationService.notifyAsyncComplete("def456", "SubAgentTool failed with error", false, enabledConfig);
         });
         
         // 测试长结果截断

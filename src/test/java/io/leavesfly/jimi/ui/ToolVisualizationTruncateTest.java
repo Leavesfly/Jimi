@@ -51,12 +51,12 @@ class ToolVisualizationTruncateTest {
         
         ToolVisualization viz = new ToolVisualization();
         
-        // 很长的 Bash 命令
+        // 很长的 BashTool 命令
         ToolCall call = ToolCall.builder()
                 .id("call_002")
                 .type("function")
                 .function(FunctionCall.builder()
-                        .name("Bash")
+                        .name("BashTool")
                         .arguments("{\"command\":\"find /Users/developer/projects -type f -name '*.java' | xargs grep -l 'public class' | sort | uniq\"}")
                         .build())
                 .build();
@@ -148,14 +148,14 @@ class ToolVisualizationTruncateTest {
             ToolCall.builder()
                 .id("call_102")
                 .function(FunctionCall.builder()
-                    .name("Bash")
+                    .name("BashTool")
                     .arguments("{\"command\":\"docker-compose -f docker-compose.prod.yml up -d --build --force-recreate --remove-orphans\"}")
                     .build())
                 .build(),
             ToolCall.builder()
                 .id("call_103")
                 .function(FunctionCall.builder()
-                    .name("Task")
+                    .name("SubAgentTool")
                     .arguments("{\"description\":\"请分析项目的整体架构设计，识别潜在的性能瓶颈和安全隐患，并提供详细的优化建议和改进方案\"}")
                     .build())
                 .build()

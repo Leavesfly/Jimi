@@ -173,7 +173,7 @@ class AsyncSubagentPersistenceTest {
                 .startTime(Instant.now().minusSeconds(30))
                 .endTime(Instant.now())
                 .prompt("Execute task")
-                .result("Task completed successfully")
+                .result("SubAgentTool completed successfully")
                 .workDir(tempDir)
                 .build();
         
@@ -190,7 +190,7 @@ class AsyncSubagentPersistenceTest {
         assertEquals("fire_and_forget", record.getMode());
         assertEquals("completed", record.getStatus());
         assertEquals("Execute task", record.getPrompt());
-        assertEquals("Task completed successfully", record.getResult());
+        assertEquals("SubAgentTool completed successfully", record.getResult());
         assertTrue(record.getDurationMs() >= 30000);
         
         System.out.println("✅ Save from AsyncSubagent test passed");

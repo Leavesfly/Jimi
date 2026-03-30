@@ -29,7 +29,7 @@ class AsyncSubagentRecordTest {
                 .startTime(startTime)
                 .endTime(endTime)
                 .prompt("Run background task")
-                .result("Task completed successfully")
+                .result("SubAgentTool completed successfully")
                 .build();
         
         // 转换为记录
@@ -43,7 +43,7 @@ class AsyncSubagentRecordTest {
         assertEquals(startTime, record.getStartTime());
         assertEquals(endTime, record.getEndTime());
         assertEquals("Run background task", record.getPrompt());
-        assertEquals("Task completed successfully", record.getResult());
+        assertEquals("SubAgentTool completed successfully", record.getResult());
         assertNull(record.getError());
         assertNull(record.getTriggerPattern());
         assertTrue(record.getDurationMs() >= 45000);
@@ -129,7 +129,7 @@ class AsyncSubagentRecordTest {
                 .status(AsyncSubagentStatus.TIMEOUT)
                 .startTime(Instant.now().minusSeconds(600))
                 .endTime(Instant.now())
-                .prompt("Task with timeout")
+                .prompt("SubAgentTool with timeout")
                 .error(new java.util.concurrent.TimeoutException("Operation timed out"))
                 .build();
         

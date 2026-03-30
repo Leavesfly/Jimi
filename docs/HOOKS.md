@@ -54,7 +54,7 @@ Hook 配置文件支持三层加载:
 trigger:
   type: "PRE_TOOL_CALL"
   tools:
-    - "Bash"
+    - "BashTool"
     - "WriteFile"
 ```
 
@@ -183,7 +183,7 @@ trigger:
   tools:
     - "WriteFile"
     - "StrReplaceFile"
-    - "Bash"
+    - "BashTool"
 ```
 
 - 为空: 匹配所有工具
@@ -437,7 +437,7 @@ priority: 100
 trigger:
   type: "PRE_TOOL_CALL"
   tools:
-    - "Bash"
+    - "BashTool"
 
 execution:
   type: "script"

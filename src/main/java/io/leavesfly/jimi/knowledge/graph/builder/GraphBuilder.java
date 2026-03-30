@@ -1,6 +1,8 @@
 package io.leavesfly.jimi.knowledge.graph.builder;
 
-import io.leavesfly.jimi.knowledge.graph.parser.JavaASTParser;
+import io.leavesfly.jimi.config.info.GraphConfig;
+import io.leavesfly.jimi.knowledge.graph.parser.LanguageParser;
+import io.leavesfly.jimi.knowledge.graph.parser.LanguageParserRegistry;
 import io.leavesfly.jimi.knowledge.graph.parser.ParseResult;
 import io.leavesfly.jimi.knowledge.graph.store.CodeGraphStore;
 import lombok.extern.slf4j.Slf4j;
@@ -9,27 +11,63 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.io.IOException;
+import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.PathMatcher;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
  * 代码图构建器
  * <p>
- * 负责扫描项目代码,解析并构建代码图
+ * 负责扫描项目代码,解析并构建代码图。
+ * 支持多语言，通过 LanguageParserRegistry 自动选择合适的解析器。
  */
 @Slf4j
 @Component
 public class GraphBuilder {
     
-    private final JavaASTParser javaParser;
+    private final LanguageParserRegistry parserRegistry;
     private final CodeGraphStore graphStore;
+    private final GraphConfig config;
     
-    public GraphBuilder(JavaASTParser javaParser, CodeGraphStore graphStore) {
-        this.javaParser = javaParser;
+    // 缓存的 PathMatcher，避免重复创建
+    private List<PathMatcher> includeMatchers;
+    private List<PathMatcher> excludeMatchers;
+    
+    public GraphBuilder(LanguageParserRegistry parserRegistry, CodeGraphStore graphStore, GraphConfig config) {
+        this.parserRegistry = parserRegistry;
         this.graphStore = graphStore;
+        this.config = config;
+        initializeMatchers();
+    }
+    
+    /**
+     * 初始化 glob 模式匹配器
+     */
+    private void initializeMatchers() {
+        this.includeMatchers = createMatchers(config.getIncludePatterns());
+        this.excludeMatchers = createMatchers(config.getExcludePatterns());
+        
+        log.debug("Initialized graph builder with {} include patterns, {} exclude patterns",
+            includeMatchers.size(), excludeMatchers.size());
+    }
+    
+    /**
+     * 创建 PathMatcher 列表
+     */
+    private List<PathMatcher> createMatchers(Set<String> patterns) {
+        if (patterns == null || patterns.isEmpty()) {
+            return new ArrayList<>();
+        }
+        return patterns.stream()
+            .map(pattern -> FileSystems.getDefault().getPathMatcher("glob:" + pattern))
+            .collect(Collectors.toList());
     }
     
     /**
@@ -40,12 +78,13 @@ public class GraphBuilder {
      */
     public Mono<BuildStats> buildGraph(Path projectRoot) {
         log.info("Building code graph for project: {}", projectRoot);
+        log.info("Supported languages: {}", parserRegistry.getSupportedLanguages());
         
-        return Mono.fromCallable(() -> scanJavaFiles(projectRoot))
-            .flatMap(javaFiles -> {
-                log.info("Found {} Java files", javaFiles.size());
+        return Mono.fromCallable(() -> scanSourceFiles(projectRoot))
+            .flatMap(sourceFiles -> {
+                log.info("Found {} source files to parse", sourceFiles.size());
                 
-                return Flux.fromIterable(javaFiles)
+                return Flux.fromIterable(sourceFiles)
                     .flatMap(file -> parseAndStore(file, projectRoot))
                     .reduce(new BuildStats(), this::mergeStats);
             })
@@ -67,7 +106,14 @@ public class GraphBuilder {
     public Mono<ParseResult> updateFile(Path filePath, Path projectRoot) {
         log.info("Updating graph for file: {}", filePath);
         
-        return Mono.fromCallable(() -> javaParser.parseFile(filePath, projectRoot))
+        Optional<LanguageParser> parserOpt = parserRegistry.getParserForFile(filePath);
+        if (parserOpt.isEmpty()) {
+            log.warn("No parser available for file: {}", filePath);
+            return Mono.just(ParseResult.failure(filePath.toString(), "No parser available for this file type"));
+        }
+        
+        LanguageParser parser = parserOpt.get();
+        return Mono.fromCallable(() -> parser.parseFile(filePath, projectRoot))
             .flatMap(result -> {
                 if (!result.getSuccess()) {
                     return Mono.just(result);
@@ -120,41 +166,72 @@ public class GraphBuilder {
     // ==================== 私有方法 ====================
     
     /**
-     * 扫描 Java 文件
+     * 扫描所有可解析的源文件
      */
-    private List<Path> scanJavaFiles(Path projectRoot) throws IOException {
-        List<Path> javaFiles = new ArrayList<>();
+    private List<Path> scanSourceFiles(Path projectRoot) throws IOException {
+        List<Path> sourceFiles = new ArrayList<>();
         
         try (Stream<Path> paths = Files.walk(projectRoot)) {
             paths.filter(Files::isRegularFile)
-                 .filter(path -> path.toString().endsWith(".java"))
-                 .filter(path -> !isExcluded(path))
-                 .forEach(javaFiles::add);
+                 .filter(parserRegistry::canParse)  // 使用 registry 判断是否可解析
+                 .filter(this::matchesIncludePatterns)
+                 .filter(path -> !matchesExcludePatterns(path))
+                 .forEach(sourceFiles::add);
         }
         
-        return javaFiles;
+        return sourceFiles;
     }
     
     /**
-     * 判断文件是否应该被排除
+     * 检查文件是否匹配包含模式
      */
-    private boolean isExcluded(Path path) {
+    private boolean matchesIncludePatterns(Path path) {
+        if (includeMatchers.isEmpty()) {
+            // 无包含模式时，接受所有可解析的文件（已由 canParse 过滤）
+            return true;
+        }
+        return includeMatchers.stream()
+            .anyMatch(matcher -> matcher.matches(path) || matcher.matches(path.getFileName()));
+    }
+    
+    /**
+     * 检查文件是否匹配排除模式
+     */
+    private boolean matchesExcludePatterns(Path path) {
+        if (excludeMatchers.isEmpty()) {
+            return false;
+        }
         String pathStr = path.toString();
         
-        // 排除 target、build、.git 等目录
-        return pathStr.contains("/target/") ||
-               pathStr.contains("/build/") ||
-               pathStr.contains("/.git/") ||
-               pathStr.contains("/node_modules/") ||
-               pathStr.contains("/test/") ||  // 可选:排除测试文件
-               pathStr.contains("/.") && !pathStr.endsWith(".java");
+        // 同时检查完整路径和路径字符串
+        return excludeMatchers.stream().anyMatch(matcher -> {
+            // 尝试匹配完整路径
+            if (matcher.matches(path)) {
+                return true;
+            }
+            // 尝试匹配相对路径字符串（用于 **/pattern/** 形式）
+            // 检查路径字符串是否包含模式对应的目录
+            return pathStr.contains("/target/") ||
+                   pathStr.contains("/build/") ||
+                   pathStr.contains("/.git/") ||
+                   pathStr.contains("/node_modules/") ||
+                   pathStr.contains("/test/") ||
+                   pathStr.contains("/tests/");
+        });
     }
     
     /**
      * 解析文件并存储到图中
      */
     private Mono<BuildStats> parseAndStore(Path filePath, Path projectRoot) {
-        return Mono.fromCallable(() -> javaParser.parseFile(filePath, projectRoot))
+        Optional<LanguageParser> parserOpt = parserRegistry.getParserForFile(filePath);
+        if (parserOpt.isEmpty()) {
+            // 不支持的文件类型，跳过
+            return Mono.just(new BuildStats());
+        }
+        
+        LanguageParser parser = parserOpt.get();
+        return Mono.fromCallable(() -> parser.parseFile(filePath, projectRoot))
             .flatMap(result -> {
                 BuildStats stats = new BuildStats();
                 stats.totalFiles++;

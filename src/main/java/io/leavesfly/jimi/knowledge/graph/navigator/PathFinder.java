@@ -70,8 +70,8 @@ public class PathFinder {
                     continue;
                 }
                 
-                // 遍历邻居
-                List<CodeRelation> relations = graphStore.getRelationsBySource(current.entityId).block();
+                // 遍历邻居 - 使用同步方法避免 block()
+                List<CodeRelation> relations = graphStore.getRelationsBySourceSync(current.entityId);
                 if (relations != null) {
                     for (CodeRelation relation : relations) {
                         if (relationTypes == null || relationTypes.contains(relation.getType())) {
@@ -220,7 +220,7 @@ public class PathFinder {
             return;
         }
         
-        CodeEntity current = graphStore.getEntity(currentId).block();
+        CodeEntity current = graphStore.getEntitySync(currentId);
         if (current == null) {
             return;
         }
@@ -237,8 +237,8 @@ public class PathFinder {
                 .build();
             result.add(path);
         } else {
-            // 继续搜索
-            List<CodeRelation> relations = graphStore.getRelationsBySource(currentId).block();
+            // 继续搜索 - 使用同步方法避免 block()
+            List<CodeRelation> relations = graphStore.getRelationsBySourceSync(currentId);
             if (relations != null) {
                 for (CodeRelation relation : relations) {
                     if ((relationTypes == null || relationTypes.contains(relation.getType())) &&
@@ -272,7 +272,8 @@ public class PathFinder {
         
         currentPath.add(currentId);
         
-        List<CodeRelation> relations = graphStore.getRelationsBySource(currentId).block();
+        // 使用同步方法避免 block()
+        List<CodeRelation> relations = graphStore.getRelationsBySourceSync(currentId);
         if (relations != null) {
             for (CodeRelation relation : relations) {
                 if (relationTypes == null || relationTypes.contains(relation.getType())) {
@@ -282,7 +283,7 @@ public class PathFinder {
                         // 找到循环
                         List<CodeEntity> cycleEntities = new ArrayList<>();
                         for (String entityId : currentPath) {
-                            CodeEntity entity = graphStore.getEntity(entityId).block();
+                            CodeEntity entity = graphStore.getEntitySync(entityId);
                             if (entity != null) {
                                 cycleEntities.add(entity);
                             }
@@ -315,7 +316,8 @@ public class PathFinder {
         
         PathNode current = endNode;
         while (current != null) {
-            CodeEntity entity = graphStore.getEntity(current.entityId).block();
+            // 使用同步方法避免 block()
+            CodeEntity entity = graphStore.getEntitySync(current.entityId);
             if (entity != null) {
                 entities.add(0, entity);
             }
@@ -389,7 +391,8 @@ public class PathFinder {
             StringBuilder sb = new StringBuilder();
             for (int i = 0; i < entities.size(); i++) {
                 sb.append(entities.get(i).getName());
-                if (i < relations.size()) {
+                // 安全检查：确保 relations 不为 null 且索引有效
+                if (relations != null && i < relations.size() && relations.get(i) != null) {
                     sb.append(" -[").append(relations.get(i).getType()).append("]-> ");
                 }
             }

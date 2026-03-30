@@ -77,8 +77,8 @@ public class GraphNavigator {
             result.setStartEntityId(startId);
             result.setMaxHops(maxHops);
             
-            // 获取起始实体
-            CodeEntity startEntity = graphStore.getEntity(startId).block();
+            // 获取起始实体 - 使用同步方法避免 block()
+            CodeEntity startEntity = graphStore.getEntitySync(startId);
             if (startEntity == null) {
                 result.setSuccess(false);
                 result.setErrorMessage("Start entity not found: " + startId);
@@ -94,7 +94,8 @@ public class GraphNavigator {
             
             while (!queue.isEmpty()) {
                 HopNode current = queue.poll();
-                CodeEntity entity = graphStore.getEntity(current.entityId).block();
+                // 使用同步方法避免 block()
+                CodeEntity entity = graphStore.getEntitySync(current.entityId);
                 
                 if (entity != null && entityFilter.test(entity)) {
                     result.addEntity(entity, current.hop);
@@ -104,8 +105,8 @@ public class GraphNavigator {
                     continue;
                 }
                 
-                // 获取邻居 (出边)
-                List<CodeRelation> relations = graphStore.getRelationsBySource(current.entityId).block();
+                // 获取邻居 (出边) - 使用同步方法避免 block()
+                List<CodeRelation> relations = graphStore.getRelationsBySourceSync(current.entityId);
                 if (relations != null) {
                     for (CodeRelation relation : relations) {
                         if (relationTypes == null || relationTypes.contains(relation.getType())) {
@@ -164,7 +165,8 @@ public class GraphNavigator {
             InheritanceHierarchy hierarchy = new InheritanceHierarchy();
             hierarchy.setRootEntityId(classEntityId);
             
-            CodeEntity rootEntity = graphStore.getEntity(classEntityId).block();
+            // 使用同步方法避免 block()
+            CodeEntity rootEntity = graphStore.getEntitySync(classEntityId);
             if (rootEntity == null) {
                 return hierarchy;
             }
@@ -237,7 +239,8 @@ public class GraphNavigator {
                 .filter(rel -> relationTypes == null || relationTypes.contains(rel.getType()))
                 .map(rel -> outgoing ? rel.getTargetId() : rel.getSourceId())
                 .distinct()
-                .map(id -> graphStore.getEntity(id).block())
+                // 使用同步方法避免 block()
+                .map(id -> graphStore.getEntitySync(id))
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList()));
     }
@@ -249,7 +252,8 @@ public class GraphNavigator {
             return;
         }
         
-        CodeEntity current = graphStore.getEntity(currentId).block();
+        // 使用同步方法避免 block()
+        CodeEntity current = graphStore.getEntitySync(currentId);
         if (current == null) {
             return;
         }
@@ -265,8 +269,8 @@ public class GraphNavigator {
             chain.setDepth(currentDepth);
             result.add(chain);
         } else {
-            // 继续搜索
-            List<CodeRelation> relations = graphStore.getRelationsBySource(currentId).block();
+            // 继续搜索 - 使用同步方法避免 block()
+            List<CodeRelation> relations = graphStore.getRelationsBySourceSync(currentId);
             if (relations != null) {
                 for (CodeRelation relation : relations) {
                     if (relation.getType() == RelationType.CALLS && 
@@ -291,15 +295,17 @@ public class GraphNavigator {
         }
         visited.add(entityId);
         
+        // 使用同步方法避免 block()
         List<CodeRelation> relations = outgoing ?
-            graphStore.getRelationsBySource(entityId).block() :
-            graphStore.getRelationsByTarget(entityId).block();
+            graphStore.getRelationsBySourceSync(entityId) :
+            graphStore.getRelationsByTargetSync(entityId);
         
         if (relations != null) {
             for (CodeRelation relation : relations) {
                 if (relation.getType() == relationType) {
                     String nextId = outgoing ? relation.getTargetId() : relation.getSourceId();
-                    CodeEntity entity = graphStore.getEntity(nextId).block();
+                    // 使用同步方法避免 block()
+                    CodeEntity entity = graphStore.getEntitySync(nextId);
                     if (entity != null) {
                         result.add(entity);
                         collectInheritanceChain(nextId, relationType, outgoing, result, visited);

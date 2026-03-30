@@ -218,10 +218,10 @@ public class ToolVisualization {
         // 根据工具类型提取不同的信息
         return switch (toolName) {
             case "ReadFile", "WriteFile", "StrReplaceFile" -> extractJsonField(arguments, "path");
-            case "Bash" -> extractJsonField(arguments, "command");
+            case "BashTool" -> extractJsonField(arguments, "command");
             case "SearchWeb" -> extractJsonField(arguments, "query");
             case "FetchURL" -> extractJsonField(arguments, "url");
-            case "Task" -> extractJsonField(arguments, "description");
+            case "SubAgentTool" -> extractJsonField(arguments, "description");
             case "Think" -> extractJsonField(arguments, "thought");
             case "Glob" -> extractJsonField(arguments, "pattern");
             default -> null;

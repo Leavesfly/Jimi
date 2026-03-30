@@ -28,7 +28,7 @@ tools:
   - WriteFile
 
   #→ Shell:
-  - Bash
+  - BashTool
 
   #→ Web:
   - FetchURL

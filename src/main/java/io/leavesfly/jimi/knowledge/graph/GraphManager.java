@@ -9,7 +9,7 @@ import io.leavesfly.jimi.knowledge.graph.model.CodeEntity;
 import io.leavesfly.jimi.knowledge.graph.model.CodeRelation;
 import io.leavesfly.jimi.knowledge.graph.navigator.GraphNavigator;
 import io.leavesfly.jimi.knowledge.graph.navigator.ImpactAnalyzer;
-import io.leavesfly.jimi.knowledge.graph.parser.JavaASTParser;
+import io.leavesfly.jimi.knowledge.graph.parser.LanguageParserRegistry;
 import io.leavesfly.jimi.knowledge.graph.store.CodeGraphStore;
 import io.leavesfly.jimi.knowledge.graph.store.InMemoryCodeGraphStore;
 import io.leavesfly.jimi.knowledge.graph.visualization.GraphVisualizer;
@@ -73,20 +73,20 @@ public class GraphManager {
     private volatile Path workDir;
 
     @Autowired
-    public GraphManager(GraphConfig config) {
+    public GraphManager(GraphConfig config, LanguageParserRegistry parserRegistry) {
         this.config = config;
 
         // 初始化核心组件
         this.graphStore = new InMemoryCodeGraphStore();
-        JavaASTParser javaParser = new JavaASTParser();
-        this.graphBuilder = new GraphBuilder(javaParser, graphStore);
+        this.graphBuilder = new GraphBuilder(parserRegistry, graphStore, config);
         this.navigator = new GraphNavigator(graphStore);
         this.impactAnalyzer = new ImpactAnalyzer(graphStore);
         this.searchEngine = new GraphSearchEngine(graphStore, navigator);
         this.visualizer = new GraphVisualizer(graphStore);
 
-        log.info("GraphManager initialized with config: enabled={}, autoBuild={}, buildOnStartup={}, autoLoad={}",
-                config.getEnabled(), config.getAutoBuild(), config.getBuildOnStartup(), config.getAutoLoad());
+        log.info("GraphManager initialized with config: enabled={}, autoBuild={}, buildOnStartup={}, autoLoad={}, languages={}",
+                config.getEnabled(), config.getAutoBuild(), config.getBuildOnStartup(), config.getAutoLoad(),
+                parserRegistry.getSupportedLanguages());
     }
 
     /**

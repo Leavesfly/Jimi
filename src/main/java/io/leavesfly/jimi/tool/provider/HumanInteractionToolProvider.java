@@ -4,7 +4,7 @@ import io.leavesfly.jimi.core.agent.AgentSpec;
 import io.leavesfly.jimi.core.engine.JimiRuntime;
 import io.leavesfly.jimi.tool.Tool;
 import io.leavesfly.jimi.tool.ToolProvider;
-import io.leavesfly.jimi.tool.core.interaction.AskHuman;
+import io.leavesfly.jimi.tool.core.AskHuman;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 

@@ -1,4 +1,4 @@
-package io.leavesfly.jimi.tool.core.todo;
+package io.leavesfly.jimi.tool.core;
 
 import com.fasterxml.jackson.annotation.JsonPropertyDescription;
 import com.fasterxml.jackson.core.type.TypeReference;

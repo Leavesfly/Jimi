@@ -1,4 +1,4 @@
-package io.leavesfly.jimi.tool.core.bash;
+package io.leavesfly.jimi.tool.core;
 
 import com.fasterxml.jackson.annotation.JsonPropertyDescription;
 import io.leavesfly.jimi.core.interaction.approval.ApprovalResponse;
@@ -23,7 +23,7 @@ import java.io.InputStreamReader;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Bash 工具 - 执行 Shell 命令
+ * BashTool 工具 - 执行 Shell 命令
  * 支持超时控制和输出流式读取
  * 
  * 使用 @Scope("prototype") 使每次获取都是新实例
@@ -31,7 +31,7 @@ import java.util.concurrent.TimeUnit;
 @Slf4j
 @Component
 @Scope(ConfigurableBeanFactory.SCOPE_PROTOTYPE)
-public class Bash extends AbstractTool<Bash.Params> {
+public class BashTool extends AbstractTool<BashTool.Params> {
     
     private static final int MAX_TIMEOUT = 5 * 60; // 5分钟
     private static final String RUN_COMMAND_ACTION = "run shell command";
@@ -48,7 +48,7 @@ public class Bash extends AbstractTool<Bash.Params> {
     @AllArgsConstructor
     public static class Params {
         /**
-         * 要执行的 Bash 命令
+         * 要执行的 BashTool 命令
          */
         @JsonPropertyDescription("需要执行的 shell 命令字符串，支持所有 bash 语法")
         private String command;
@@ -64,9 +64,9 @@ public class Bash extends AbstractTool<Bash.Params> {
     /**
      * 默认构造函数（Spring 调用）
      */
-    public Bash() {
+    public BashTool() {
         super(
-            "Bash",
+            "BashTool",
             "执行 bash 命令并支持超时控制。最大超时时间为 " + MAX_TIMEOUT + " 秒。",
             Params.class
         );

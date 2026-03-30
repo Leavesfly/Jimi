@@ -331,7 +331,7 @@ class AsyncSubagentManagerTest {
         // 3. 完成 (COMPLETED)
         subagent.setStatus(AsyncSubagentStatus.COMPLETED);
         subagent.setEndTime(Instant.now());
-        subagent.setResult("Task completed successfully");
+        subagent.setResult("SubAgentTool completed successfully");
         
         assertTrue(subagent.isCompleted());
         assertTrue(subagent.isSuccess());
@@ -351,7 +351,7 @@ class AsyncSubagentManagerTest {
                 .mode(AsyncSubagentMode.FIRE_AND_FORGET)
                 .status(AsyncSubagentStatus.RUNNING)
                 .startTime(Instant.now())
-                .prompt("Task that will fail")
+                .prompt("SubAgentTool that will fail")
                 .build();
         
         // 模拟执行失败

@@ -1,6 +1,6 @@
 package io.leavesfly.jimi.wire.message;
 
-import io.leavesfly.jimi.tool.skill.SkillSpec;
+import io.leavesfly.jimi.skill.SkillSpec;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;

@@ -1,4 +1,4 @@
-package io.leavesfly.jimi.tool.core.async;
+package io.leavesfly.jimi.tool.core;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyDescription;
@@ -32,7 +32,7 @@ import java.util.Map;
 /**
  * 异步任务工具 - 在后台启动子代理执行任务
  * <p>
- * 与同步的 Task 工具不同，AsyncTask 会立即返回，子代理在后台独立运行。
+ * 与同步的 SubAgentTool 工具不同，AsyncTask 会立即返回，子代理在后台独立运行。
  * <p>
  * 核心特性：
  * 1. 后台执行：主代理可继续处理其他任务
@@ -143,14 +143,14 @@ public class AsyncTask extends AbstractTool<AsyncTask.Params> implements WireAwa
         return """
                 启动异步子代理在后台执行任务。
                 
-                **与同步 Task 工具的区别**：
+                **与同步 SubAgentTool 工具的区别**：
                 - AsyncTask：立即返回，子代理后台运行
-                - Task：等待子代理完成后返回结果
+                - SubAgentTool：等待子代理完成后返回结果
                 
                 **可用模式**：
                 - `fire_and_forget`：后台运行（默认）- 启动后立即返回
                 - `watch`：持续监控 - 监控日志/输出，匹配模式时触发
-                - `wait_complete`：等待完成（建议使用 Task 工具）
+                - `wait_complete`：等待完成（建议使用 SubAgentTool 工具）
                 
                 **Watch 模式示例**：
                 监控日志文件，发现错误时通知：
@@ -275,11 +275,11 @@ public class AsyncTask extends AbstractTool<AsyncTask.Params> implements WireAwa
     }
     
     /**
-     * Wait-Complete 模式：提示使用 Task 工具
+     * Wait-Complete 模式：提示使用 SubAgentTool 工具
      */
     private Mono<ToolResult> executeWaitComplete(Params params) {
         return Mono.just(ToolResult.ok(
-                "wait_complete 模式请使用 Task 工具（同步子代理）。\n" +
+                "wait_complete 模式请使用 SubAgentTool 工具（同步子代理）。\n" +
                 "AsyncTask 专门用于后台异步执行场景。",
                 "模式提示"
         ));

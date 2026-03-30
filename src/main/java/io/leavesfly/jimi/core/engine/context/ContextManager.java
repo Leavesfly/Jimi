@@ -2,7 +2,7 @@ package io.leavesfly.jimi.core.engine.context;
 
 import io.leavesfly.jimi.core.compaction.Compaction;
 import io.leavesfly.jimi.core.engine.EngineConstants;
-import io.leavesfly.jimi.core.engine.context.Context;
+
 import io.leavesfly.jimi.knowledge.memory.MemoryManager;
 
 import io.leavesfly.jimi.knowledge.memory.ProjectInsight;
@@ -12,7 +12,7 @@ import io.leavesfly.jimi.llm.LLM;
 import io.leavesfly.jimi.llm.message.Message;
 import io.leavesfly.jimi.llm.message.MessageRole;
 import io.leavesfly.jimi.llm.message.TextPart;
-import io.leavesfly.jimi.tool.skill.SkillRegistry;
+import io.leavesfly.jimi.skill.SkillRegistry;
 import io.leavesfly.jimi.wire.Wire;
 import io.leavesfly.jimi.wire.message.CompactionBegin;
 import io.leavesfly.jimi.wire.message.CompactionEnd;

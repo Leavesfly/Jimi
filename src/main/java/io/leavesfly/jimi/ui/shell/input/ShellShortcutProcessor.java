@@ -36,21 +36,21 @@ public class ShellShortcutProcessor implements InputProcessor {
         out.printInfo("执行 Shell 命令: " + shellCommand);
         
         try {
-            // 检查 Bash 工具是否可用
-            if (!context.getEngineClient().hasTool("Bash")) {
-                out.printError("Bash 工具不可用");
+            // 检查 BashTool 工具是否可用
+            if (!context.getEngineClient().hasTool("BashTool")) {
+                out.printError("BashTool 工具不可用");
                 return true;
             }
             
-            // 构造 Bash 工具参数（JSON 格式）
+            // 构造 BashTool 工具参数（JSON 格式）
             String arguments = String.format(
                 "{\"command\":\"%s\",\"timeout\":60}",
                 jsonEscape(shellCommand)
             );
             
-            // 执行 Bash 工具
+            // 执行 BashTool 工具
             ToolResult result = context.getEngineClient()
-                .executeTool("Bash", arguments)
+                .executeTool("BashTool", arguments)
                 .block();
             
             if (result == null) {

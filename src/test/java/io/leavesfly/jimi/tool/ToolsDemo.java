@@ -1,7 +1,7 @@
 package io.leavesfly.jimi.tool;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.leavesfly.jimi.tool.core.todo.SetTodoList;
+import io.leavesfly.jimi.tool.core.SetTodoList;
 import io.leavesfly.jimi.tool.core.web.FetchURL;
 import io.leavesfly.jimi.tool.core.web.WebSearch;
 
@@ -154,7 +154,7 @@ public class ToolsDemo {
         System.out.println();
         
         System.out.println("💻 Shell 工具 (io.leavesfly.jimi.tool.bash):");
-        System.out.println("  • Bash           - 执行 Shell 命令");
+        System.out.println("  • BashTool           - 执行 Shell 命令");
         System.out.println();
         
         System.out.println("🧠 思考工具 (io.leavesfly.jimi.tool.think):");

@@ -80,6 +80,6 @@ public class MCPToolProvider implements ToolProvider {
     
     @Override
     public int getOrder() {
-        return 60;  // 在 Task 之后加载
+        return 60;  // 在 SubAgentTool 之后加载
     }
 }

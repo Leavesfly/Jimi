@@ -7,7 +7,7 @@ agent:
   tools:
     - ReadFile
     - WriteFile
-    - Bash
+    - BashTool
     - Think
   exclude_tools: []
   subagents: {}

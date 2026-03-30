@@ -1,4 +1,4 @@
-package io.leavesfly.jimi.tool.skill;
+package io.leavesfly.jimi.skill;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;

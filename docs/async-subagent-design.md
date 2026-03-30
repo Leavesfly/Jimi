@@ -521,11 +521,11 @@ public class AsyncTask extends AbstractTool<AsyncTask.Params> implements WireAwa
     }
     
     private Mono<ToolResult> executeWaitComplete(Agent agent, Params params) {
-        // 兼容同步模式：复用现有 Task 逻辑
+        // 兼容同步模式：复用现有 SubAgentTool 逻辑
         // 这里可以直接委托给 AsyncSubagentManager，设置阻塞等待
-        // 或者提示用户使用原有 Task 工具
+        // 或者提示用户使用原有 SubAgentTool 工具
         return Mono.just(ToolResult.ok(
-                "wait_complete 模式请使用 Task 工具（同步子代理）",
+                "wait_complete 模式请使用 SubAgentTool 工具（同步子代理）",
                 "模式提示"
         ));
     }

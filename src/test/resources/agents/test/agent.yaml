@@ -5,7 +5,7 @@ agent:
   system_prompt_args:
     ROLE_ADDITIONAL: "你是一个专业的Java开发助手"
   tools:
-    - "io.leavesfly.jimi.tools.bash:Bash"
+    - "io.leavesfly.jimi.tools.bash:BashTool"
     - "io.leavesfly.jimi.tools.file:ReadFile"
     - "io.leavesfly.jimi.tools.file:WriteFile"
     - "io.leavesfly.jimi.tools.think:Think"

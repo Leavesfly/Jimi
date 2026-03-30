@@ -5,7 +5,7 @@ import io.leavesfly.jimi.llm.message.ContentPart;
 import io.leavesfly.jimi.llm.message.Message;
 import io.leavesfly.jimi.llm.message.MessageRole;
 import io.leavesfly.jimi.llm.message.TextPart;
-import io.leavesfly.jimi.tool.skill.SkillSpec;
+import io.leavesfly.jimi.skill.SkillSpec;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Mono;
 
@@ -13,7 +13,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * 上下文管理器

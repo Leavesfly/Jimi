@@ -1,4 +1,4 @@
-package io.leavesfly.jimi.tool.skill;
+package io.leavesfly.jimi.skill;
 
 import io.leavesfly.jimi.common.HttpClientConstants;
 import lombok.extern.slf4j.Slf4j;

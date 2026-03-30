@@ -37,7 +37,7 @@ import java.util.Optional;
  * <p>
  * 并行策略：
  * - 标记为 isConcurrentSafe() 的工具（如读取、搜索）可以并行执行
- * - 非并发安全的工具（如文件写入、Bash）串行执行
+ * - 非并发安全的工具（如文件写入、BashTool）串行执行
  * - 工具调用按原始顺序分组：连续的并发安全工具合并为一个并行批次，
  *   遇到非并发安全工具则单独串行执行
  */
@@ -212,7 +212,6 @@ public class ToolDispatcher {
     public Mono<Message> executeToolCall(ToolCall toolCall, Context context) {
         return Mono.defer(() -> {
             try {
-
 
                 // 发送工具调用开始消息到 Wire
                 wire.send(new ToolCallMessage(toolCall));

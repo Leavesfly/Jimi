@@ -6,7 +6,7 @@ priority: 100
 trigger:
   type: "PRE_TOOL_CALL"
   tools:
-    - "Bash"
+    - "BashTool"
 
 execution:
   type: "script"

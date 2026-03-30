@@ -1,11 +1,11 @@
-package io.leavesfly.jimi.tool.core.skill;
+package io.leavesfly.jimi.tool.core;
 
 import com.fasterxml.jackson.annotation.JsonPropertyDescription;
 import io.leavesfly.jimi.tool.AbstractTool;
 import io.leavesfly.jimi.tool.ToolResult;
-import io.leavesfly.jimi.tool.skill.SkillRegistry;
-import io.leavesfly.jimi.tool.skill.SkillSpec;
-import io.leavesfly.jimi.tool.skill.SkillsInstaller;
+import io.leavesfly.jimi.skill.SkillRegistry;
+import io.leavesfly.jimi.skill.SkillSpec;
+import io.leavesfly.jimi.skill.SkillsInstaller;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
