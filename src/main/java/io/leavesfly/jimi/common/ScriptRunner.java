@@ -17,8 +17,8 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * 统一脚本执行器
- *
- * 为 Custom Commands 提供统一的脚本执行能力。
+ * <p>
+ * 提供统一的脚本执行能力。
  */
 @Slf4j
 @Service
@@ -30,20 +30,20 @@ public class ScriptRunner {
     private static final int DEFAULT_TIMEOUT = 60;
 
     private static final Map<String, String> SCRIPT_EXECUTORS = Map.of(
-        "bash", "/bin/bash",
-        "sh", "/bin/sh",
-        "python", "python3",
-        "python3", "python3",
-        "node", "node",
-        "ruby", "ruby"
+            "bash", "/bin/bash",
+            "sh", "/bin/sh",
+            "python", "python3",
+            "python3", "python3",
+            "node", "node",
+            "ruby", "ruby"
     );
 
     private static final Map<String, String> EXTENSION_TO_TYPE = Map.of(
-        ".sh", "bash",
-        ".bash", "bash",
-        ".py", "python",
-        ".js", "node",
-        ".rb", "ruby"
+            ".sh", "bash",
+            ".bash", "bash",
+            ".py", "python",
+            ".js", "node",
+            ".rb", "ruby"
     );
 
     /**
@@ -173,9 +173,9 @@ public class ScriptRunner {
             StringBuilder command = new StringBuilder();
             for (Map.Entry<String, String> entry : environment.entrySet()) {
                 command.append(entry.getKey())
-                       .append("=")
-                       .append(escapeShellValue(entry.getValue()))
-                       .append(" ");
+                        .append("=")
+                        .append(escapeShellValue(entry.getValue()))
+                        .append(" ");
             }
             command.append(executor).append(" ").append(absolutePath);
             return command.toString();
