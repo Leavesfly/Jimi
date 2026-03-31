@@ -24,6 +24,8 @@ public class ToolBridge {
     private final List<String> allowedTools;
     private final boolean logExecutionDetails;
     private final ObjectMapper objectMapper;
+    /** 单次工具调用的最大阻塞等待时间（秒），来自 MetaTool 总超时，避免超出整体限制 */
+    private final int singleToolTimeoutSeconds;
     
     /**
      * 构造函数
@@ -31,12 +33,15 @@ public class ToolBridge {
      * @param toolRegistry 工具注册表
      * @param allowedTools 允许调用的工具列表（null 表示允许所有）
      * @param logExecutionDetails 是否记录执行详情
+     * @param totalTimeoutSeconds MetaTool 总超时（秒），用于限制单次工具 block 等待时间
      */
-    public ToolBridge(ToolRegistry toolRegistry, List<String> allowedTools, boolean logExecutionDetails) {
+    public ToolBridge(ToolRegistry toolRegistry, List<String> allowedTools, boolean logExecutionDetails, int totalTimeoutSeconds) {
         this.toolRegistry = toolRegistry;
         this.allowedTools = allowedTools;
         this.logExecutionDetails = logExecutionDetails;
         this.objectMapper = new ObjectMapper();
+        // 单次工具超时不超过总超时，至少保留 1 秒余量
+        this.singleToolTimeoutSeconds = Math.max(1, totalTimeoutSeconds - 1);
     }
     
     /**
@@ -60,9 +65,9 @@ public class ToolBridge {
         }
         
         try {
-            // 调用 ToolRegistry 并 block 等待结果
+            // 调用 ToolRegistry 并 block 等待结果，超时受 MetaTool 总超时约束
             ToolResult result = toolRegistry.execute(toolName, arguments)
-                    .block(Duration.ofSeconds(60)); // 单个工具调用最多等待 60 秒
+                    .block(Duration.ofSeconds(singleToolTimeoutSeconds));
             
             if (result == null) {
                 return "Error: Tool execution returned null";

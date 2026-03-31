@@ -57,73 +57,64 @@ public class MetaTool extends AbstractTool<MetaTool.Params> {
      */
     private static String buildDescription() {
         return """
-                执行 Java 代码以编程方式编排多个工具调用，用一次工具调用替代多轮对话，大幅节省 token 消耗。
-                
-                ## 何时使用此工具（重要）
-                
-                当你发现需要执行以下操作时，**应该优先选择 MetaTool 而不是逐个调用其他工具**：
-                
-                1. **批量处理多个文件**：需要读取、编辑、删除 3 个及以上文件时
-                2. **循环操作**：需要对列表中的每个元素执行相同操作时
-                3. **条件分支执行**：需要根据前一步结果决定下一步调用哪个工具时
-                4. **多步骤数据转换**：需要将数据在多个工具间传递、转换时
-                5. **减少对话轮次**：预计需要 3 次以上工具调用才能完成任务时
-                
-                ## 何时不适合使用此工具
-                
-                - 只需调用 1-2 个工具即可完成的简单任务
-                - 任务逻辑过于复杂，生成代码反而不如直接调用清晰时
-                - 需要中间结果展示给用户确认时
-                
-                ## 工作原理
-                
-                代码在隔离的 JShell 环境中执行，可通过 callTool() 方法调用其他已注册的工具。
-                
-                ## 可用辅助方法
-                
-                - String callTool(String toolName, String arguments) - 调用指定工具，arguments 为 JSON 格式参数字符串，返回工具执行结果
-                
-                ## 示例 1：批量读取多个文件
-                
+                在隔离的 JShell 环境中执行 Java 代码，通过一次工具调用编排多个工具，节省 token 和对话轮次。
+                中间工具调用结果不进入对话历史。
+
+                ## 使用时机
+
+                满足以下任意条件时优先使用 MetaTool：
+                - 预计需要 **3 次及以上**工具调用才能完成任务
+                - 需要对列表/集合做**循环**操作（如批量读取多个文件）
+                - 需要根据前一步结果**条件分支**决定下一步操作
+                - 需要在多个工具间**链式传递**数据
+
+                以下情况**不适合**使用：
+                - 1-2 次工具调用即可完成的简单任务
+                - 需要将中间结果展示给用户确认时
+
+                ## API
+
                 ```java
-                String[] files = {"file1.txt", "file2.txt", "file3.txt"};
-                StringBuilder result = new StringBuilder();
-                for (String file : files) {
-                    String content = callTool("ReadFile", "{\\"path\\":\\"" + file + "\\"}");
-                    result.append("=== ").append(file).append(" ===\\n");
-                    result.append(content).append("\\n\\n");
-                }
-                return result.toString();
+                // 调用任意已注册工具，arguments 为 JSON 字符串，返回工具 output 或 "Error: <message>"
+                String callTool(String toolName, String arguments)
                 ```
-                
-                ## 示例 2：条件执行不同命令
-                
+
+                ## 示例 1：批量读取文件
+
                 ```java
-                String osInfo = callTool("Bash", "{\\"command\\":\\"uname -s\\"}");
-                if (osInfo.contains("Linux")) {
-                    return callTool("Bash", "{\\"command\\":\\"apt list --installed\\"}");
-                } else if (osInfo.contains("Darwin")) {
+                String[] files = {"src/A.java", "src/B.java", "src/C.java"};
+                StringBuilder sb = new StringBuilder();
+                for (String f : files) {
+                    sb.append("// ").append(f).append("\\n");
+                    sb.append(callTool("ReadFile", "{\\"path\\":\\"" + f + "\\"}")).append("\\n");
+                }
+                return sb.toString();
+                ```
+
+                ## 示例 2：条件分支
+
+                ```java
+                String os = callTool("Bash", "{\\"command\\":\\"uname -s\\"}").trim();
+                if (os.equals("Darwin")) {
                     return callTool("Bash", "{\\"command\\":\\"brew list\\"}");
                 } else {
-                    return "Unsupported OS: " + osInfo;
+                    return callTool("Bash", "{\\"command\\":\\"apt list --installed\\"}");
                 }
                 ```
-                
-                ## 示例 3：链式数据处理
-                
+
+                ## 示例 3：读取-修改-写入
+
                 ```java
-                // 读取配置 -> 解析 -> 根据配置执行操作
-                String config = callTool("ReadFile", "{\\"path\\":\\"config.json\\"}");
-                String filtered = callTool("Bash", "{\\"command\\":\\"echo '" + config + "' | jq '.items[]'\"}");
-                return callTool("WriteFile", "{\\"path\\":\\"output.txt\\", \\"content\\":\\"" + filtered + "\"}");
+                String content = callTool("ReadFile", "{\\"path\\":\\"config.json\\"}");
+                String updated = content.replace("\\"debug\\": false", "\\"debug\\": true");
+                return callTool("WriteFile", "{\\"path\\":\\"config.json\\", \\"content\\":\\"" + updated.replace("\\"", "\\\\\\"") + "\\"}");
                 ```
-                
-                ## 重要说明
-                
-                - 使用 return 语句显式返回最终结果
-                - 中间工具调用结果不会添加到对话历史，节省 token
-                - 代码执行超时：30 秒（最大 60 秒）
-                - 可通过 allowed_tools 参数限制可调用的工具范围
+
+                ## 约束
+
+                - 必须使用 `return` 语句返回最终结果（String 类型）
+                - 执行超时：默认 30 秒
+                - 仅 JDK 标准库可用；不可调用 `System.exit`、`ProcessBuilder` 等危险 API
                 """;
     }
     
@@ -151,6 +142,14 @@ public class MetaTool extends AbstractTool<MetaTool.Params> {
     @Override
     public Mono<ToolResult> execute(Params params) {
         log.info("MetaTool: Starting code execution");
+        
+        // 前置检查：ToolRegistry 必须已注入
+        if (toolRegistry == null) {
+            String error = "MetaTool is not properly initialized: ToolRegistry is null. " +
+                    "Ensure MetaToolProvider has injected the ToolRegistry before execution.";
+            log.error("MetaTool: {}", error);
+            return Mono.just(ToolResult.error(error, "Initialization error"));
+        }
         
         // 验证参数
         String validationError = validateParamsInternal(params);

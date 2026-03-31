@@ -65,11 +65,12 @@ public class JShellCodeExecutor {
                     .executionEngine(new LocalExecutionControlProvider(), Map.of())
                     .build();
             
-            // 创建 ToolBridge 实例
+            // 创建 ToolBridge 实例（传入总超时，避免单次工具 block 超过整体限制）
             ToolBridge toolBridge = new ToolBridge(
                     context.getToolRegistry(),
                     context.getAllowedTools(),
-                    context.isLogExecutionDetails()
+                    context.isLogExecutionDetails(),
+                    context.getTimeout()
             );
             
             // 注入 ToolBridge 到 JShell 环境
@@ -147,7 +148,7 @@ public class JShellCodeExecutor {
             // 工具调用辅助方法
             String callTool(String toolName, String arguments) {
                 try {
-                    io.leavesfly.jimi.tool.meta.ToolBridge bridge = io.leavesfly.jimi.tool.meta.ToolBridgeHolder.get();
+                    io.leavesfly.jimi.tool.core.meta.ToolBridge bridge = io.leavesfly.jimi.tool.core.meta.ToolBridgeHolder.get();
                     if (bridge == null) {
                         return "Error: ToolBridge not available";
                     }
