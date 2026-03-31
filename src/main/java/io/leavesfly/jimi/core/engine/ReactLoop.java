@@ -25,7 +25,7 @@ import java.util.function.Function;
  * 设计原则：
  * - 单一职责：仅负责 ReAct 循环的核心逻辑
  * - 回调机制：通过回调让编排层注入附加行为（Wire 事件、Token 统计等）
- * - 零附加功能：不包含 Hook、Memory、上下文压缩等逻辑
+ * - 零附加功能：不包含 Memory、上下文压缩等逻辑
  */
 @Slf4j
 public class ReactLoop {

@@ -20,7 +20,7 @@ import java.util.stream.Stream;
 /**
  * 通用 YAML 配置加载器
  *
- * 统一了 HookLoader、CustomCommandLoader 中重复的三层加载逻辑：
+ * 统一了 CustomCommandLoader 中重复的三层加载逻辑：
  * 1. 类路径 (resources/{subDir}/) - 内置示例
  * 2. 用户主目录 (~/.jimi/{subDir}/)
  * 3. 项目目录 ({project}/.jimi/{subDir}/)

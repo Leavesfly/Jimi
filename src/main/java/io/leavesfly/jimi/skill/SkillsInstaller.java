@@ -34,7 +34,6 @@ import java.util.zip.ZipInputStream;
 @Service
 public class SkillsInstaller {
 
-    private static final String GITHUB_RAW_BASE = "https://raw.githubusercontent.com";
     private static final String GITHUB_ARCHIVE_BASE = "https://github.com";
 
     @Autowired

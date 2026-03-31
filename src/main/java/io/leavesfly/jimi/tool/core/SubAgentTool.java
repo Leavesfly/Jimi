@@ -10,7 +10,6 @@ import io.leavesfly.jimi.core.compaction.SimpleCompaction;
 import io.leavesfly.jimi.core.engine.context.ContextManager;
 import io.leavesfly.jimi.core.engine.JimiRuntime;
 import io.leavesfly.jimi.knowledge.memory.MemoryRecorder;
-import io.leavesfly.jimi.core.hook.HookRegistry;
 import io.leavesfly.jimi.core.session.Session;
 import io.leavesfly.jimi.core.engine.AgentExecutor;
 import io.leavesfly.jimi.core.JimiEngine;
@@ -103,7 +102,6 @@ public class SubAgentTool extends AbstractTool<SubAgentTool.Params> implements W
     // AgentExecutor 依赖组件
     private final MemoryRecorder memoryRecorder;
     private final ContextManager contextManager;
-    private final HookRegistry hookRegistry;
 
     private final Map<String, Agent> subagents;
     private final Map<String, AgentSpec> subagentAgentSpecs;
@@ -148,7 +146,7 @@ public class SubAgentTool extends AbstractTool<SubAgentTool.Params> implements W
     @Autowired
     public SubAgentTool(ObjectMapper objectMapper, AgentRegistry agentRegistry, ToolRegistryFactory toolRegistryFactory,
                         MemoryRecorder memoryRecorder,
-                        ContextManager contextManager, HookRegistry hookRegistry) {
+                        ContextManager contextManager) {
         super("SubAgentTool", "SubAgentTool tool (description will be set when initialized)", Params.class);
 
         this.objectMapper = objectMapper;
@@ -156,7 +154,6 @@ public class SubAgentTool extends AbstractTool<SubAgentTool.Params> implements W
         this.toolRegistryFactory = toolRegistryFactory;
         this.memoryRecorder = memoryRecorder;
         this.contextManager = contextManager;
-        this.hookRegistry = hookRegistry;
         this.subagents = new HashMap<>();
         this.subagentAgentSpecs = new HashMap<>();
     }
@@ -374,7 +371,6 @@ public class SubAgentTool extends AbstractTool<SubAgentTool.Params> implements W
                 .compaction(new SimpleCompaction())
                 .memoryRecorder(memoryRecorder)
                 .contextManager(contextManager)
-                .hookRegistry(hookRegistry)
                 .isSubagent(true)
                 .build();
         return JimiEngine.create(executor);

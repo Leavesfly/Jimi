@@ -5,7 +5,7 @@
 # ==================== 基础配置 ====================
 
 # 默认使用的模型名称，必须在 models 中定义
-default_model: qwen3-max
+default_model: qwen3.5-plus
 
 # ==================== LLM 提供商配置 ====================
 
@@ -80,9 +80,9 @@ models:
     model: qwen3-next-80b-a3b-instruct
     max_context_size: 200000
 
-  qwen3-coder-plus:
+  qwen3.5-plus:
     provider: qwen
-    model: qwen3-coder-plus
+    model: qwen3.5-plus
     max_context_size: 200000
 
   # Kimi 系列
@@ -102,30 +102,10 @@ models:
     model: glm-4.7
     max_context_size: 200000
 
-  glm-4-flash:
-    provider: glm
-    model: glm-4-flash
-    max_context_size: 128000
-
-  glm-4-plus:
-    provider: glm
-    model: glm-4-plus
-    max_context_size: 128000
-
   # MiniMax 系列
   minimax-m2.1:
     provider: minimax
     model: MiniMax-M2.1
-    max_context_size: 200000
-
-  minimax-m2.1-lightning:
-    provider: minimax
-    model: MiniMax-M2.1-lightning
-    max_context_size: 200000
-
-  minimax-m2:
-    provider: minimax
-    model: MiniMax-M2
     max_context_size: 200000
 
   # Ollama 本地模型
@@ -202,37 +182,6 @@ graph:
     vector_weight: 0.4        # 向量搜索权重（0-1）
     min_similarity: 0.3       # 最小相似度阈值（0-1）
 
-# ==================== Skills 功能配置 ====================
-
-skill:
-  enabled: false                          # 是否启用 Skills 功能
-  auto_match: true                        # 是否自动匹配 Skills
-  enable_claude_code_compatibility: true  # 是否启用 Claude Code 兼容模式
-
-  # 匹配配置
-  matching:
-    score_threshold: 30              # 用户输入匹配的最低得分阈值（0-100）
-    context_score_threshold: 15      # 上下文匹配的最低得分阈值（0-100）
-    max_matched_skills: 5            # 最大匹配 Skills 数量
-    enable_context_matching: false   # 是否启用上下文动态匹配
-
-  # 缓存配置
-  cache:
-    enabled: true      # 是否启用缓存
-    ttl: 3600          # 缓存过期时间（秒）
-    max_size: 1000     # 缓存最大条目数
-
-  # 脚本执行配置
-  script_execution:
-    enabled: true           # 是否启用脚本执行
-    timeout: 60             # 脚本执行超时时间（秒）
-    require_approval: false # 是否需要审批
-
-  # 日志配置
-  logging:
-    log_match_details: false         # 是否记录匹配详情
-    log_injection_details: false     # 是否记录注入详情
-    log_performance_metrics: false   # 是否记录性能指标
 
 # ==================== 记忆模块配置 ====================
 

@@ -3,9 +3,6 @@ package io.leavesfly.jimi.client;
 import io.leavesfly.jimi.config.info.ShellUIConfig;
 import io.leavesfly.jimi.config.info.ThemeConfig;
 import io.leavesfly.jimi.core.JimiEngine;
-import io.leavesfly.jimi.core.hook.HookContext;
-import io.leavesfly.jimi.core.hook.HookRegistry;
-import io.leavesfly.jimi.core.hook.HookType;
 import io.leavesfly.jimi.core.session.Session;
 import io.leavesfly.jimi.core.session.SessionManager;
 import io.leavesfly.jimi.llm.message.ContentPart;
@@ -44,7 +41,6 @@ public class WireEngineClient implements EngineClient {
 
     // ==================== 内部委托（过渡期使用） ====================
     private final JimiEngine engine;
-    private final HookRegistry hookRegistry;
     private final SessionManager sessionManager;
 
     // ==================== 会话状态 ====================
@@ -52,16 +48,12 @@ public class WireEngineClient implements EngineClient {
 
     /**
      * 构造函数 - 初始化阶段完成所有装配
-     * <p>
-     * 在初始化阶段获取所有配置并缓存，运行阶段不再访问engine获取配置
      *
      * @param engine         JimiEngine实例
-     * @param hookRegistry   HookRegistry实例
      * @param sessionManager SessionManager实例
      */
-    public WireEngineClient(JimiEngine engine, HookRegistry hookRegistry, SessionManager sessionManager) {
+    public WireEngineClient(JimiEngine engine, SessionManager sessionManager) {
         this.engine = engine;
-        this.hookRegistry = hookRegistry;
         this.sessionManager = sessionManager;
         this.wire = engine.getWire();
 
@@ -147,11 +139,6 @@ public class WireEngineClient implements EngineClient {
     @Override
     public boolean hasTool(String toolName) {
         return engine.getToolRegistry().hasTool(toolName);
-    }
-
-    @Override
-    public Mono<Void> triggerHook(HookType type, HookContext context) {
-        return hookRegistry.trigger(type, context);
     }
 
     // ==================== 运行时查询（过渡期直接委托） ====================

@@ -18,7 +18,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * 统一脚本执行器
  *
- * 为 Hooks、Custom Commands 提供统一的脚本执行能力。
+ * 为 Custom Commands 提供统一的脚本执行能力。
  */
 @Slf4j
 @Service
@@ -47,7 +47,7 @@ public class ScriptRunner {
     );
 
     /**
-     * 执行内联脚本（用于 Hooks 和 Custom Commands）
+     * 执行内联脚本（用于 Custom Commands）
      *
      * @param script      脚本内容
      * @param workDir     工作目录

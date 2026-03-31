@@ -3,8 +3,6 @@ package io.leavesfly.jimi.client;
 import io.leavesfly.jimi.config.info.ShellUIConfig;
 import io.leavesfly.jimi.config.info.ThemeConfig;
 import io.leavesfly.jimi.core.JimiEngine;
-import io.leavesfly.jimi.core.hook.HookContext;
-import io.leavesfly.jimi.core.hook.HookType;
 import io.leavesfly.jimi.llm.message.ContentPart;
 import io.leavesfly.jimi.tool.ToolResult;
 import io.leavesfly.jimi.wire.message.WireMessage;
@@ -94,15 +92,6 @@ public interface EngineClient {
      * @return 是否存在
      */
     boolean hasTool(String toolName);
-
-    /**
-     * 触发Hook
-     *
-     * @param type    Hook类型
-     * @param context Hook上下文
-     * @return 完成的Mono
-     */
-    Mono<Void> triggerHook(HookType type, HookContext context);
 
     // ==================== 运行时查询（通过Wire消息） ====================
 

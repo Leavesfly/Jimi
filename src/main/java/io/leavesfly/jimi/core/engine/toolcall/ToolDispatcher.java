@@ -1,11 +1,8 @@
 package io.leavesfly.jimi.core.engine.toolcall;
 
 
-import io.leavesfly.jimi.common.ReactorUtils;
 import io.leavesfly.jimi.core.engine.context.Context;
-import io.leavesfly.jimi.core.hook.HookContext;
-import io.leavesfly.jimi.core.hook.HookRegistry;
-import io.leavesfly.jimi.core.hook.HookType;
+
 
 import io.leavesfly.jimi.llm.message.Message;
 import io.leavesfly.jimi.llm.message.ToolCall;
@@ -48,25 +45,14 @@ public class ToolDispatcher {
     private final Wire wire;
 
     private final ToolErrorTracker toolErrorTracker;
-    private final HookRegistry hookRegistry;
     private final Path workDir;
 
-    /**
-     * 带工作目录的构造函数（支持 Hook 触发）
-     * 
-     * @param toolRegistry 工具注册表
-     * @param workDir 工作目录
-     * @param wire 消息总线
-     * @param toolErrorTracker 工具错误跟踪器
-     * @param hookRegistry Hook 注册表
-     */
-    public ToolDispatcher(ToolRegistry toolRegistry, Path workDir, Wire wire, 
-                          ToolErrorTracker toolErrorTracker, HookRegistry hookRegistry) {
+    public ToolDispatcher(ToolRegistry toolRegistry, Path workDir, Wire wire,
+                          ToolErrorTracker toolErrorTracker) {
         this.toolRegistry = toolRegistry;
         this.workDir = workDir;
         this.wire = wire;
         this.toolErrorTracker = toolErrorTracker;
-        this.hookRegistry = hookRegistry;
     }
 
 
@@ -244,25 +230,9 @@ public class ToolDispatcher {
 
     /**
      * 执行已验证的工具调用
-     * <p>
-     * 执行流程：
-     * 1. 触发 PRE_TOOL_CALL hook
-     * 2. 执行工具调用
-     * 3. 处理结果（发送 Wire 消息、触发 POST hook、转换为上下文消息）
      */
     private Mono<Message> executeValidToolCall(String toolName, String arguments, String toolCallId, String toolSignature, Context context) {
-
-        // 构建 Hook 上下文
-        HookContext preHookContext = HookContext.builder()
-                .hookType(HookType.PRE_TOOL_CALL)
-                .workDir(workDir)
-                .toolName(toolName)
-                .toolCallId(toolCallId)
-                .build();
-
-        // === 1. 触发 PRE hook -> 2. 执行工具 -> 3. 处理结果 ===
-        return ReactorUtils.triggerHookSafely(hookRegistry, HookType.PRE_TOOL_CALL, preHookContext)
-                .then(toolRegistry.execute(toolName, arguments))
+        return toolRegistry.execute(toolName, arguments)
                 .flatMap(result -> processToolResult(result, toolName, toolCallId, toolSignature, context))
                 .onErrorResume(e -> handleToolError(e, toolName, toolCallId));
     }
@@ -271,23 +241,12 @@ public class ToolDispatcher {
      * 处理工具执行结果
      * <p>
      * - 发送结果到 Wire
-     * - 异步触发 POST_TOOL_CALL hook
      * - 将结果转换为上下文消息
      */
     private Mono<Message> processToolResult(ToolResult result, String toolName, String toolCallId,
                                             String toolSignature, Context context) {
         // 发送工具执行结果消息到 Wire
         wire.send(new ToolResultMessage(toolCallId, result));
-
-        // 异步触发 POST_TOOL_CALL hook（不阻塞主流程）
-        HookContext postHookContext = HookContext.builder()
-                .hookType(HookType.POST_TOOL_CALL)
-                .workDir(workDir)
-                .toolName(toolName)
-                .toolCallId(toolCallId)
-                .toolResult(formatToolResult(result))
-                .build();
-        ReactorUtils.triggerHookSafely(hookRegistry, HookType.POST_TOOL_CALL, postHookContext).subscribe();
 
         // 转换为上下文消息
         Message message = convertToolResultToMessage(result, toolCallId, toolSignature, context);

@@ -10,7 +10,6 @@ import io.leavesfly.jimi.core.engine.AgentExecutor;
 import io.leavesfly.jimi.core.engine.context.ContextManager;
 import io.leavesfly.jimi.core.engine.JimiRuntime;
 import io.leavesfly.jimi.knowledge.memory.MemoryRecorder;
-import io.leavesfly.jimi.core.hook.HookRegistry;
 import io.leavesfly.jimi.llm.LLM;
 import io.leavesfly.jimi.llm.LLMFactory;
 import io.leavesfly.jimi.core.session.Session;
@@ -61,8 +60,6 @@ public class JimiFactory {
     private MemoryRecorder memoryRecorder;
     @Autowired
     private ContextManager contextManager;
-    @Autowired
-    private HookRegistry hookRegistry;
 
     // ==================== 组件提供者（封装可选依赖） ====================
     @Autowired(required = false)
@@ -239,7 +236,6 @@ public class JimiFactory {
                         .compaction(compaction)
                         .memoryRecorder(memoryRecorder)
                         .contextManager(contextManager)
-                        .hookRegistry(hookRegistry)
                         .build();
                 JimiEngine soul = JimiEngine.create(executor);
 

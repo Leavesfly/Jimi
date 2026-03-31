@@ -78,8 +78,6 @@ public class SkillSpec {
     
 
     
-
-    
     /**
      * 作用域（全局或项目级）
      * 必需字段

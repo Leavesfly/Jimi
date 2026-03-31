@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.leavesfly.jimi.core.JimiFactory;
 import io.leavesfly.jimi.config.JimiConfig;
 import io.leavesfly.jimi.core.JimiEngine;
-import io.leavesfly.jimi.core.hook.HookRegistry;
 import io.leavesfly.jimi.core.session.Session;
 import io.leavesfly.jimi.core.session.SessionManager;
 import io.leavesfly.jimi.mcp.server.SimpleJimiServer;
@@ -184,8 +183,7 @@ public class CliApplication implements CommandLineRunner, Runnable {
             }
 
             // 初始化阶段：创建WireEngineClient（内部完成所有配置缓存）
-            HookRegistry hookRegistry = applicationContext.getBean(HookRegistry.class);
-            EngineClient engineClient = new WireEngineClient(jimiEngine, hookRegistry, sessionManager);
+            EngineClient engineClient = new WireEngineClient(jimiEngine, sessionManager);
 
             // 初始化阶段：创建ShellUI（注入EngineClient）
             try (ShellUI shellUI = new ShellUI(engineClient, applicationContext)) {

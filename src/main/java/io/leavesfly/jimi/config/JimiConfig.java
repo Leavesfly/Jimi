@@ -2,7 +2,7 @@ package io.leavesfly.jimi.config;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import io.leavesfly.jimi.config.info.*;
-import io.leavesfly.jimi.skill.SkillConfig;
+
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
@@ -89,13 +89,6 @@ public class JimiConfig {
     @Builder.Default
     private ShellUIConfig shellUI = new ShellUIConfig();
 
-    /**
-     * Skills 功能配置
-     */
-    @JsonProperty("skill")
-    @Valid
-    @Builder.Default
-    private SkillConfig skill = new SkillConfig();
 
     /**
      * 记忆模块配置
@@ -144,10 +137,6 @@ public class JimiConfig {
                 );
             }
         }
-        
-        // 验证Skills配置
-        if (skill != null && skill.isEnabled()) {
-            skill.validate();
-        }
+
     }
 }
