@@ -11,8 +11,7 @@ import java.util.List;
 
 /**
  * MCP 结果转换器 - 轻量级本地实现
- * 不依赖io.modelcontextprotocol.sdk，直接处理本地Schema对象
- * 
+ *
  * 主要功能：
  * 1. 将MCP工具调用结果转换为Jimi的ToolResult格式
  * 2. 处理多种内容类型：文本、图片、嵌入资源
