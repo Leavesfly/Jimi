@@ -1,4 +1,4 @@
-package io.leavesfly.jimi.ui.shell;
+package io.leavesfly.jimi.ui.shell.jline;
 
 import io.leavesfly.jimi.command.CommandHandler;
 import io.leavesfly.jimi.command.CommandRegistry;

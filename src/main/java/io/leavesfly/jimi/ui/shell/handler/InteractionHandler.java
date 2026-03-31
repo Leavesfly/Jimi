@@ -1,4 +1,4 @@
-package io.leavesfly.jimi.ui.shell;
+package io.leavesfly.jimi.ui.shell.handler;
 
 import io.leavesfly.jimi.core.interaction.HumanInputRequest;
 import io.leavesfly.jimi.core.interaction.HumanInputResponse;

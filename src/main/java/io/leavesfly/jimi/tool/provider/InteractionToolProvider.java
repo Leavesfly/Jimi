@@ -21,7 +21,7 @@ import java.util.List;
  */
 @Slf4j
 @Component
-public class HumanInteractionToolProvider implements ToolProvider {
+public class InteractionToolProvider implements ToolProvider {
     
     @Override
     public String getName() {

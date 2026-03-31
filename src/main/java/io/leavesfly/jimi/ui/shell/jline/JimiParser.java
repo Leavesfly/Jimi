@@ -1,4 +1,4 @@
-package io.leavesfly.jimi.ui.shell;
+package io.leavesfly.jimi.ui.shell.jline;
 
 import org.jline.reader.ParsedLine;
 import org.jline.reader.Parser;
@@ -16,8 +16,6 @@ public class JimiParser implements Parser {
         this.defaultParser = new DefaultParser();
         // 禁用转义字符处理
         this.defaultParser.setEscapeChars(null);
-        // 保留引号处理以支持补全
-        // this.defaultParser.setQuoteChars(null);  // 注释掉，保持默认引号处理
     }
     
     @Override

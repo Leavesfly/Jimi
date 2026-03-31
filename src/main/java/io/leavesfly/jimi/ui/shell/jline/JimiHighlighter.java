@@ -1,4 +1,4 @@
-package io.leavesfly.jimi.ui.shell;
+package io.leavesfly.jimi.ui.shell.jline;
 
 import org.jline.reader.Highlighter;
 import org.jline.reader.LineReader;

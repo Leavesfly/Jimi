@@ -313,10 +313,4 @@ public class ToolDispatcher {
         return toolErrorTracker.shouldTerminateLoop();
     }
 
-    /**
-     * 清除错误跟踪状态
-     */
-    public void clearErrors() {
-        toolErrorTracker.clearErrors();
-    }
 }

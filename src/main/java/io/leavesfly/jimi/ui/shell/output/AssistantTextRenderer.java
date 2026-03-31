@@ -1,7 +1,7 @@
 package io.leavesfly.jimi.ui.shell.output;
 
 import io.leavesfly.jimi.config.info.ThemeConfig;
-import io.leavesfly.jimi.ui.shell.ColorMapper;
+import io.leavesfly.jimi.ui.shell.style.ColorMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.jline.terminal.Terminal;
 import org.jline.utils.AttributedString;

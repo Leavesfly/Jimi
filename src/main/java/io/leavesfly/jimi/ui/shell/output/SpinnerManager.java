@@ -1,4 +1,4 @@
-package io.leavesfly.jimi.ui.shell;
+package io.leavesfly.jimi.ui.shell.output;
 
 import io.leavesfly.jimi.config.info.ShellUIConfig;
 import lombok.extern.slf4j.Slf4j;

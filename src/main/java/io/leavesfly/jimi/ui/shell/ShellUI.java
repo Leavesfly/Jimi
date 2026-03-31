@@ -1,42 +1,38 @@
 package io.leavesfly.jimi.ui.shell;
 
-import io.leavesfly.jimi.core.interaction.approval.ApprovalRequest;
-import io.leavesfly.jimi.core.interaction.HumanInputRequest;
-import io.leavesfly.jimi.llm.ChatCompletionResult;
-import io.leavesfly.jimi.llm.message.ContentPart;
-import io.leavesfly.jimi.llm.message.TextPart;
-import io.leavesfly.jimi.llm.message.ToolCall;
-import io.leavesfly.jimi.tool.ToolResult;
 import io.leavesfly.jimi.command.CommandRegistry;
 import io.leavesfly.jimi.config.info.ShellUIConfig;
 import io.leavesfly.jimi.config.info.ThemeConfig;
 import io.leavesfly.jimi.ui.notification.NotificationService;
+import io.leavesfly.jimi.ui.shell.handler.InteractionHandler;
+import io.leavesfly.jimi.ui.shell.handler.WireMessageHandler;
 import io.leavesfly.jimi.ui.shell.input.AgentCommandProcessor;
 import io.leavesfly.jimi.ui.shell.input.InputProcessor;
 import io.leavesfly.jimi.ui.shell.input.MetaCommandProcessor;
 import io.leavesfly.jimi.ui.shell.input.ShellShortcutProcessor;
+import io.leavesfly.jimi.ui.shell.jline.JimiCompleter;
+import io.leavesfly.jimi.ui.shell.jline.JimiHighlighter;
+import io.leavesfly.jimi.ui.shell.jline.JimiParser;
 import io.leavesfly.jimi.ui.shell.output.AssistantTextRenderer;
 import io.leavesfly.jimi.ui.shell.output.OutputFormatter;
-import io.leavesfly.jimi.ui.ToolVisualization;
+import io.leavesfly.jimi.ui.shell.output.SpinnerManager;
+import io.leavesfly.jimi.ui.shell.output.ToolVisualization;
+import io.leavesfly.jimi.ui.shell.output.WelcomeRenderer;
+import io.leavesfly.jimi.ui.shell.style.PromptBuilder;
 import io.leavesfly.jimi.client.EngineClient;
-import io.leavesfly.jimi.wire.message.WireMessage;
-import io.leavesfly.jimi.wire.message.*;
 import lombok.extern.slf4j.Slf4j;
 import org.jline.reader.*;
 import org.jline.terminal.Terminal;
 import org.jline.terminal.TerminalBuilder;
-import org.jline.utils.AttributedString;
-import org.jline.utils.AttributedStyle;
 import org.springframework.context.ApplicationContext;
 import reactor.core.Disposable;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -47,6 +43,8 @@ import java.util.concurrent.atomic.AtomicReference;
  * - CommandHandler: 元命令处理器
  * - InputProcessor: 输入处理器
  * - CommandRegistry: 命令注册表
+ * - WireMessageHandler: Wire消息处理器
+ * - WelcomeRenderer: 欢迎信息渲染器
  */
 @Slf4j
 public class ShellUI implements AutoCloseable {
@@ -54,10 +52,8 @@ public class ShellUI implements AutoCloseable {
     private final Terminal terminal;
     private final LineReader lineReader;
     private final EngineClient engineClient;
-    private final ToolVisualization toolVisualization;
     private final AtomicBoolean running;
     private final AtomicReference<String> currentStatus;
-    private final Map<String, String> activeTools; // ConcurrentHashMap, accessed from Wire subscriber thread
     private Disposable wireSubscription;
 
     // Shell UI 配置
@@ -65,12 +61,6 @@ public class ShellUI implements AutoCloseable {
 
     // 主题配置
     private ThemeConfig theme;
-
-    // 快捷提示计数器
-    private final AtomicInteger interactionCount;
-    private final AtomicBoolean welcomeHintShown;
-    private final AtomicBoolean inputHintShown;
-    private final AtomicBoolean thinkingHintShown;
 
     // 插件化组件
     private final OutputFormatter outputFormatter;
@@ -84,7 +74,9 @@ public class ShellUI implements AutoCloseable {
     private final SpinnerManager spinnerManager;
     private final PromptBuilder promptBuilder;
     private final AssistantTextRenderer renderer;
-    private final InteractionHandler interactionHandler;
+    private final WireMessageHandler wireMessageHandler;
+    private final WelcomeRenderer welcomeRenderer;
+    private final ToolVisualization toolVisualization;
 
     /**
      * 创建 Shell UI
@@ -95,22 +87,14 @@ public class ShellUI implements AutoCloseable {
      */
     public ShellUI(EngineClient engineClient, ApplicationContext applicationContext) throws IOException {
         this.engineClient = engineClient;
-        this.toolVisualization = new ToolVisualization();
         this.running = new AtomicBoolean(false);
         this.currentStatus = new AtomicReference<>("ready");
-        this.activeTools = new ConcurrentHashMap<>();
 
         // 初始化阶段：直接从EngineClient获取配置（无需消息交互）
         this.uiConfig = engineClient.getShellUIConfig();
 
         // 初始化主题
         this.theme = engineClient.getThemeConfig();
-
-        // 初始化快捷提示计数器
-        this.interactionCount = new AtomicInteger(0);
-        this.welcomeHintShown = new AtomicBoolean(false);
-        this.inputHintShown = new AtomicBoolean(false);
-        this.thinkingHintShown = new AtomicBoolean(false);
 
         // 初始化 Terminal
         this.terminal = TerminalBuilder.builder().system(true).encoding("UTF-8").build();
@@ -120,23 +104,28 @@ public class ShellUI implements AutoCloseable {
         log.info("Loaded CommandRegistry with {} commands from Spring context", commandRegistry.size());
 
         // 获取通知服务
-        this.notificationService = applicationContext.getBean(io.leavesfly.jimi.ui.notification.NotificationService.class);
+        this.notificationService = applicationContext.getBean(NotificationService.class);
 
         // 初始化阶段：从EngineClient获取工作目录
         Path workingDir = engineClient.getWorkDir();
 
         // 初始化 LineReader（使用增强的 JimiCompleter）
-        this.lineReader = LineReaderBuilder.builder().terminal(terminal).appName("Jimi").completer(new JimiCompleter(commandRegistry, workingDir)).highlighter(new JimiHighlighter()).parser(new JimiParser())
+        this.lineReader = LineReaderBuilder.builder()
+                .terminal(terminal)
+                .appName("Jimi")
+                .completer(new JimiCompleter(commandRegistry, workingDir))
+                .highlighter(new JimiHighlighter())
+                .parser(new JimiParser())
                 // 禁用事件扩展（!字符）
                 .option(LineReader.Option.DISABLE_EVENT_EXPANSION, true)
                 // 启用自动补全功能
-                .option(LineReader.Option.AUTO_LIST, true)           // 自动显示补全列表
-                .option(LineReader.Option.AUTO_MENU, true)           // 启用自动菜单
-                .option(LineReader.Option.AUTO_MENU_LIST, true)      // 自动显示菜单列表
-                .option(LineReader.Option.INSERT_TAB, false)         // 行首按Tab触发补全而非Tab字符
+                .option(LineReader.Option.AUTO_LIST, true)
+                .option(LineReader.Option.AUTO_MENU, true)
+                .option(LineReader.Option.AUTO_MENU_LIST, true)
+                .option(LineReader.Option.INSERT_TAB, false)
                 // 其他有用的补全选项
-                .option(LineReader.Option.COMPLETE_IN_WORD, true)    // 允许在单词中间补全
-                .option(LineReader.Option.CASE_INSENSITIVE, true)    // 不区分大小写匹配
+                .option(LineReader.Option.COMPLETE_IN_WORD, true)
+                .option(LineReader.Option.CASE_INSENSITIVE, true)
                 .build();
 
         // 初始化输出格式化器
@@ -146,7 +135,24 @@ public class ShellUI implements AutoCloseable {
         this.renderer = new AssistantTextRenderer(terminal, theme);
         this.spinnerManager = new SpinnerManager(terminal, uiConfig);
         this.promptBuilder = new PromptBuilder(currentStatus, uiConfig, theme, engineClient);
-        this.interactionHandler = new InteractionHandler(terminal, outputFormatter, lineReader, renderer);
+        this.toolVisualization = new ToolVisualization();
+        this.welcomeRenderer = new WelcomeRenderer(terminal, outputFormatter, uiConfig, theme, engineClient);
+
+        // 初始化交互处理器和消息处理器
+        InteractionHandler interactionHandler = new InteractionHandler(terminal, outputFormatter, lineReader, renderer);
+        this.wireMessageHandler = new WireMessageHandler(
+                outputFormatter,
+                spinnerManager,
+                renderer,
+                interactionHandler,
+                toolVisualization,
+                uiConfig,
+                currentStatus
+        );
+
+        // 设置回调
+        wireMessageHandler.setTokenUsageCallback(msg -> welcomeRenderer.showTokenUsage(msg.getUsage()));
+        wireMessageHandler.setShortcutsHintCallback(welcomeRenderer::showShortcutsHint);
 
         // 初始化输入处理器
         this.inputProcessors = new ArrayList<>();
@@ -175,148 +181,9 @@ public class ShellUI implements AutoCloseable {
      * 使用 boundedElastic 调度器处理可能阻塞的消息（如审批请求）
      */
     private void subscribeWire() {
-        wireSubscription = engineClient.subscribe().publishOn(reactor.core.scheduler.Schedulers.boundedElastic()).subscribe(this::handleWireMessage);
-    }
-
-    /**
-     * 处理 Wire 消息，根据消息类型分发到对应的处理方法
-     */
-    private void handleWireMessage(WireMessage message) {
-        try {
-            if (message instanceof StepBegin stepBegin) {
-                handleStepBegin(stepBegin);
-            } else if (message instanceof StepInterrupted) {
-                handleStepInterrupted();
-            } else if (message instanceof CompactionBegin) {
-                handleCompactionBegin();
-            } else if (message instanceof CompactionEnd) {
-                handleCompactionEnd();
-            } else if (message instanceof StatusUpdate statusUpdate) {
-                handleStatusUpdate(statusUpdate);
-            } else if (message instanceof ContentPartMessage contentMsg) {
-                handleContentPart(contentMsg);
-            } else if (message instanceof ToolCallMessage toolCallMsg) {
-                handleToolCall(toolCallMsg);
-            } else if (message instanceof ToolResultMessage toolResultMsg) {
-                handleToolResult(toolResultMsg);
-            } else if (message instanceof TokenUsageMessage tokenUsageMsg) {
-                showTokenUsage(tokenUsageMsg.getUsage());
-            } else if (message instanceof ApprovalRequest approvalRequest) {
-                log.info("[ShellUI] Received ApprovalRequest: action={}, description={}", approvalRequest.getAction(), approvalRequest.getDescription());
-                interactionHandler.handleApprovalRequest(approvalRequest);
-            } else if (message instanceof HumanInputRequest humanInputRequest) {
-                log.info("[ShellUI] Received HumanInputRequest: type={}, question={}", humanInputRequest.getInputType(), truncateForLog(humanInputRequest.getQuestion()));
-                interactionHandler.handleHumanInputRequest(humanInputRequest);
-            } else {
-                log.debug("Unhandled wire message type: {}", message.getClass().getSimpleName());
-            }
-        } catch (Exception e) {
-            log.error("Error handling wire message: {}", message.getClass().getSimpleName(), e);
-        }
-    }
-
-    private void handleStepBegin(StepBegin stepBegin) {
-        if (stepBegin.isSubagent()) {
-            String agentName = stepBegin.getAgentName() != null ? stepBegin.getAgentName() : "subagent";
-            printStatus("  🤖 [" + agentName + "] Step " + stepBegin.getStepNumber() + " - Thinking...");
-        } else {
-            currentStatus.set("thinking (step " + stepBegin.getStepNumber() + ")");
-            printStatus("🧠 Step " + stepBegin.getStepNumber() + " - Thinking...");
-
-            if (uiConfig.isShowSpinner()) {
-                spinnerManager.start("正在思考...");
-            }
-            if (stepBegin.getStepNumber() == 1) {
-                showShortcutsHint("thinking");
-            }
-
-            renderer.resetForNewStep();
-        }
-    }
-
-    private void handleStepInterrupted() {
-        currentStatus.set("interrupted");
-        activeTools.clear();
-        renderer.flushLineIfNeeded();
-        printError("⚠️  Step interrupted");
-        showShortcutsHint("error");
-    }
-
-    private void handleCompactionBegin() {
-        currentStatus.set("compacting");
-        printStatus("🗜️  Compacting context...");
-    }
-
-    private void handleCompactionEnd() {
-        currentStatus.set("ready");
-        printSuccess("✅ Context compacted");
-    }
-
-    private void handleStatusUpdate(StatusUpdate statusUpdate) {
-        Map<String, Object> statusMap = statusUpdate.getStatus();
-        String status = statusMap.getOrDefault("status", "unknown").toString();
-        currentStatus.set(status);
-    }
-
-    private void handleContentPart(ContentPartMessage contentMsg) {
-        if (uiConfig.isShowSpinner()) {
-            spinnerManager.stop();
-        }
-
-        ContentPart part = contentMsg.getContentPart();
-        if (part instanceof TextPart textPart) {
-            boolean isReasoning = contentMsg.getContentType() == ContentPartMessage.ContentType.REASONING;
-            renderer.print(textPart.getText(), isReasoning);
-        }
-    }
-
-    private void handleToolCall(ToolCallMessage toolCallMsg) {
-        if (uiConfig.isShowSpinner()) {
-            spinnerManager.stop();
-        }
-
-        renderer.flushLineIfNeeded();
-
-        ToolCall toolCall = toolCallMsg.getToolCall();
-        String toolName = toolCall.getFunction().getName();
-        activeTools.put(toolCall.getId(), toolName);
-
-        String displayMode = uiConfig.getToolDisplayMode();
-        switch (displayMode) {
-            case "minimal" -> printStatus("🔧 " + toolName);
-            case "compact" -> {
-                String args = toolCall.getFunction().getArguments();
-                int truncateLen = uiConfig.getToolArgsTruncateLength();
-                if (args != null && args.length() > truncateLen) {
-                    args = args.substring(0, truncateLen) + "...";
-                }
-                printStatus("🔧 " + toolName + " | " + (args != null ? args : ""));
-            }
-            default -> toolVisualization.onToolCallStart(toolCall);
-        }
-    }
-
-    private void handleToolResult(ToolResultMessage toolResultMsg) {
-        String toolCallId = toolResultMsg.getToolCallId();
-        ToolResult result = toolResultMsg.getToolResult();
-
-        String displayMode = uiConfig.getToolDisplayMode();
-        switch (displayMode) {
-            case "minimal" -> {
-                if (result.isOk()) {
-                    printSuccess("✅ " + activeTools.get(toolCallId));
-                } else {
-                    printError("❌ " + activeTools.get(toolCallId));
-                }
-            }
-            case "compact" -> {
-                String resultPreview = result.isOk() ? "✅ 成功" : "❌ 失败: " + result.getMessage();
-                printInfo("  → " + resultPreview);
-            }
-            default -> toolVisualization.onToolCallComplete(toolCallId, result);
-        }
-
-        activeTools.remove(toolCallId);
+        wireSubscription = engineClient.subscribe()
+                .publishOn(Schedulers.boundedElastic())
+                .subscribe(wireMessageHandler::handle);
     }
 
     /**
@@ -329,7 +196,7 @@ public class ShellUI implements AutoCloseable {
             running.set(true);
 
             // 打印欢迎信息
-            printWelcome();
+            welcomeRenderer.printWelcome();
 
             // 主循环
             while (running.get()) {
@@ -339,7 +206,7 @@ public class ShellUI implements AutoCloseable {
 
                     if (input == null) {
                         // EOF (Ctrl-D)
-                        printInfo("Bye!");
+                        outputFormatter.printInfo("Bye!");
                         break;
                     }
 
@@ -350,14 +217,14 @@ public class ShellUI implements AutoCloseable {
 
                 } catch (UserInterruptException e) {
                     // Ctrl-C
-                    printInfo("Tip: press Ctrl-D or type 'exit' to quit");
+                    outputFormatter.printInfo("Tip: press Ctrl-D or type 'exit' to quit");
                 } catch (EndOfFileException e) {
                     // EOF
-                    printInfo("Bye!");
+                    outputFormatter.printInfo("Bye!");
                     break;
                 } catch (Exception e) {
                     log.error("Error in shell UI", e);
-                    printError("Error: " + e.getMessage());
+                    outputFormatter.printError("Error: " + e.getMessage());
                 }
             }
 
@@ -389,11 +256,11 @@ public class ShellUI implements AutoCloseable {
         }
 
         // 增加交互计数
-        interactionCount.incrementAndGet();
+        int count = welcomeRenderer.incrementInteractionCount();
 
         // 首次输入时显示输入提示
-        if (interactionCount.get() == 1) {
-            showShortcutsHint("input");
+        if (count == 1) {
+            welcomeRenderer.showShortcutsHint("input");
         }
 
         // 检查退出命令
@@ -403,7 +270,13 @@ public class ShellUI implements AutoCloseable {
         }
 
         // 构建上下文
-        ShellContext context = ShellContext.builder().engineClient(engineClient).terminal(terminal).lineReader(lineReader).rawInput(input).outputFormatter(outputFormatter).build();
+        ShellContext context = ShellContext.builder()
+                .engineClient(engineClient)
+                .terminal(terminal)
+                .lineReader(lineReader)
+                .rawInput(input)
+                .outputFormatter(outputFormatter)
+                .build();
 
         // 按优先级查找匹配的输入处理器
         for (InputProcessor processor : inputProcessors) {
@@ -424,99 +297,6 @@ public class ShellUI implements AutoCloseable {
     }
 
     /**
-     * 打印状态信息（黄色）
-     */
-    private void printStatus(String text) {
-        outputFormatter.printStatus(text);
-    }
-
-    /**
-     * 打印成功信息（绿色）
-     */
-    private void printSuccess(String text) {
-        outputFormatter.printSuccess(text);
-    }
-
-    /**
-     * 打印错误信息（红色）
-     */
-    private void printError(String text) {
-        outputFormatter.printError(text);
-    }
-
-    /**
-     * 打印欢迎信息
-     */
-    private void printWelcome() {
-        outputFormatter.println("");
-        printBanner();
-        outputFormatter.println("");
-        outputFormatter.printSuccess("Welcome to Jimi ");
-        outputFormatter.printInfo("Type /help for available commands, or just start chatting!");
-        outputFormatter.println("");
-
-        // 显示欢迎快捷提示
-        showShortcutsHint("welcome");
-    }
-
-    /**
-     * 打印 Banner
-     */
-    private void printBanner() {
-        // 获取版本信息
-        String version = getVersionInfo();
-        String javaVersion = System.getProperty("java.version");
-        // 提取主版本号 (如 "17" from "17.0.1")
-        String javaMajorVersion = javaVersion.split("\\.")[0];
-
-        String banner = String.format("""
-                                
-                ╭──────────────────────────────────────────────╮
-                │                                              │
-                │        🤖  J I M I  %-24s │
-                │                                              │
-                │        Your AI Coding Companion              │
-                │        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━      │
-                │                                              │
-                │  🔧 Code  💬 Chat  🧠 Think  ⚡ Fast         │
-                │                                              │
-                │  Java %s | Type /help to start              │
-                ╰──────────────────────────────────────────────╯
-                                
-                """, version, javaMajorVersion);
-
-        AttributedStyle style = ColorMapper.createBoldStyle(theme.getBannerColor());
-
-        terminal.writer().println(new AttributedString(banner, style).toAnsi());
-        terminal.flush();
-    }
-
-    /**
-     * 获取版本信息
-     */
-    private String getVersionInfo() {
-        // 尝试从 Manifest 读取版本号
-        Package pkg = this.getClass().getPackage();
-        String version = pkg != null ? pkg.getImplementationVersion() : null;
-
-        // 如果无法从 Manifest 获取，返回默认版本
-        if (version == null || version.isEmpty()) {
-            version = "v0.1.0"; // 从 pom.xml 读取的默认版本
-        } else {
-            version = "v" + version;
-        }
-
-        return version;
-    }
-
-    /**
-     * 打印信息（蓝色）
-     */
-    private void printInfo(String text) {
-        outputFormatter.printInfo(text);
-    }
-
-    /**
      * 停止 Shell UI
      */
     public void stop() {
@@ -524,115 +304,13 @@ public class ShellUI implements AutoCloseable {
     }
 
     /**
-     * 显示Token消耗统计（在每个步骤结束时调用）
-     */
-    private void showTokenUsage(ChatCompletionResult.Usage usage) {
-        if (!uiConfig.isShowTokenUsage() || usage == null) {
-            return;
-        }
-
-        // 记录当前步骤的Token
-        int stepTokens = usage.getTotalTokens();
-
-        // 构建显示消息
-        StringBuilder msg = new StringBuilder();
-        msg.append("\n📊 Token: ");
-        msg.append("本次 ").append(usage.getPromptTokens()).append("+").append(usage.getCompletionTokens());
-        msg.append(" = ").append(stepTokens);
-
-        // 如果有上下文Token总数，显示累计
-        try {
-            int totalTokens = engineClient.getTokenCount();
-            if (totalTokens > 0) {
-                msg.append(" | 总计 ").append(totalTokens);
-            }
-        } catch (Exception e) {
-            // 忽略错误
-        }
-
-        // 使用主题Token颜色显示
-        AttributedStyle style = ColorMapper.createStyle(theme.getTokenColor());
-        terminal.writer().println(new AttributedString(msg.toString(), style).toAnsi());
-        terminal.flush();
-    }
-
-    /**
-     * 显示快捷提示
-     *
-     * @param hintType 提示类型：welcome, input, thinking, error
-     */
-    private void showShortcutsHint(String hintType) {
-        if (!uiConfig.isShowShortcutsHint()) {
-            return;
-        }
-
-        // 根据频率配置决定是否显示
-        switch (uiConfig.getShortcutsHintFrequency()) {
-            case "first_time" -> {
-                if (!shouldShowFirstTimeHint(hintType)) {
-                    return;
-                }
-            }
-            case "periodic" -> {
-                int count = interactionCount.get();
-                int interval = uiConfig.getShortcutsHintInterval();
-                if (count % interval != 0) {
-                    return;
-                }
-            }
-            default -> { /* always: do nothing, show hint */ }
-        }
-
-        // 显示对应类型的提示
-        String hint = getHintForType(hintType);
-        if (hint != null && !hint.isEmpty()) {
-            terminal.writer().println();
-            AttributedStyle style = ColorMapper.createStyle(theme.getHintColor());
-            if (theme.isItalicReasoning()) {
-                style = style.italic();
-            }
-            terminal.writer().println(new AttributedString(hint, style).toAnsi());
-            terminal.flush();
-        }
-    }
-
-    /**
-     * 判断是否应该显示首次提示
-     */
-    private boolean shouldShowFirstTimeHint(String hintType) {
-        return switch (hintType) {
-            case "welcome" -> welcomeHintShown.compareAndSet(false, true);
-            case "input" -> inputHintShown.compareAndSet(false, true);
-            case "thinking" -> thinkingHintShown.compareAndSet(false, true);
-            default -> true;
-        };
-    }
-
-    /**
-     * 根据类型获取提示内容
-     */
-    private String getHintForType(String hintType) {
-        return switch (hintType) {
-            case "error" -> "💡 提示: /reset 清空上下文 | /status 查看状态 | /history 查看历史";
-            case "approval" -> "💡 快捷键: y (批准) | n (拒绝) | a (全部批准)";
-            default -> null;
-        };
-    }
-
-    /**
-     * 截断字符串用于日志输出
-     */
-    private String truncateForLog(String text) {
-        if (text == null) return null;
-        return text.length() > 100 ? text.substring(0, 100) + "..." : text;
-    }
-
-    /**
      * 从配置中解析当前主题
      */
     private ThemeConfig resolveTheme() {
         String themeName = uiConfig.getThemeName();
-        ThemeConfig resolved = (themeName != null && !themeName.isEmpty()) ? ThemeConfig.getPresetTheme(themeName) : uiConfig.getTheme();
+        ThemeConfig resolved = (themeName != null && !themeName.isEmpty())
+                ? ThemeConfig.getPresetTheme(themeName)
+                : uiConfig.getTheme();
         return resolved != null ? resolved : ThemeConfig.defaultTheme();
     }
 
@@ -644,6 +322,7 @@ public class ShellUI implements AutoCloseable {
         this.outputFormatter.setTheme(this.theme);
         this.renderer.setTheme(this.theme);
         this.promptBuilder.setTheme(this.theme);
+        this.welcomeRenderer.setTheme(this.theme);
     }
 
     @Override

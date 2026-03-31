@@ -328,8 +328,6 @@ public class SkillLoader {
                             log.debug("Ignoring Claude Code specific field '{}' in skill '{}'", key, metadata.get("name"));
                         }
                     }
-
-
                 } catch (Exception e) {
                     log.warn("Failed to parse YAML Front Matter in {}, using defaults", filePath, e);
                 }

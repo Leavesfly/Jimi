@@ -1,4 +1,4 @@
-package io.leavesfly.jimi.ui.shell;
+package io.leavesfly.jimi.ui.shell.style;
 
 import org.jline.utils.AttributedStyle;
 

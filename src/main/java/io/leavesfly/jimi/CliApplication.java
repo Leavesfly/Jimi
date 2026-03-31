@@ -1,12 +1,12 @@
 package io.leavesfly.jimi;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+
 import io.leavesfly.jimi.core.JimiFactory;
 import io.leavesfly.jimi.config.JimiConfig;
 import io.leavesfly.jimi.core.JimiEngine;
 import io.leavesfly.jimi.core.session.Session;
 import io.leavesfly.jimi.core.session.SessionManager;
-import io.leavesfly.jimi.mcp.server.SimpleJimiServer;
+
 import io.leavesfly.jimi.ui.DebugLogger;
 import io.leavesfly.jimi.ui.shell.ShellUI;
 import io.leavesfly.jimi.client.EngineClient;
@@ -43,7 +43,6 @@ public class CliApplication implements CommandLineRunner, Runnable {
 
     private final JimiConfig jimiConfig;
     private final SessionManager sessionManager;
-    private final ObjectMapper objectMapper;
     private final ApplicationContext applicationContext;
     private final JimiFactory jimiFactory;
 
@@ -53,11 +52,11 @@ public class CliApplication implements CommandLineRunner, Runnable {
 
     @Autowired
     public CliApplication(JimiConfig jimiConfig, SessionManager sessionManager,
-                          ObjectMapper objectMapper, ApplicationContext applicationContext,
+                          ApplicationContext applicationContext,
                           JimiFactory jimiFactory) {
         this.jimiConfig = jimiConfig;
         this.sessionManager = sessionManager;
-        this.objectMapper = objectMapper;
+
         this.applicationContext = applicationContext;
         this.jimiFactory = jimiFactory;
 
@@ -90,9 +89,6 @@ public class CliApplication implements CommandLineRunner, Runnable {
     @Option(names = {"-c", "--command"}, description = "User query to the agent")
     private String command;
 
-    @Option(names = {"--simple-server", "--mcp-server"}, description = "Start as simple server (StdIO mode for IDE integration)")
-    private boolean simpleServer = false;
-
     @Override
     public void run(String... args) throws Exception {
         // 嵌入式模式下跳过 CLI 启动
@@ -121,13 +117,6 @@ public class CliApplication implements CommandLineRunner, Runnable {
 
     private void executeMain() {
         try {
-            // Simple Server 模式（IDE集成）
-            if (simpleServer) {
-                log.info("Starting Jimi in Simple Server mode...");
-                SimpleJimiServer server = new SimpleJimiServer(jimiFactory);
-                server.start();
-                return;
-            }
 
             // 启用 debug 模式
             if (debug) {

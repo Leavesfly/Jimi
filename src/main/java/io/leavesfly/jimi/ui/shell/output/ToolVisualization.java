@@ -1,7 +1,8 @@
-package io.leavesfly.jimi.ui;
+package io.leavesfly.jimi.ui.shell.output;
 
 import io.leavesfly.jimi.llm.message.ToolCall;
 import io.leavesfly.jimi.tool.ToolResult;
+import io.leavesfly.jimi.ui.shell.style.AnsiStyle;
 import lombok.extern.slf4j.Slf4j;
 
 import java.time.Duration;
@@ -19,13 +20,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * 3. 工具执行完成（显示结果摘要）
  * <p>
  * 功能特性：
- * - 🔄 实时进度动画
- * - 📊 执行时间统计
- * - ✅/✗ 成功/失败标识
- * - 📝 结果摘要显示
- * - 🎨 彩色输出
- *
- * @author 山泽
+ * - 实时进度动画
+ * - 执行时间统计
+ * - 成功/失败标识
+ * - 结果摘要显示
+ * - 彩色输出
  */
 @Slf4j
 public class ToolVisualization {
@@ -85,11 +84,11 @@ public class ToolVisualization {
             sb.append(" ");
 
             // 工具名称（蓝色）
-            sb.append(AnsiColors.BLUE).append(toolName).append(AnsiColors.RESET);
+            sb.append(AnsiStyle.BLUE).append(toolName).append(AnsiStyle.RESET);
 
             // 副标题（灰色）
             if (!subtitle.isEmpty()) {
-                sb.append(AnsiColors.GRAY).append(": ").append(subtitle).append(AnsiColors.RESET);
+                sb.append(AnsiStyle.GRAY).append(": ").append(subtitle).append(AnsiStyle.RESET);
             }
 
             return sb.toString();
@@ -100,23 +99,23 @@ public class ToolVisualization {
 
             // 成功/失败标识
             if (result.isOk()) {
-                sb.append(AnsiColors.GREEN).append("✓").append(AnsiColors.RESET);
+                sb.append(AnsiStyle.GREEN).append("✓").append(AnsiStyle.RESET);
             } else {
-                sb.append(AnsiColors.RED).append("✗").append(AnsiColors.RESET);
+                sb.append(AnsiStyle.RED).append("✗").append(AnsiStyle.RESET);
             }
             sb.append(" ");
 
             // 工具名称
-            sb.append("Used ").append(AnsiColors.BLUE).append(toolName).append(AnsiColors.RESET);
+            sb.append("Used ").append(AnsiStyle.BLUE).append(toolName).append(AnsiStyle.RESET);
 
             // 副标题
             if (!subtitle.isEmpty()) {
-                sb.append(AnsiColors.GRAY).append(": ").append(subtitle).append(AnsiColors.RESET);
+                sb.append(AnsiStyle.GRAY).append(": ").append(subtitle).append(AnsiStyle.RESET);
             }
 
             // 执行时间
             long millis = getDuration().toMillis();
-            sb.append(AnsiColors.GRAY).append(" (").append(millis).append("ms)").append(AnsiColors.RESET);
+            sb.append(AnsiStyle.GRAY).append(" (").append(millis).append("ms)").append(AnsiStyle.RESET);
 
             return sb.toString();
         }
@@ -126,7 +125,7 @@ public class ToolVisualization {
             String[] frames = {"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"};
             long elapsed = getDuration().toMillis();
             int index = (int) ((elapsed / 80) % frames.length);
-            return AnsiColors.CYAN + frames[index] + AnsiColors.RESET;
+            return AnsiStyle.CYAN + frames[index] + AnsiStyle.RESET;
         }
     }
 
@@ -192,7 +191,7 @@ public class ToolVisualization {
             // 显示结果摘要（只显示成功时的摘要，失败时不显示异常日志给用户）
             if (result.isOk() && result.getBrief() != null && !result.getBrief().isEmpty()) {
                 String brief = truncateText(result.getBrief(), MAX_BRIEF_LENGTH);
-                System.out.println("  " + AnsiColors.GRAY + brief + AnsiColors.RESET);
+                System.out.println("  " + AnsiStyle.GRAY + brief + AnsiStyle.RESET);
             }
 
             // 从活动列表中移除
@@ -224,7 +223,7 @@ public class ToolVisualization {
             case "SubAgentTool" -> extractJsonField(arguments, "description");
             case "Think" -> extractJsonField(arguments, "thought");
             case "Glob" -> extractJsonField(arguments, "pattern");
-            default -> null;
+            default -> extractJsonField(arguments, "command");
         };
     }
 
@@ -335,24 +334,5 @@ public class ToolVisualization {
      */
     public void cleanup() {
         activeTools.clear();
-    }
-
-    /**
-     * ANSI 颜色代码
-     */
-    public static class AnsiColors {
-        public static final String RESET = "\u001B[0m";
-        public static final String RED = "\u001B[31m";
-        public static final String GREEN = "\u001B[32m";
-        public static final String BLUE = "\u001B[34m";
-        public static final String CYAN = "\u001B[36m";
-        public static final String GRAY = "\u001B[90m";
-
-        // 粗体
-        public static final String BOLD = "\u001B[1m";
-
-        // 背景色
-        public static final String BG_RED = "\u001B[41m";
-        public static final String BG_GREEN = "\u001B[42m";
     }
 }

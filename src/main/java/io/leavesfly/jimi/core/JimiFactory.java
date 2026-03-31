@@ -62,7 +62,7 @@ public class JimiFactory {
     private ContextManager contextManager;
 
     // ==================== 组件提供者（封装可选依赖） ====================
-    @Autowired(required = false)
+    @Autowired(required = true)
     private SkillRegistry skillRegistry;  // 用于生成技能摘要（渐进式披露）
 
 

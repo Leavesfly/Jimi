@@ -3,6 +3,8 @@ package io.leavesfly.jimi.ui;
 import io.leavesfly.jimi.llm.message.FunctionCall;
 import io.leavesfly.jimi.llm.message.ToolCall;
 import io.leavesfly.jimi.tool.ToolResult;
+
+import io.leavesfly.jimi.ui.shell.output.ToolVisualization;
 import org.junit.jupiter.api.Test;
 
 /**

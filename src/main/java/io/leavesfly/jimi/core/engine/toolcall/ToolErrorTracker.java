@@ -73,25 +73,6 @@ public class ToolErrorTracker {
                 && recentToolErrors.size() >= MAX_REPEATED_ERRORS;
     }
 
-    /**
-     * 构建不完整JSON错误消息
-     *
-     * @param normalizedArgs 标准化后的参数
-     * @param toolSignature  工具签名
-     * @return 错误消息
-     */
-    public String buildIncompleteJsonErrorMessage(String normalizedArgs, String toolSignature) {
-        String errorMsg = "Error: Incomplete tool call arguments received from LLM. Arguments: " + normalizedArgs;
-
-        if (isRepeatedError(toolSignature)) {
-            errorMsg += "\n\n⚠️ CRITICAL: This same incomplete JSON error has occurred " +
-                    MAX_REPEATED_ERRORS + " times. The LLM appears to be stuck. " +
-                    "Please report this issue or try a different model.";
-            log.error("Detected repeated incomplete JSON errors: {}", toolSignature);
-        }
-
-        return errorMsg;
-    }
 
     /**
      * 构建工具执行错误内容
