@@ -1,0 +1,30 @@
+name: "auto-git-add"
+description: "文件修改后自动 git add"
+enabled: false
+priority: 5
+
+trigger:
+  type: "POST_TOOL_USE"
+  tools:
+    - "WriteFile"
+    - "StrReplaceFile"
+
+execution:
+  type: "script"
+  script: |
+    #!/bin/bash
+    if [ -d ".git" ]; then
+      for file in ${MODIFIED_FILES}; do
+        if [ -f "$file" ]; then
+          git add "$file" 2>/dev/null
+          echo "📎 已暂存: $file"
+        fi
+      done
+    fi
+  workingDir: "${JIMI_WORK_DIR}"
+  timeout: 10
+
+conditions:
+  - type: "file_exists"
+    path: ".git"
+    description: "仅在 Git 仓库中执行"

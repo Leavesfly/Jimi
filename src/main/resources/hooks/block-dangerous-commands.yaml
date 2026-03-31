@@ -1,0 +1,31 @@
+name: "block-dangerous-commands"
+description: "阻止执行危险的 Shell 命令"
+enabled: false
+priority: 100
+
+trigger:
+  type: "PRE_TOOL_USE"
+  matcher: "BashTool"
+
+execution:
+  type: "script"
+  script: |
+    #!/bin/bash
+    # 从 stdin 读取 JSON 输入
+    INPUT=$(cat)
+    COMMAND=$(echo "$INPUT" | grep -o '"command":"[^"]*"' | head -1 | cut -d'"' -f4)
+    
+    # 检查危险命令
+    if [[ "$COMMAND" == rm\ -rf* ]] || [[ "$COMMAND" == *"rm -rf /"* ]]; then
+      echo "🚫 已阻止危险命令: $COMMAND" >&2
+      exit 2  # Exit code 2 = 阻塞操作
+    fi
+    
+    if [[ "$COMMAND" == *"DROP TABLE"* ]] || [[ "$COMMAND" == *"DROP DATABASE"* ]]; then
+      echo "🚫 已阻止危险 SQL 操作: $COMMAND" >&2
+      exit 2
+    fi
+    
+    exit 0  # Exit code 0 = 允许操作继续
+  workingDir: "${JIMI_WORK_DIR}"
+  timeout: 5

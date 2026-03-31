@@ -1,0 +1,39 @@
+name: "pre-commit-test"
+description: "Git 提交前自动运行测试"
+enabled: false
+priority: 100
+
+trigger:
+  type: "PRE_TOOL_USE"
+  matcher: "BashTool"
+
+execution:
+  type: "script"
+  script: |
+    #!/bin/bash
+    # 从 stdin 读取 JSON 输入
+    INPUT=$(cat)
+    COMMAND=$(echo "$INPUT" | grep -o '"command":"[^"]*"' | head -1 | cut -d'"' -f4)
+    
+    # 仅在 git commit 时触发测试
+    if [[ "$COMMAND" == *"git commit"* ]]; then
+      echo "🧪 提交前运行测试..."
+      
+      if [ -f "pom.xml" ]; then
+        mvn test -q 2>&1
+        if [ $? -ne 0 ]; then
+          echo "❌ 测试失败，阻止提交" >&2
+          exit 2
+        fi
+        echo "✅ 测试通过，允许提交"
+      fi
+    fi
+    
+    exit 0
+  workingDir: "${JIMI_WORK_DIR}"
+  timeout: 300
+
+conditions:
+  - type: "file_exists"
+    path: ".git"
+    description: "仅在 Git 仓库中执行"

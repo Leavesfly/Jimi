@@ -6,6 +6,9 @@ import io.leavesfly.jimi.core.engine.context.Context;
 import io.leavesfly.jimi.core.engine.context.ContextManager;
 import io.leavesfly.jimi.core.engine.toolcall.ToolDispatcher;
 import io.leavesfly.jimi.core.engine.toolcall.ToolErrorTracker;
+import io.leavesfly.jimi.core.hook.HookContext;
+import io.leavesfly.jimi.core.hook.HookRegistry;
+import io.leavesfly.jimi.core.hook.HookType;
 
 import io.leavesfly.jimi.knowledge.memory.MemoryRecorder;
 import io.leavesfly.jimi.llm.TokenCounter;
@@ -52,6 +55,7 @@ public class AgentExecutor {
     private final MemoryRecorder memoryRecorder;
     private final ContextManager contextManager;
     private final ToolErrorTracker toolErrorTracker;
+    private final HookRegistry hookRegistry;
 
     private AgentExecutor(Builder builder) {
         this.agent = Objects.requireNonNull(builder.agent, "agent is required");
@@ -67,6 +71,7 @@ public class AgentExecutor {
         this.memoryRecorder = Objects.requireNonNull(builder.memoryRecorder, "memoryRecorder is required");
         this.contextManager = Objects.requireNonNull(builder.contextManager, "contextManager is required");
         this.toolErrorTracker = builder.toolErrorTracker != null ? builder.toolErrorTracker : new ToolErrorTracker();
+        this.hookRegistry = builder.hookRegistry;
     }
 
     public static Builder builder() {
@@ -90,7 +95,15 @@ public class AgentExecutor {
             executionState.addTokens(userInputTokens);
             executionState.setCurrentUserQuery(memoryRecorder.extractHighLevelIntent(userInput));
 
-            return context.checkpoint(false)
+            // 触发 USER_PROMPT_SUBMIT hook
+            HookContext userPromptHookContext = HookContext.builder()
+                    .hookType(HookType.USER_PROMPT_SUBMIT)
+                    .workDir(jimiRuntime.getWorkDir())
+                    .sessionId(jimiRuntime.getSession().getId())
+                    .build();
+
+            return triggerHookSafely(HookType.USER_PROMPT_SUBMIT, userPromptHookContext)
+                    .then(context.checkpoint(false))
                     .then(context.appendMessage(userMessage))
                     .then(context.updateTokenCount(context.getTokenCount() + userInputTokens))
                     .doOnSuccess(v -> log.info("Added user input: {} tokens", userInputTokens))
@@ -105,9 +118,9 @@ public class AgentExecutor {
     // ==================== ReAct 循环 ====================
 
     private Mono<Void> runReactLoop() {
-        // 创建 ToolDispatcher
+        // 创建 ToolDispatcher（注入 HookRegistry）
         ToolDispatcher toolDispatcher = new ToolDispatcher(
-                toolRegistry, jimiRuntime.getWorkDir(), wire, toolErrorTracker);
+                toolRegistry, jimiRuntime.getWorkDir(), wire, toolErrorTracker, hookRegistry);
 
         // 创建 ReactLoop
         int maxSteps = jimiRuntime.getConfig().getLoopControl().getMaxStepsPerRun();
@@ -177,12 +190,30 @@ public class AgentExecutor {
         memoryRecorder.recordTaskHistory(executionState, context, "success")
                 .subscribe(unused -> {}, error -> log.warn("Failed to record task history", error));
         executionState.incrementTasksCompleted();
+
+        // 触发 STOP hook（会话步骤完成）
+        HookContext stopHookContext = HookContext.builder()
+                .hookType(HookType.STOP)
+                .workDir(jimiRuntime.getWorkDir())
+                .sessionId(jimiRuntime.getSession().getId())
+                .stopHookActive(true)
+                .build();
+        triggerHookSafely(HookType.STOP, stopHookContext).subscribe();
     }
 
     private void onExecutionError(Throwable exception) {
         log.error("Agent execution failed", exception);
         memoryRecorder.recordTaskHistory(executionState, context, "failed")
                 .subscribe(unused -> {}, error -> log.warn("Failed to record task history on error", error));
+
+        // 触发 ON_ERROR hook
+        HookContext errorHookContext = HookContext.builder()
+                .hookType(HookType.ON_ERROR)
+                .workDir(jimiRuntime.getWorkDir())
+                .sessionId(jimiRuntime.getSession().getId())
+                .errorMessage(exception.getMessage())
+                .build();
+        triggerHookSafely(HookType.ON_ERROR, errorHookContext).subscribe();
     }
 
     // ==================== 辅助方法 ====================
@@ -203,6 +234,21 @@ public class AgentExecutor {
     public ToolRegistry getToolRegistry() { return toolRegistry; }
     public boolean isSubagent() { return isSubagent; }
     public Compaction getCompaction() { return compaction; }
+    public HookRegistry getHookRegistry() { return hookRegistry; }
+
+    /**
+     * 安全触发 Hook（不影响主流程）
+     */
+    private Mono<Void> triggerHookSafely(HookType type, HookContext hookContext) {
+        if (hookRegistry == null) {
+            return Mono.empty();
+        }
+        return hookRegistry.trigger(type, hookContext)
+                .onErrorResume(e -> {
+                    log.warn("Hook trigger failed for {}: {}", type, e.getMessage());
+                    return Mono.empty();
+                });
+    }
 
     // ==================== Builder ====================
 
@@ -216,6 +262,7 @@ public class AgentExecutor {
         private MemoryRecorder memoryRecorder;
         private ContextManager contextManager;
         private ToolErrorTracker toolErrorTracker;
+        private HookRegistry hookRegistry;
         private boolean isSubagent = false;
 
         public Builder agent(Agent agent) { this.agent = agent; return this; }
@@ -227,6 +274,7 @@ public class AgentExecutor {
         public Builder memoryRecorder(MemoryRecorder memoryRecorder) { this.memoryRecorder = memoryRecorder; return this; }
         public Builder contextManager(ContextManager contextManager) { this.contextManager = contextManager; return this; }
         public Builder toolErrorTracker(ToolErrorTracker tracker) { this.toolErrorTracker = tracker; return this; }
+        public Builder hookRegistry(HookRegistry hookRegistry) { this.hookRegistry = hookRegistry; return this; }
         public Builder isSubagent(boolean isSubagent) { this.isSubagent = isSubagent; return this; }
 
         public AgentExecutor build() { return new AgentExecutor(this); }

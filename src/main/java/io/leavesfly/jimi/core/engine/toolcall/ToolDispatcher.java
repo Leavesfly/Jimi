@@ -2,7 +2,9 @@ package io.leavesfly.jimi.core.engine.toolcall;
 
 
 import io.leavesfly.jimi.core.engine.context.Context;
-
+import io.leavesfly.jimi.core.hook.HookContext;
+import io.leavesfly.jimi.core.hook.HookRegistry;
+import io.leavesfly.jimi.core.hook.HookType;
 
 import io.leavesfly.jimi.llm.message.Message;
 import io.leavesfly.jimi.llm.message.ToolCall;
@@ -43,16 +45,17 @@ public class ToolDispatcher {
 
     private final ToolRegistry toolRegistry;
     private final Wire wire;
-
     private final ToolErrorTracker toolErrorTracker;
     private final Path workDir;
+    private final HookRegistry hookRegistry;
 
     public ToolDispatcher(ToolRegistry toolRegistry, Path workDir, Wire wire,
-                          ToolErrorTracker toolErrorTracker) {
+                          ToolErrorTracker toolErrorTracker, HookRegistry hookRegistry) {
         this.toolRegistry = toolRegistry;
         this.workDir = workDir;
         this.wire = wire;
         this.toolErrorTracker = toolErrorTracker;
+        this.hookRegistry = hookRegistry;
     }
 
 
@@ -229,12 +232,64 @@ public class ToolDispatcher {
     }
 
     /**
-     * 执行已验证的工具调用
+     * 执行已验证的工具调用（集成 Hooks 机制）
+     *
+     * 执行流程：
+     * 1. 触发 PRE_TOOL_USE hook（可阻塞工具调用）
+     * 2. 执行工具
+     * 3. 触发 POST_TOOL_USE hook（成功时）或 POST_TOOL_USE_FAILURE hook（失败时）
      */
     private Mono<Message> executeValidToolCall(String toolName, String arguments, String toolCallId, String toolSignature, Context context) {
-        return toolRegistry.execute(toolName, arguments)
-                .flatMap(result -> processToolResult(result, toolName, toolCallId, toolSignature, context))
-                .onErrorResume(e -> handleToolError(e, toolName, toolCallId));
+        // 构建 PRE_TOOL_USE hook 上下文
+        HookContext preHookContext = HookContext.builder()
+                .hookType(HookType.PRE_TOOL_USE)
+                .workDir(workDir)
+                .toolName(toolName)
+                .toolCallId(toolCallId)
+                .build();
+
+        return triggerHookSafely(HookType.PRE_TOOL_USE, preHookContext)
+                .then(toolRegistry.execute(toolName, arguments))
+                .flatMap(result -> {
+                    // 触发 POST_TOOL_USE hook（异步，不阻塞主流程）
+                    HookContext postHookContext = HookContext.builder()
+                            .hookType(HookType.POST_TOOL_USE)
+                            .workDir(workDir)
+                            .toolName(toolName)
+                            .toolCallId(toolCallId)
+                            .toolResult(formatToolResult(result))
+                            .build();
+                    triggerHookSafely(HookType.POST_TOOL_USE, postHookContext).subscribe();
+
+                    return processToolResult(result, toolName, toolCallId, toolSignature, context);
+                })
+                .onErrorResume(e -> {
+                    // 触发 POST_TOOL_USE_FAILURE hook（异步）
+                    HookContext failureHookContext = HookContext.builder()
+                            .hookType(HookType.POST_TOOL_USE_FAILURE)
+                            .workDir(workDir)
+                            .toolName(toolName)
+                            .toolCallId(toolCallId)
+                            .errorMessage(e.getMessage())
+                            .build();
+                    triggerHookSafely(HookType.POST_TOOL_USE_FAILURE, failureHookContext).subscribe();
+
+                    return handleToolError(e, toolName, toolCallId);
+                });
+    }
+
+    /**
+     * 安全触发 Hook（不影响主流程）
+     */
+    private Mono<Void> triggerHookSafely(HookType type, HookContext context) {
+        if (hookRegistry == null) {
+            return Mono.empty();
+        }
+        return hookRegistry.trigger(type, context)
+                .onErrorResume(e -> {
+                    log.warn("Hook trigger failed for {}: {}", type, e.getMessage());
+                    return Mono.empty();
+                });
     }
 
     /**

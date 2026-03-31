@@ -9,6 +9,9 @@ import io.leavesfly.jimi.core.compaction.Compaction;
 import io.leavesfly.jimi.core.engine.AgentExecutor;
 import io.leavesfly.jimi.core.engine.context.ContextManager;
 import io.leavesfly.jimi.core.engine.JimiRuntime;
+import io.leavesfly.jimi.core.hook.HookContext;
+import io.leavesfly.jimi.core.hook.HookRegistry;
+import io.leavesfly.jimi.core.hook.HookType;
 import io.leavesfly.jimi.knowledge.memory.MemoryRecorder;
 import io.leavesfly.jimi.llm.LLM;
 import io.leavesfly.jimi.llm.LLMFactory;
@@ -60,6 +63,8 @@ public class JimiFactory {
     private MemoryRecorder memoryRecorder;
     @Autowired
     private ContextManager contextManager;
+    @Autowired(required = false)
+    private HookRegistry hookRegistry;
 
     // ==================== 组件提供者（封装可选依赖） ====================
     @Autowired(required = true)
@@ -226,7 +231,7 @@ public class JimiFactory {
                 ToolRegistry toolRegistry = toolRegistryFactory.create(
                         jimiRuntime.getBuiltinArgs(), approval, agentSpec, jimiRuntime, mcpConfigFiles);
 
-                // 8. 创建 JimiEngine
+                // 8. 创建 JimiEngine（注入 HookRegistry）
                 AgentExecutor executor = AgentExecutor.builder()
                         .agent(agent)
                         .runtime(jimiRuntime)
@@ -236,11 +241,27 @@ public class JimiFactory {
                         .compaction(compaction)
                         .memoryRecorder(memoryRecorder)
                         .contextManager(contextManager)
+                        .hookRegistry(hookRegistry)
                         .build();
                 JimiEngine soul = JimiEngine.create(executor);
 
-                // 9. 恢复上下文历史
+                // 9. 恢复上下文历史 + 触发 SESSION_START hook
                 return context.restore()
+                        .then(Mono.defer(() -> {
+                            if (hookRegistry != null) {
+                                HookContext hookContext = HookContext.builder()
+                                        .hookType(HookType.SESSION_START)
+                                        .workDir(jimiRuntime.getWorkDir())
+                                        .sessionId(session.getId())
+                                        .build();
+                                return hookRegistry.trigger(HookType.SESSION_START, hookContext)
+                                        .onErrorResume(e -> {
+                                            log.warn("SESSION_START hook failed: {}", e.getMessage());
+                                            return Mono.empty();
+                                        });
+                            }
+                            return Mono.empty();
+                        }))
                         .then(Mono.just(soul))
                         .doOnSuccess(s -> log.info("Jimi Engine created successfully"));
 

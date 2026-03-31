@@ -1,0 +1,27 @@
+name: "session-welcome"
+description: "会话启动时显示项目信息"
+enabled: false
+
+trigger:
+  type: "SESSION_START"
+
+execution:
+  type: "script"
+  script: |
+    #!/bin/bash
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "🎉 欢迎使用 Jimi!"
+    echo "📂 工作目录: ${JIMI_WORK_DIR}"
+    
+    if [ -f "pom.xml" ]; then
+      project=$(grep -m 1 '<artifactId>' pom.xml | sed 's/.*<artifactId>\(.*\)<\/artifactId>/\1/')
+      echo "📦 Maven 项目: $project"
+    fi
+    
+    if [ -d ".git" ]; then
+      branch=$(git branch --show-current 2>/dev/null)
+      echo "🌿 Git 分支: $branch"
+    fi
+    
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  timeout: 5

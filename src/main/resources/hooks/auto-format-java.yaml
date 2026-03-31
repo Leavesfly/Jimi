@@ -1,0 +1,30 @@
+name: "auto-format-java"
+description: "Java 文件保存后自动格式化"
+enabled: false
+priority: 10
+
+trigger:
+  type: "POST_TOOL_USE"
+  tools:
+    - "WriteFile"
+    - "StrReplaceFile"
+  file_patterns:
+    - "*.java"
+
+execution:
+  type: "script"
+  script: |
+    #!/bin/bash
+    # 读取 stdin JSON 获取文件信息
+    INPUT=$(cat)
+    
+    for file in ${MODIFIED_FILES}; do
+      if command -v google-java-format &> /dev/null; then
+        google-java-format -i "$file"
+        echo "✅ 已格式化: $file"
+      else
+        echo "⚠️ google-java-format 未安装，跳过格式化"
+      fi
+    done
+  workingDir: "${JIMI_WORK_DIR}"
+  timeout: 30
