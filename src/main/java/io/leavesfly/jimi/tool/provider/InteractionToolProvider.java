@@ -4,8 +4,9 @@ import io.leavesfly.jimi.core.agent.AgentSpec;
 import io.leavesfly.jimi.core.engine.JimiRuntime;
 import io.leavesfly.jimi.tool.Tool;
 import io.leavesfly.jimi.tool.ToolProvider;
-import io.leavesfly.jimi.tool.core.AskHuman;
+import io.leavesfly.jimi.tool.core.ask.AskHuman;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.Collections;
@@ -22,7 +23,14 @@ import java.util.List;
 @Slf4j
 @Component
 public class InteractionToolProvider implements ToolProvider {
-    
+
+    @Autowired
+    private final AskHuman askHuman;
+
+    public InteractionToolProvider(AskHuman askHuman) {
+        this.askHuman = askHuman;
+    }
+
     @Override
     public String getName() {
         return "Human Interaction Tool Provider";
@@ -50,7 +58,7 @@ public class InteractionToolProvider implements ToolProvider {
     public List<Tool<?>> createTools(AgentSpec agentSpec, JimiRuntime jimiRuntime) {
         log.info("Creating AskHuman tool for agent: {}", agentSpec.getName());
         
-        // 创建AskHuman工具，它实现了WireAware接口，Wire会在工具注册时自动注入
-        return Collections.singletonList(new AskHuman());
+        // 使用Spring管理的AskHuman Bean，确保依赖注入正常
+        return Collections.singletonList(askHuman);
     }
 }

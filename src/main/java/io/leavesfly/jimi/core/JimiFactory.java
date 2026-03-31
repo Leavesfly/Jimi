@@ -15,7 +15,7 @@ import io.leavesfly.jimi.llm.LLMFactory;
 import io.leavesfly.jimi.core.session.Session;
 import io.leavesfly.jimi.core.session.SessionManager;
 import io.leavesfly.jimi.core.agent.Agent;
-import io.leavesfly.jimi.core.interaction.approval.Approval;
+import io.leavesfly.jimi.core.approval.Approval;
 import io.leavesfly.jimi.core.engine.context.Context;
 import io.leavesfly.jimi.tool.ToolRegistry;
 import io.leavesfly.jimi.tool.ToolRegistryFactory;

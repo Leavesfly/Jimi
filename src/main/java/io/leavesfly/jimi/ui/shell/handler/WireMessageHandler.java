@@ -1,8 +1,8 @@
 package io.leavesfly.jimi.ui.shell.handler;
 
 import io.leavesfly.jimi.config.info.ShellUIConfig;
-import io.leavesfly.jimi.core.interaction.HumanInputRequest;
-import io.leavesfly.jimi.core.interaction.approval.ApprovalRequest;
+import io.leavesfly.jimi.tool.core.ask.HumanInputRequest;
+import io.leavesfly.jimi.core.approval.ApprovalRequest;
 import io.leavesfly.jimi.llm.message.ContentPart;
 import io.leavesfly.jimi.llm.message.TextPart;
 import io.leavesfly.jimi.llm.message.ToolCall;
@@ -48,6 +48,7 @@ public class WireMessageHandler {
             ToolVisualization toolVisualization,
             ShellUIConfig uiConfig,
             AtomicReference<String> currentStatus) {
+
         this.outputFormatter = outputFormatter;
         this.spinnerManager = spinnerManager;
         this.renderer = renderer;

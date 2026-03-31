@@ -1,9 +1,9 @@
 package io.leavesfly.jimi.ui.shell.handler;
 
-import io.leavesfly.jimi.core.interaction.HumanInputRequest;
-import io.leavesfly.jimi.core.interaction.HumanInputResponse;
-import io.leavesfly.jimi.core.interaction.approval.ApprovalRequest;
-import io.leavesfly.jimi.core.interaction.approval.ApprovalResponse;
+import io.leavesfly.jimi.tool.core.ask.HumanInputRequest;
+import io.leavesfly.jimi.tool.core.ask.HumanInputResponse;
+import io.leavesfly.jimi.core.approval.ApprovalRequest;
+import io.leavesfly.jimi.core.approval.ApprovalResponse;
 import io.leavesfly.jimi.ui.shell.output.AssistantTextRenderer;
 import io.leavesfly.jimi.ui.shell.output.OutputFormatter;
 import lombok.extern.slf4j.Slf4j;

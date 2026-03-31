@@ -1,4 +1,4 @@
-package io.leavesfly.jimi.core.interaction;
+package io.leavesfly.jimi.tool.core.ask;
 
 import io.leavesfly.jimi.wire.message.WireMessage;
 import lombok.AllArgsConstructor;

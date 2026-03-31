@@ -57,64 +57,68 @@ public class MetaTool extends AbstractTool<MetaTool.Params> {
      */
     private static String buildDescription() {
         return """
-                在隔离的 JShell 环境中执行 Java 代码，通过一次工具调用编排多个工具，节省 token 和对话轮次。
-                中间工具调用结果不进入对话历史。
+                在隔离 JShell 环境中执行 Java 代码的通用编程执行器。
+                可直接完成纯计算/转换任务，也可通过 callTool 编排多个工具调用，中间结果不进入对话历史。
 
-                ## 使用时机
+                ## 何时使用
 
-                满足以下任意条件时优先使用 MetaTool：
-                - 预计需要 **3 次及以上**工具调用才能完成任务
-                - 需要对列表/集合做**循环**操作（如批量读取多个文件）
-                - 需要根据前一步结果**条件分支**决定下一步操作
-                - 需要在多个工具间**链式传递**数据
+                优先选择 MetaTool：
+                - 纯编程任务（字符串解析、格式转换、数学计算、JSON/CSV 处理等）
+                - 需要循环/批量操作多个对象（文件、URL、记录等）
+                - 多工具链式调用（前一步输出作为下一步输入）
+                - 条件分支：根据运行时结果决定后续路径
+                - 聚合多个工具结果后一次性返回
 
-                以下情况**不适合**使用：
-                - 1-2 次工具调用即可完成的简单任务
-                - 需要将中间结果展示给用户确认时
+                不适用：1-2 次简单调用；需要用户确认中间结果。
 
                 ## API
 
                 ```java
-                // 调用任意已注册工具，arguments 为 JSON 字符串，返回工具 output 或 "Error: <message>"
+                // 调用已注册工具，arguments 为 JSON 字符串，返回输出或 "Error: ..."
                 String callTool(String toolName, String arguments)
                 ```
 
-                ## 示例 1：批量读取文件
+                ## 示例
 
+                **纯计算（CSV 转 JSON）：**
                 ```java
-                String[] files = {"src/A.java", "src/B.java", "src/C.java"};
-                StringBuilder sb = new StringBuilder();
-                for (String f : files) {
-                    sb.append("// ").append(f).append("\\n");
-                    sb.append(callTool("ReadFile", "{\\"path\\":\\"" + f + "\\"}")).append("\\n");
+                String[] rows = {"Alice,30", "Bob,25"};
+                StringBuilder sb = new StringBuilder("[");
+                for (String r : rows) {
+                    String[] p = r.split(",");
+                    sb.append(String.format("{\"name\":\"%s\",\"age\":%s},", p[0], p[1]));
                 }
+                return sb.deleteCharAt(sb.length()-1).append("]").toString();
+                ```
+
+                **批量读文件：**
+                ```java
+                String[] files = {"a.java", "b.java"};
+                StringBuilder sb = new StringBuilder();
+                for (String f : files)
+                    sb.append("// ").append(f).append("\n")
+                      .append(callTool("ReadFile", "{\"path\":\"" + f + "\"}")).append("\n");
                 return sb.toString();
                 ```
 
-                ## 示例 2：条件分支
-
+                **链式流（读→改→写）：**
                 ```java
-                String os = callTool("Bash", "{\\"command\\":\\"uname -s\\"}").trim();
-                if (os.equals("Darwin")) {
-                    return callTool("Bash", "{\\"command\\":\\"brew list\\"}");
-                } else {
-                    return callTool("Bash", "{\\"command\\":\\"apt list --installed\\"}");
-                }
+                String c = callTool("ReadFile", "{\"path\":\"cfg.json\"}");
+                return callTool("WriteFile", "{\"path\":\"cfg.json\",\"content\":\"" +
+                    c.replace("false", "true").replace("\"", "\\\"") + "\"}");
                 ```
 
-                ## 示例 3：读取-修改-写入
-
+                **条件分支：**
                 ```java
-                String content = callTool("ReadFile", "{\\"path\\":\\"config.json\\"}");
-                String updated = content.replace("\\"debug\\": false", "\\"debug\\": true");
-                return callTool("WriteFile", "{\\"path\\":\\"config.json\\", \\"content\\":\\"" + updated.replace("\\"", "\\\\\\"") + "\\"}");
+                String os = callTool("Bash", "{\"command\":\"uname -s\"}").trim();
+                return callTool("Bash", os.equals("Darwin")
+                    ? "{\"command\":\"brew list\"}"
+                    : "{\"command\":\"apt list --installed\"}");
                 ```
 
                 ## 约束
-
-                - 必须使用 `return` 语句返回最终结果（String 类型）
-                - 执行超时：默认 30 秒
-                - 仅 JDK 标准库可用；不可调用 `System.exit`、`ProcessBuilder` 等危险 API
+                - 必须用 `return` 返回 String 结果
+                - 超时 30 秒；仅 JDK 标准库；禁止 `System.exit`、`ProcessBuilder`
                 """;
     }
     

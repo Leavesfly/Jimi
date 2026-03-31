@@ -1,7 +1,7 @@
 package io.leavesfly.jimi.mcp.server;
 
 import io.leavesfly.jimi.core.JimiEngine;
-import io.leavesfly.jimi.core.interaction.approval.ApprovalRequest;
+import io.leavesfly.jimi.core.approval.ApprovalRequest;
 import io.leavesfly.jimi.llm.message.TextPart;
 import io.leavesfly.jimi.wire.message.ContentPartMessage;
 import io.leavesfly.jimi.wire.message.ToolCallMessage;

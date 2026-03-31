@@ -1,4 +1,4 @@
-package io.leavesfly.jimi.core.interaction.approval;
+package io.leavesfly.jimi.core.approval;
 
 import io.leavesfly.jimi.wire.message.WireMessage;
 import lombok.AllArgsConstructor;

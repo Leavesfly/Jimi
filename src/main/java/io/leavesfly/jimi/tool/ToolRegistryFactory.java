@@ -2,7 +2,7 @@ package io.leavesfly.jimi.tool;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.leavesfly.jimi.core.agent.AgentSpec;
-import io.leavesfly.jimi.core.interaction.approval.Approval;
+import io.leavesfly.jimi.core.approval.Approval;
 import io.leavesfly.jimi.core.engine.context.BuiltinSystemPromptArgs;
 import io.leavesfly.jimi.core.engine.JimiRuntime;
 import io.leavesfly.jimi.core.sandbox.SandboxValidator;

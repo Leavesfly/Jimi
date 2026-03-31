@@ -1,6 +1,6 @@
 package io.leavesfly.jimi.common;
 
-import io.leavesfly.jimi.core.interaction.approval.Approval;
+import io.leavesfly.jimi.core.approval.Approval;
 import io.leavesfly.jimi.tool.ToolResult;
 import io.leavesfly.jimi.tool.core.BashTool;
 import lombok.extern.slf4j.Slf4j;

@@ -5,7 +5,7 @@ import io.leavesfly.jimi.core.engine.context.BuiltinSystemPromptArgs;
 import io.leavesfly.jimi.core.session.SessionManager;
 import io.leavesfly.jimi.llm.LLM;
 import io.leavesfly.jimi.core.session.Session;
-import io.leavesfly.jimi.core.interaction.approval.Approval;
+import io.leavesfly.jimi.core.approval.Approval;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;

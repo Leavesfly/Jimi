@@ -21,7 +21,7 @@ import io.leavesfly.jimi.tool.AbstractTool;
 import io.leavesfly.jimi.tool.ToolResult;
 import io.leavesfly.jimi.tool.ToolRegistry;
 import io.leavesfly.jimi.tool.ToolRegistryFactory;
-import io.leavesfly.jimi.wire.WireAware;
+
 import io.leavesfly.jimi.wire.Wire;
 import io.leavesfly.jimi.wire.WireImpl;
 import io.leavesfly.jimi.wire.message.SubagentCompleted;
@@ -66,7 +66,7 @@ import java.util.Map;
 @Slf4j
 @Component
 @Scope(ConfigurableBeanFactory.SCOPE_PROTOTYPE)
-public class SubAgentTool extends AbstractTool<SubAgentTool.Params> implements WireAware {
+public class SubAgentTool extends AbstractTool<SubAgentTool.Params> {
 
     /**
      * 响应过短时的继续提示词（可配置）
@@ -90,10 +90,9 @@ public class SubAgentTool extends AbstractTool<SubAgentTool.Params> implements W
     private AgentSpec agentSpec;
     private String taskDescription;
 
-    /**
-     * 主 Agent 的 Wire 消息总线，统一通过 {@link #setWire(Wire)} 注入
-     */
-    private Wire parentWire;
+
+    @Autowired
+    private Wire wire;
 
     private final ObjectMapper objectMapper;
     private final AgentRegistry agentRegistry;
@@ -190,17 +189,6 @@ public class SubAgentTool extends AbstractTool<SubAgentTool.Params> implements W
         this.taskDescription = loadDescription(agentSpec);
     }
 
-    /**
-     * 设置 Wire（实现 WireAware 接口）
-     * 这是 parentWire 的唯一赋值入口，由 JimiEngine 构造时自动调用
-     *
-     * @param wire 主 Agent 的 Wire 消息总线
-     */
-    @Override
-    public void setWire(Wire wire) {
-        this.parentWire = wire;
-    }
-
     @Override
     public String getDescription() {
         // 如果已初始化运行时参数，返回动态生成的描述
@@ -259,14 +247,14 @@ public class SubAgentTool extends AbstractTool<SubAgentTool.Params> implements W
             Mono<Agent> agentMono = agentRegistry.loadSubagent(spec, jimiRuntime);
 
             return Mono.zip(specMono, agentMono).doOnSuccess(tuple -> {
-                AgentSpec subAgentSpec = tuple.getT1();
-                Agent agent = tuple.getT2();
-                subagents.put(name, agent);
-                subagentAgentSpecs.put(name, subAgentSpec);
-                log.info("Loaded subagent: {} -> {}", name, agent.getName());
-            }).doOnError(e -> log.error("Failed to load subagent: {}", name, e))
-              .onErrorResume(e -> Mono.empty())
-              .then();
+                        AgentSpec subAgentSpec = tuple.getT1();
+                        Agent agent = tuple.getT2();
+                        subagents.put(name, agent);
+                        subagentAgentSpecs.put(name, subAgentSpec);
+                        log.info("Loaded subagent: {} -> {}", name, agent.getName());
+                    }).doOnError(e -> log.error("Failed to load subagent: {}", name, e))
+                    .onErrorResume(e -> Mono.empty())
+                    .then();
         }).then();
     }
 
@@ -314,8 +302,8 @@ public class SubAgentTool extends AbstractTool<SubAgentTool.Params> implements W
         return Mono.defer(() -> {
             try {
                 // 1. 发送 Subagent 启动事件
-                if (parentWire != null) {
-                    parentWire.send(new SubagentStarting(agent.getName(), prompt));
+                if (wire != null) {
+                    wire.send(new SubagentStarting(agent.getName(), prompt));
                 }
 
                 // 2. 创建临时历史文件（子 Agent 每次全新上下文，保证上下文隔离）
@@ -334,8 +322,8 @@ public class SubAgentTool extends AbstractTool<SubAgentTool.Params> implements W
                 return subEngine.run(prompt)
                         .then(Mono.defer(() -> extractFinalResponse(subContext, subEngine, prompt)))
                         .doOnSuccess(result -> {
-                            if (parentWire != null) {
-                                parentWire.send(new SubagentCompleted(result.getOutput()));
+                            if (wire != null) {
+                                wire.send(new SubagentCompleted(result.getOutput()));
                             }
                         })
                         .doFinally(signalType -> cleanupTempHistoryFile(subHistoryFile));
@@ -366,7 +354,7 @@ public class SubAgentTool extends AbstractTool<SubAgentTool.Params> implements W
                 .agent(agent)
                 .runtime(jimiRuntime)
                 .context(subContext)
-                .wire(parentWire != null ? parentWire : new WireImpl())
+                .wire(wire)
                 .toolRegistry(subToolRegistry)
                 .compaction(new SimpleCompaction())
                 .memoryRecorder(memoryRecorder)

@@ -14,7 +14,6 @@ import io.leavesfly.jimi.llm.message.TextPart;
 import io.leavesfly.jimi.tool.ToolRegistry;
 
 import io.leavesfly.jimi.wire.Wire;
-import io.leavesfly.jimi.wire.WireAware;
 
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Mono;
@@ -57,12 +56,6 @@ public class JimiEngine implements Engine {
             executor.getRuntime().getApproval().asFlux().subscribe(executor.getWire()::send);
         }
 
-        // 为所有实现 WireAware 接口的工具注入 Wire
-        executor.getToolRegistry().getAllTools().forEach(tool -> {
-            if (tool instanceof WireAware) {
-                ((WireAware) tool).setWire(executor.getWire());
-            }
-        });
     }
 
     /**
@@ -115,11 +108,11 @@ public class JimiEngine implements Engine {
         Map<String, Object> status = new HashMap<>();
         Context context = executor.getContext();
         JimiRuntime jimiRuntime = executor.getRuntime();
-        
+
         status.put("messageCount", context.getHistory().size());
         status.put("tokenCount", context.getTokenCount());
         status.put("checkpointCount", context.getnCheckpoints());
-        
+
         LLM llm = jimiRuntime.getLlm();
         if (llm != null) {
             int maxContextSize = llm.getMaxContextSize();

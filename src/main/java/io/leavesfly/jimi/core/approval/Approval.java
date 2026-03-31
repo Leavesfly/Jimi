@@ -1,6 +1,7 @@
-package io.leavesfly.jimi.core.interaction.approval;
+package io.leavesfly.jimi.core.approval;
 
 import lombok.extern.slf4j.Slf4j;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.publisher.Sinks;
 
@@ -86,7 +87,7 @@ public class Approval {
         return requestQueue.asFlux().next();
     }
     
-    public reactor.core.publisher.Flux<ApprovalRequest> asFlux() {
+    public Flux<ApprovalRequest> asFlux() {
         return requestQueue.asFlux();
     }
     

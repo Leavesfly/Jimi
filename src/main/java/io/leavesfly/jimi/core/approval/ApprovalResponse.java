@@ -1,4 +1,4 @@
-package io.leavesfly.jimi.core.interaction.approval;
+package io.leavesfly.jimi.core.approval;
 
 /**
  * 审批响应枚举
