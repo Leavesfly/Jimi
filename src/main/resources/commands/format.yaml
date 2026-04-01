@@ -1,0 +1,22 @@
+name: "format"
+description: "格式化 Java 代码"
+category: "build"
+
+aliases:
+  - "fmt"
+
+usage: "/format"
+
+execution:
+  type: "script"
+  script: "mvn spotless:apply"
+  timeout: 120
+  workingDir: "${JIMI_WORK_DIR}"
+
+preconditions:
+  - type: "file_exists"
+    path: "pom.xml"
+    errorMessage: "pom.xml 文件不存在，不是 Maven 项目"
+  - type: "command_exists"
+    command: "mvn"
+    errorMessage: "Maven 未安装"

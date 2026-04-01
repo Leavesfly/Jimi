@@ -1,0 +1,20 @@
+name: "quick-review"
+description: "快速代码审查"
+category: "code"
+
+aliases:
+  - "qr"
+
+usage: "/quick-review [file-or-description]"
+
+prompt: |
+  请对当前项目最近的代码更改进行审查。
+  $ARGUMENTS
+
+  审查要点:
+  1. 代码质量和可读性
+  2. 潜在的 Bug 和安全问题
+  3. 性能优化建议
+  4. 最佳实践遵循情况
+
+  请提供具体的改进建议。

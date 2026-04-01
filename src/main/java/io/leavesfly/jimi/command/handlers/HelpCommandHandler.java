@@ -59,6 +59,7 @@ public class HelpCommandHandler implements CommandHandler {
         out.println("  /reset          - 清除上下文历史");
         out.println("  /compact        - 压缩上下文");
         out.println("  /agents         - [agent-name | run <agent-name>]");
+        out.println("  /commands       - 管理自定义命令 (list|reload|enable|disable)");
         out.println("  /theme          - 切换UI主题 (default|dark|light|minimal|matrix)");
         out.println();
         

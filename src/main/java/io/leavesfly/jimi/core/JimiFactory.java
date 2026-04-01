@@ -9,6 +9,7 @@ import io.leavesfly.jimi.core.compaction.Compaction;
 import io.leavesfly.jimi.core.engine.AgentExecutor;
 import io.leavesfly.jimi.core.engine.context.ContextManager;
 import io.leavesfly.jimi.core.engine.JimiRuntime;
+import io.leavesfly.jimi.command.custom.CustomCommandRegistry;
 import io.leavesfly.jimi.core.hook.HookContext;
 import io.leavesfly.jimi.core.hook.HookRegistry;
 import io.leavesfly.jimi.core.hook.HookType;
@@ -65,6 +66,8 @@ public class JimiFactory {
     private ContextManager contextManager;
     @Autowired(required = false)
     private HookRegistry hookRegistry;
+    @Autowired(required = false)
+    private CustomCommandRegistry customCommandRegistry;
 
     // ==================== 组件提供者（封装可选依赖） ====================
     @Autowired(required = true)
@@ -245,7 +248,16 @@ public class JimiFactory {
                         .build();
                 JimiEngine soul = JimiEngine.create(executor);
 
-                // 9. 恢复上下文历史 + 触发 SESSION_START hook
+                // 9. 加载项目级自定义命令
+                if (customCommandRegistry != null) {
+                    try {
+                        customCommandRegistry.setProjectDirectory(jimiRuntime.getWorkDir());
+                    } catch (Exception e) {
+                        log.warn("Failed to load project custom commands: {}", e.getMessage());
+                    }
+                }
+
+                // 10. 恢复上下文历史 + 触发 SESSION_START hook
                 return context.restore()
                         .then(Mono.defer(() -> {
                             if (hookRegistry != null) {
