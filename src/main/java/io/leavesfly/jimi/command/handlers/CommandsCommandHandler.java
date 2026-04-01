@@ -7,6 +7,7 @@ import io.leavesfly.jimi.command.custom.CustomCommandSpec;
 import io.leavesfly.jimi.ui.shell.output.OutputFormatter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -27,6 +28,7 @@ import java.util.stream.Collectors;
 @Component
 public class CommandsCommandHandler implements CommandHandler {
 
+    @Lazy
     @Autowired
     private CustomCommandRegistry customCommandRegistry;
 
