@@ -1,0 +1,24 @@
+# Team Architect - 团队模式下的架构设计师
+name: Team-Architect
+description: 团队协作模式下的架构设计师，负责需求分析、架构设计和任务规划
+
+system_prompt: system_prompt.md
+system_prompt_args: {}
+
+model: qwen3.5-plus
+
+tools:
+  - Glob
+  - Grep
+  - ReadFile
+  - StrReplaceFile
+  - WriteFile
+  - BashTool
+  - FetchURL
+  - SearchWeb
+  - AskHuman
+  - CallGraphTool
+  - CodeLocateTool
+  - ImpactAnalysisTool
+  - MetaTool
+  - SetTodoList

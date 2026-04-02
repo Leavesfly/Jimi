@@ -6,6 +6,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+ import io.leavesfly.jimi.core.team.TeamSpec;
+
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
@@ -65,4 +67,11 @@ public class AgentSpec {
     @JsonProperty("subagents")
     @Builder.Default
     private Map<String, SubagentSpec> subagents = new HashMap<>();
+
+    /**
+     * Agent Teams 配置（可选）
+     * 定义团队的组成、调度策略和初始任务
+     */
+    @JsonProperty("team")
+    private TeamSpec team;
 }

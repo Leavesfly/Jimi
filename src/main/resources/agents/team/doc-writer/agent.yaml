@@ -1,0 +1,19 @@
+# Team Doc Writer - 团队模式下的文档工程师
+name: Team-DocWriter
+description: 团队协作模式下的文档工程师，负责技术文档编写和技术调研
+
+system_prompt: system_prompt.md
+system_prompt_args: {}
+
+model: qwen3.5-plus
+
+tools:
+  - Glob
+  - Grep
+  - ReadFile
+  - StrReplaceFile
+  - WriteFile
+  - BashTool
+  - FetchURL
+  - SearchWeb
+  - SetTodoList

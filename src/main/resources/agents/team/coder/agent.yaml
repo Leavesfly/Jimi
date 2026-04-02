@@ -1,0 +1,24 @@
+# Team Coder - 团队模式下的代码工程师
+name: Team-Coder
+description: 团队协作模式下的代码工程师，负责代码实现、重构和调试
+
+system_prompt: system_prompt.md
+system_prompt_args: {}
+
+model: qwen3.5-plus
+
+tools:
+  - Glob
+  - Grep
+  - ReadFile
+  - StrReplaceFile
+  - WriteFile
+  - BashTool
+  - FetchURL
+  - SearchWeb
+  - AskHuman
+  - CallGraphTool
+  - CodeLocateTool
+  - ImpactAnalysisTool
+  - MetaTool
+  - SetTodoList

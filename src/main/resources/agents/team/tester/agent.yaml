@@ -1,0 +1,19 @@
+# Team Tester - 团队模式下的质量工程师
+name: Team-Tester
+description: 团队协作模式下的质量工程师，负责代码审查、测试和质量保障
+
+system_prompt: system_prompt.md
+system_prompt_args: {}
+
+model: qwen3.5-plus
+
+tools:
+  - Glob
+  - Grep
+  - ReadFile
+  - StrReplaceFile
+  - WriteFile
+  - BashTool
+  - FetchURL
+  - SearchWeb
+  - SetTodoList

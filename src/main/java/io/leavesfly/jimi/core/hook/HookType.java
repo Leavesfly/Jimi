@@ -99,7 +99,30 @@ public enum HookType {
      * 触发时机: 系统捕获到错误
      * 用途: 错误处理、日志记录、自动修复
      */
-    ON_ERROR;
+    ON_ERROR,
+
+    // ===== Agent Teams 扩展事件 =====
+
+    /**
+     * 团队启动事件
+     * 触发时机: Agent Team 开始执行时
+     * 用途: 团队初始化、资源分配
+     */
+    TEAM_START,
+
+    /**
+     * 团队完成事件
+     * 触发时机: Agent Team 所有任务完成时
+     * 用途: 结果汇总、资源清理
+     */
+    TEAM_COMPLETE,
+
+    /**
+     * Teammate 任务完成事件
+     * 触发时机: 团队中某个 Teammate 完成一个任务时
+     * 用途: 进度追踪、任务依赖触发
+     */
+    TEAMMATE_TASK_COMPLETE;
 
     /**
      * 从字符串解析 HookType（支持多种命名风格）

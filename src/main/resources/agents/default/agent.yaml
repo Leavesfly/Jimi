@@ -47,22 +47,60 @@ tools:
   - MetaTool
   - SetTodoList
   - SubAgentTool
+  - TeamAgentTool
   - Skills
 
-# 子 Agent 配置
+# 子 Agent 配置（Subagent 模式：独立子任务，无横向通信）
 subagents:
   Architect-Agent:
-    path: architect/agent.yaml
+    path: sub/architect/agent.yaml
     description: 需求分析、架构设计、技术方案和任务规划
   Code-Agent:
-    path: code/agent.yaml
+    path: sub/code/agent.yaml
     description: 代码实现、重构、优化和调试
   Quality-Agent:
-    path: quality/agent.yaml
+    path: sub/quality/agent.yaml
     description: 代码质量审查、测试执行和质量保障
   DevOps-Agent:
-    path: devops/agent.yaml
+    path: sub/devops/agent.yaml
     description: 项目构建、应用部署和运维管理
   Doc-Agent:
-    path: doc/agent.yaml
+    path: sub/doc/agent.yaml
     description: 技术文档编写、维护和技术信息调研
+
+# Agent Teams 配置（团队协作模式：共享任务列表，可横向通信）
+# 当任务有依赖关系或需要多角色协调时，使用 TeamAgentTool 启动团队
+team:
+  name: dev-team
+  max_concurrency: 3
+  timeout_seconds: 1800
+  strategy: free_claim
+  teammates:
+    - teammate_id: architect
+      agent_path: team/architect/agent.yaml
+      description: 需求分析、架构设计、技术方案和任务规划
+      specialties:
+        - 架构设计
+        - 技术选型
+        - 任务拆解
+    - teammate_id: coder
+      agent_path: team/coder/agent.yaml
+      description: 代码实现、重构、优化和调试
+      specialties:
+        - 代码编写
+        - 重构优化
+        - Bug修复
+    - teammate_id: tester
+      agent_path: team/tester/agent.yaml
+      description: 代码质量审查、测试执行和质量保障
+      specialties:
+        - 单元测试
+        - 代码审查
+        - 质量保障
+    - teammate_id: doc-writer
+      agent_path: team/doc-writer/agent.yaml
+      description: 技术文档编写、维护和技术信息调研
+      specialties:
+        - 文档编写
+        - API文档
+        - 技术调研

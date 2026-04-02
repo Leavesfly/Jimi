@@ -1,6 +1,10 @@
 package io.leavesfly.jimi.core.agent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.leavesfly.jimi.core.team.TeamSpec;
+import io.leavesfly.jimi.core.team.TeamStrategy;
+import io.leavesfly.jimi.core.team.TeamTaskSpec;
+import io.leavesfly.jimi.core.team.TeammateSpec;
 import io.leavesfly.jimi.exception.AgentSpecException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -17,6 +21,7 @@ import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -362,6 +367,14 @@ class AgentSpecLoader {
             log.debug("Loaded {} subagents for agent: {}", subagents.size(), agentName);
         }
 
+        // JAR包模式下也支持team配置
+        if (data.containsKey("team")) {
+            TeamSpec teamSpec = parseTeamSpec((Map<String, Object>) data.get("team"), null, agentName);
+            builder.team(teamSpec);
+            log.debug("Loaded team '{}' with {} teammates for agent: {}",
+                    teamSpec.getName(), teamSpec.getTeammates().size(), agentName);
+        }
+
         return builder.build();
     }
     /**
@@ -402,8 +415,106 @@ class AgentSpecLoader {
             builder.subagents(subagents);
         }
 
+        // 处理团队配置
+        if (data.containsKey("team")) {
+            TeamSpec teamSpec = parseTeamSpec((Map<String, Object>) data.get("team"), agentsRootDir, null);
+            builder.team(teamSpec);
+            log.debug("Loaded team '{}' with {} teammates", teamSpec.getName(), teamSpec.getTeammates().size());
+        }
+
         return builder.build();
     }
+
+
+    /**
+     * 解析团队配置
+     *
+     * @param teamData   team 配置的 Map 数据
+     * @param agentsRoot 文件系统模式下的 agents 根目录（classpath 模式下为 null）
+     * @param agentName  classpath 模式下的 agent 名称（文件系统模式下为 null）
+     * @return 解析后的 TeamSpec
+     */
+    @SuppressWarnings("unchecked")
+    private TeamSpec parseTeamSpec(Map<String, Object> teamData, Path agentsRoot, String agentName) {
+        TeamSpec.TeamSpecBuilder builder = TeamSpec.builder();
+
+        if (teamData.containsKey("name")) {
+            builder.name((String) teamData.get("name"));
+        }
+        if (teamData.containsKey("max_concurrency")) {
+            builder.maxConcurrency(((Number) teamData.get("max_concurrency")).intValue());
+        }
+        if (teamData.containsKey("timeout_seconds")) {
+            builder.timeoutSeconds(((Number) teamData.get("timeout_seconds")).longValue());
+        }
+        if (teamData.containsKey("strategy")) {
+            builder.strategy(TeamStrategy.fromString((String) teamData.get("strategy")));
+        }
+
+        // 解析 teammates
+        if (teamData.containsKey("teammates")) {
+            List<Map<String, Object>> teammatesData = (List<Map<String, Object>>) teamData.get("teammates");
+            List<TeammateSpec> teammates = new ArrayList<>();
+
+            for (Map<String, Object> tmData : teammatesData) {
+                TeammateSpec.TeammateSpecBuilder tmBuilder = TeammateSpec.builder();
+
+                if (tmData.containsKey("teammate_id")) {
+                    tmBuilder.teammateId((String) tmData.get("teammate_id"));
+                }
+                if (tmData.containsKey("description")) {
+                    tmBuilder.description((String) tmData.get("description"));
+                }
+                if (tmData.containsKey("specialties")) {
+                    tmBuilder.specialties((List<String>) tmData.get("specialties"));
+                }
+
+                // 解析 agent_path，根据模式构造正确的路径
+                if (tmData.containsKey("agent_path")) {
+                    String pathStr = (String) tmData.get("agent_path");
+                    Path resolvedPath;
+                    if (agentsRoot != null) {
+                        resolvedPath = agentsRoot.resolve(pathStr);
+                    } else {
+                        resolvedPath = Paths.get("classpath:agents/" + pathStr);
+                    }
+                    tmBuilder.agentPath(resolvedPath);
+                }
+
+                teammates.add(tmBuilder.build());
+            }
+            builder.teammates(teammates);
+        }
+
+        // 解析 initial_tasks
+        if (teamData.containsKey("initial_tasks")) {
+            List<Map<String, Object>> tasksData = (List<Map<String, Object>>) teamData.get("initial_tasks");
+            List<TeamTaskSpec> initialTasks = new ArrayList<>();
+
+            for (Map<String, Object> taskData : tasksData) {
+                TeamTaskSpec.TeamTaskSpecBuilder taskBuilder = TeamTaskSpec.builder();
+
+                if (taskData.containsKey("description")) {
+                    taskBuilder.description((String) taskData.get("description"));
+                }
+                if (taskData.containsKey("priority")) {
+                    taskBuilder.priority(((Number) taskData.get("priority")).intValue());
+                }
+                if (taskData.containsKey("dependencies")) {
+                    taskBuilder.dependencies((List<String>) taskData.get("dependencies"));
+                }
+                if (taskData.containsKey("preferred_teammate")) {
+                    taskBuilder.preferredTeammate((String) taskData.get("preferred_teammate"));
+                }
+
+                initialTasks.add(taskBuilder.build());
+            }
+            builder.initialTasks(initialTasks);
+        }
+
+        return builder.build();
+    }
+
 
 
     /**
