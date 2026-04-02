@@ -1,4 +1,4 @@
-package io.leavesfly.jimi.core.team;
+package io.leavesfly.jimi.team;
 
 /**
  * 团队任务状态枚举

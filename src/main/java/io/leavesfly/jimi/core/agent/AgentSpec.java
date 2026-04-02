@@ -6,7 +6,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
- import io.leavesfly.jimi.core.team.TeamSpec;
+ import io.leavesfly.jimi.team.TeamSpec;
 
 import java.nio.file.Path;
 import java.util.HashMap;

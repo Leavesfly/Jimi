@@ -2,7 +2,7 @@ package io.leavesfly.jimi.tool.provider;
 
 import io.leavesfly.jimi.core.agent.AgentSpec;
 import io.leavesfly.jimi.core.engine.JimiRuntime;
-import io.leavesfly.jimi.core.team.TeamAgentTool;
+import io.leavesfly.jimi.team.TeamAgentTool;
 import io.leavesfly.jimi.tool.Tool;
 import io.leavesfly.jimi.tool.ToolProvider;
 import lombok.extern.slf4j.Slf4j;

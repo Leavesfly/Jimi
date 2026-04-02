@@ -1,4 +1,4 @@
-package io.leavesfly.jimi.core.team;
+package io.leavesfly.jimi.team;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;

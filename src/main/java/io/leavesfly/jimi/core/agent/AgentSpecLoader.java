@@ -1,10 +1,10 @@
 package io.leavesfly.jimi.core.agent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.leavesfly.jimi.core.team.TeamSpec;
-import io.leavesfly.jimi.core.team.TeamStrategy;
-import io.leavesfly.jimi.core.team.TeamTaskSpec;
-import io.leavesfly.jimi.core.team.TeammateSpec;
+import io.leavesfly.jimi.team.TeamSpec;
+import io.leavesfly.jimi.team.TeamStrategy;
+import io.leavesfly.jimi.team.TeamTaskSpec;
+import io.leavesfly.jimi.team.TeammateSpec;
 import io.leavesfly.jimi.exception.AgentSpecException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;

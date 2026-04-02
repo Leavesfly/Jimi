@@ -1,4 +1,4 @@
-package io.leavesfly.jimi.core.team;
+package io.leavesfly.jimi.team;
 
 import com.fasterxml.jackson.annotation.JsonValue;
 
