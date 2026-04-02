@@ -55,24 +55,15 @@ public class Context {
      */
     private final List<SkillSpec> activeSkills;
 
-    /**
-     * 构造器（使用同步Repository）
-     */
-    public Context(Path fileBackend, ObjectMapper objectMapper) {
-        this(fileBackend, objectMapper, false);
-    }
 
     /**
      * 构造器（可选择Repository实现）
      *
-     * @param fileBackend   文件后端路径
-     * @param objectMapper  JSON序列化工具
-     * @param useAsyncBatch 是否使用异步批量Repository（推荐用于高吞吐场景）
+     * @param fileBackend  文件后端路径
+     * @param objectMapper JSON序列化工具
      */
-    public Context(Path fileBackend, ObjectMapper objectMapper, boolean useAsyncBatch) {
-        this.repository = useAsyncBatch
-                ? new AsyncBatchContextRepository(fileBackend, objectMapper)
-                : new JSONLContextRepository(fileBackend, objectMapper);
+    public Context(Path fileBackend, ObjectMapper objectMapper) {
+        this.repository = new JSONLContextRepository(fileBackend, objectMapper);
         this.history = new ArrayList<>();
         this.tokenCount = 0;
         this.nextCheckpointId = 0;
@@ -243,6 +234,7 @@ public class Context {
     public int getnCheckpoints() {
         return nextCheckpointId;
     }
+
     /**
      * 添加激活的 Skills
      *

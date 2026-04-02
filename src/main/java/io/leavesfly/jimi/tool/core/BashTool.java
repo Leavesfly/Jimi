@@ -33,7 +33,7 @@ import java.util.concurrent.TimeUnit;
 @Scope(ConfigurableBeanFactory.SCOPE_PROTOTYPE)
 public class BashTool extends AbstractTool<BashTool.Params> {
     
-    private static final int MAX_TIMEOUT = 5 * 60; // 5分钟
+    private static final int MAX_TIMEOUT =3 * 60; // 3分钟
     private static final String RUN_COMMAND_ACTION = "run shell command";
     
     private Approval approval;
