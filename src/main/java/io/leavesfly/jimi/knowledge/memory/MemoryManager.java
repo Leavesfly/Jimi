@@ -1,977 +1,199 @@
 package io.leavesfly.jimi.knowledge.memory;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.leavesfly.jimi.config.info.MemoryConfig;
-import io.leavesfly.jimi.core.engine.JimiRuntime;
-import io.leavesfly.jimi.knowledge.query.MemoryQuery;
-import io.leavesfly.jimi.knowledge.result.MemoryResult;
-import io.leavesfly.jimi.knowledge.rag.VectorStore;
-import io.leavesfly.jimi.knowledge.rag.CodeChunk;
-import io.leavesfly.jimi.knowledge.rag.EmbeddingProvider;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Component;
-import reactor.core.publisher.Mono;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
-import java.util.UUID;
-import java.util.stream.Collectors;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 记忆管理器(精简版)
- * 使用统一的MemoryStore管理所有类型的长期记忆
- * 支持语义向量检索（复用现有 VectorStore 和 EmbeddingProvider）
+ * 记忆系统管理器
+ * <p>
+ * 对标 Claude Code 的记忆系统架构，提供三层记忆管理：
+ * <ul>
+ *   <li>Layer 1 - MEMORY.md：索引层，始终注入 System Prompt</li>
+ *   <li>Layer 2 - Topic files：主题文件层，按需加载（Phase 4）</li>
+ *   <li>Layer 3 - Session transcripts：会话记录层，仅 grep 搜索（已有 .jsonl）</li>
+ * </ul>
  */
 @Slf4j
-@Component
 public class MemoryManager {
-    
-    private static final String MEMORY_TYPE = "long_term_memory";
-    private static final String STORE_FILENAME = "memory_store.json";
-    
-    private final ObjectMapper objectMapper;
+
     private final MemoryConfig config;
-    
-    // 复用现有的向量检索组件
-    private final VectorStore vectorStore;
-    private final EmbeddingProvider embeddingProvider;
-    
-    // 统一的记忆存储
-    private MemoryStore memoryStore;
-    
-    private Path memoryDir;
-    private boolean initialized = false;
-    
-    public MemoryManager(
-            ObjectMapper objectMapper, 
-            MemoryConfig config,
-            @Autowired(required = false) VectorStore vectorStore,
-            @Autowired(required = false) EmbeddingProvider embeddingProvider) {
-        this.objectMapper = objectMapper;
-        this.config = config;
-        this.vectorStore = vectorStore;
-        this.embeddingProvider = embeddingProvider;
-        
-        if (vectorStore != null && embeddingProvider != null) {
-            log.info("记忆管理器启用语义检索能力");
-        } else {
-            log.info("记忆管理器使用关键词检索模式");
-        }
-    }
-    
+
     /**
-     * 初始化记忆目录（基于工作目录）
+     * MemoryStore 缓存（按工作目录路径缓存）
      */
-    public void initialize(JimiRuntime jimiRuntime) {
-        if (initialized) {
+    private final Map<String, MemoryStore> storeCache = new ConcurrentHashMap<>();
+
+    public MemoryManager(MemoryConfig config) {
+        this.config = config;
+    }
+
+    /**
+     * 获取指定工作目录的记忆摘要（用于注入 System Prompt）
+     * <p>
+     * 对应 Claude Code 的 Layer 1：MEMORY.md 始终注入到上下文中
+     *
+     * @param workDirPath 工作目录绝对路径
+     * @return 记忆摘要内容，如果记忆系统未启用或无内容则返回空字符串
+     */
+    public String getMemorySummary(String workDirPath) {
+        if (!config.isEnabled()) {
+            return "";
+        }
+
+        MemoryStore store = getOrCreateStore(workDirPath);
+        store.initializeIfAbsent(workDirPath);
+
+        String memoryContent = store.readMemoryMd();
+        if (memoryContent.isEmpty()) {
+            return "";
+        }
+
+        return formatForSystemPrompt(memoryContent);
+    }
+
+    /**
+     * 手动写入记忆（对应 Claude Code 的 Manual write）
+     *
+     * @param workDirPath 工作目录绝对路径
+     * @param section     记忆区域（如 "User Preferences"、"Key Decisions"）
+     * @param content     要写入的内容
+     */
+    public void writeMemory(String workDirPath, String section, String content) {
+        if (!config.isEnabled()) {
+            log.debug("Memory system is disabled, skipping write");
             return;
         }
-        
-        Path workDir = jimiRuntime.getWorkDir();
-        this.memoryDir = workDir.resolve(".jimi").resolve("memory");
-        
-        try {
-            Files.createDirectories(memoryDir);
-            log.info("初始化记忆管理器，存储路径: {}", memoryDir);
-            
-            // 加载统一存储
-            loadStore().subscribe(
-                store -> {
-                    this.memoryStore = store;
-                    log.info("加载记忆存储完成，总记忆数: {}", store.getTotalCount());
-                },
-                error -> {
-                    log.warn("加载记忆存储失败，创建新存储: {}", error.getMessage());
-                    this.memoryStore = createNewStore();
-                }
-            );
-            
-            initialized = true;
-        } catch (IOException e) {
-            log.error("创建记忆目录失败: {}", memoryDir, e);
+
+        MemoryStore store = getOrCreateStore(workDirPath);
+        String existing = store.readMemoryMd();
+
+        String updated = updateSection(existing, section, content);
+        store.writeMemoryMd(updated);
+        log.info("Memory updated: section={}", section);
+    }
+
+    /**
+     * 追加记忆条目到指定区域
+     *
+     * @param workDirPath 工作目录绝对路径
+     * @param section     记忆区域
+     * @param entry       要追加的条目
+     */
+    public void appendMemory(String workDirPath, String section, String entry) {
+        if (!config.isEnabled()) {
+            return;
+        }
+
+        MemoryStore store = getOrCreateStore(workDirPath);
+        String existing = store.readMemoryMd();
+
+        String updated = appendToSection(existing, section, entry);
+        store.writeMemoryMd(updated);
+        log.debug("Memory appended: section={}, entry={}", section, entry);
+    }
+
+    /**
+     * 读取完整的 MEMORY.md 内容
+     *
+     * @param workDirPath 工作目录绝对路径
+     * @return MEMORY.md 原始内容
+     */
+    public String readMemory(String workDirPath) {
+        if (!config.isEnabled()) {
+            return "";
+        }
+        return getOrCreateStore(workDirPath).readMemoryMd();
+    }
+
+    /**
+     * 覆盖写入完整的 MEMORY.md 内容
+     *
+     * @param workDirPath 工作目录绝对路径
+     * @param content     完整内容
+     */
+    public void overwriteMemory(String workDirPath, String content) {
+        if (!config.isEnabled()) {
+            return;
+        }
+        getOrCreateStore(workDirPath).writeMemoryMd(content);
+    }
+
+    /**
+     * 获取 MemoryStore 实例（带缓存）
+     */
+    public MemoryStore getOrCreateStore(String workDirPath) {
+        return storeCache.computeIfAbsent(workDirPath,
+                path -> new MemoryStore(path, config.getStoragePath()));
+    }
+
+    /**
+     * 获取配置
+     */
+    public MemoryConfig getConfig() {
+        return config;
+    }
+
+    /**
+     * 格式化记忆内容用于 System Prompt 注入
+     */
+    private String formatForSystemPrompt(String memoryContent) {
+        return "## Long-term Memory\n\n"
+                + "The following is your persistent memory about this project and user preferences. "
+                + "Use this information to provide more contextual and personalized assistance.\n\n"
+                + memoryContent;
+    }
+
+    /**
+     * 更新 MEMORY.md 中指定 section 的内容
+     */
+    private String updateSection(String markdown, String sectionName, String newContent) {
+        String sectionHeader = "## " + sectionName;
+        int sectionStart = markdown.indexOf(sectionHeader);
+
+        if (sectionStart == -1) {
+            // section 不存在，追加到末尾
+            return markdown + "\n\n" + sectionHeader + "\n" + newContent + "\n";
+        }
+
+        // 找到下一个 ## 标题的位置
+        int contentStart = sectionStart + sectionHeader.length();
+        int nextSection = markdown.indexOf("\n## ", contentStart);
+
+        if (nextSection == -1) {
+            // 这是最后一个 section
+            return markdown.substring(0, contentStart) + "\n" + newContent + "\n";
+        } else {
+            return markdown.substring(0, contentStart) + "\n" + newContent + "\n"
+                    + markdown.substring(nextSection);
         }
     }
-    
+
     /**
-     * 检查是否已初始化
+     * 向 MEMORY.md 中指定 section 追加条目
      */
-    private void ensureInitialized() {
-        if (!initialized) {
-            throw new IllegalStateException("MemoryManager未初始化，请先调用initialize()方法");
+    private String appendToSection(String markdown, String sectionName, String entry) {
+        String sectionHeader = "## " + sectionName;
+        int sectionStart = markdown.indexOf(sectionHeader);
+
+        if (sectionStart == -1) {
+            // section 不存在，创建并追加
+            return markdown + "\n\n" + sectionHeader + "\n- " + entry + "\n";
         }
-    }
-    
-    /**
-     * 检查是否启用语义检索
-     */
-    public boolean isSemanticSearchEnabled() {
-        return vectorStore != null && embeddingProvider != null;
-    }
-    
-    // ==================== 用户偏好管理 ====================
-    
-    /**
-     * 加载用户偏好
-     */
-    public Mono<UserPreferences> loadPreferences() {
-        return loadStore()
-                .map(store -> {
-                    List<MemoryEntry> prefs = store.getByType(MemoryType.USER_PREFERENCE);
-                    if (prefs.isEmpty()) {
-                        return UserPreferences.getDefault();
-                    }
-                    // 这里简化处理，实际应该转换MemoryEntry到UserPreferences
-                    return UserPreferences.getDefault();
-                })
-                .defaultIfEmpty(UserPreferences.getDefault());
-    }
-    
-    /**
-     * 保存用户偏好
-     */
-    public Mono<Void> savePreferences(UserPreferences prefs) {
-        // 这里简化处理，实际应该转换UserPreferences到MemoryEntry
-        return Mono.empty();
-    }
-    
-    // ==================== 项目知识管理 ====================
-    
-    /**
-     * 查询项目知识（语义检索优先，回退到关键词）
-     */
-    public Mono<List<ProjectInsight>> queryInsights(String query, int limit) {
-        if (!config.isLongTermEnabled()) {
-            return Mono.just(List.of());
+
+        // 找到下一个 ## 标题的位置
+        int contentStart = sectionStart + sectionHeader.length();
+        int nextSection = markdown.indexOf("\n## ", contentStart);
+
+        if (nextSection == -1) {
+            // 这是最后一个 section，直接追加到末尾
+            return markdown + "\n- " + entry;
+        } else {
+            // 在下一个 section 之前插入
+            return markdown.substring(0, nextSection) + "\n- " + entry
+                    + markdown.substring(nextSection);
         }
-        
-        // 优先使用语义检索
-        if (isSemanticSearchEnabled()) {
-            return queryBySemantics(query, limit);
-        }
-        
-        // 回退到关键词检索
-        return queryByKeyword(query, limit);
-    }
-    
-    /**
-     * 语义向量检索
-     */
-    private Mono<List<ProjectInsight>> queryBySemantics(String query, int topK) {
-        return embeddingProvider.embed(query)
-                .flatMap(queryVector -> vectorStore.search(queryVector, topK * 2))
-                .map(results -> results.stream()
-                        .filter(r -> isMemoryChunk(r.getChunk()))
-                        .limit(topK)
-                        .map(this::convertToInsight)
-                        .collect(Collectors.toList()))
-                .onErrorResume(e -> {
-                    log.warn("语义检索失败，回退到关键词: {}", e.getMessage());
-                    return queryByKeyword(query, topK);
-                });
-    }
-    
-    /**
-     * 关键词检索
-     */
-    private Mono<List<ProjectInsight>> queryByKeyword(String keyword, int limit) {
-        return loadStore()
-                .map(store -> store.searchByKeyword(MemoryType.PROJECT_INSIGHT, keyword, limit))
-                .map(entries -> entries.stream()
-                        .map(this::convertEntryToInsight)
-                        .collect(Collectors.toList()))
-                .defaultIfEmpty(List.of());
-    }
-    
-    /**
-     * 添加项目知识
-     */
-    public Mono<Void> addInsight(ProjectInsight insight) {
-        if (!config.isLongTermEnabled() || !config.isAutoExtract()) {
-            return Mono.empty();
-        }
-        
-        MemoryEntry entry = MemoryEntry.builder()
-                .id(insight.getId() != null ? insight.getId() : UUID.randomUUID().toString())
-                .type(MemoryType.PROJECT_INSIGHT)
-                .content(insight.getContent())
-                .createdAt(insight.getTimestamp() != null ? insight.getTimestamp() : Instant.now())
-                .updatedAt(Instant.now())
-                .confidence(insight.getConfidence())
-                .accessCount(insight.getAccessCount())
-                .lastAccessed(insight.getLastAccessed())
-                .build();
-        
-        entry.setMetadata("category", insight.getCategory());
-        entry.setMetadata("source", insight.getSource());
-        
-        return loadStore()
-                .flatMap(store -> {
-                    store.add(entry);
-                    store.prune(MemoryType.PROJECT_INSIGHT, config.getMaxInsights(), config.getInsightExpiryDays());
-                    return saveStore(store);
-                })
-                .then(addToVectorStore(entry))
-                .doOnSuccess(v -> log.debug("添加知识: [{}] {}", insight.getCategory(), 
-                        insight.getContent().substring(0, Math.min(50, insight.getContent().length()))));
-    }
-    
-    /**
-     * 添加到向量存储
-     */
-    private Mono<Void> addToVectorStore(MemoryEntry entry) {
-        if (!isSemanticSearchEnabled()) {
-            return Mono.empty();
-        }
-        
-        return embeddingProvider.embed(entry.getContent())
-                .flatMap(vector -> {
-                    CodeChunk chunk = CodeChunk.builder()
-                            .id(entry.getId())
-                            .content(entry.getContent())
-                            .embedding(vector)
-                            .metadata(Map.of(
-                                    "type", MEMORY_TYPE,
-                                    "memoryType", entry.getType().toString(),
-                                    "category", entry.getMetadataString("category"),
-                                    "timestamp", entry.getCreatedAt().toString()
-                            ))
-                            .build();
-                    return vectorStore.add(chunk);
-                })
-                .then()
-                .onErrorResume(e -> {
-                    log.warn("存储到VectorStore失败: {}", e.getMessage());
-                    return Mono.empty();
-                });
-    }
-    
-    // ==================== 任务历史管理 ====================
-    
-    /**
-     * 添加任务历史
-     */
-    public Mono<Void> addTaskHistory(TaskHistory task) {
-        if (!config.isLongTermEnabled()) {
-            return Mono.empty();
-        }
-        
-        MemoryEntry entry = convertTaskHistoryToEntry(task);
-        
-        return loadStore()
-                .flatMap(store -> {
-                    store.add(entry);
-                    store.prune(MemoryType.TASK_HISTORY, config.getMaxTaskHistory(), config.getInsightExpiryDays());
-                    return saveStore(store);
-                })
-                .doOnSuccess(v -> log.info("记录任务历史: {}", task.getUserQuery()));
-    }
-    
-    /**
-     * 获取最近的任务历史
-     */
-    public Mono<List<TaskHistory>> getRecentTasks(int limit) {
-        if (!config.isLongTermEnabled()) {
-            return Mono.just(List.of());
-        }
-        
-        return loadStore()
-                .map(store -> store.getRecent(MemoryType.TASK_HISTORY, limit))
-                .map(entries -> entries.stream()
-                        .map(this::convertEntryToTaskHistory)
-                        .collect(Collectors.toList()))
-                .defaultIfEmpty(List.of());
-    }
-    
-    /**
-     * 按关键词搜索任务历史
-     */
-    public Mono<List<TaskHistory>> searchTaskHistory(String keyword, int limit) {
-        if (!config.isLongTermEnabled()) {
-            return Mono.just(List.of());
-        }
-        
-        return loadStore()
-                .map(store -> store.searchByKeyword(MemoryType.TASK_HISTORY, keyword, limit))
-                .map(entries -> entries.stream()
-                        .map(this::convertEntryToTaskHistory)
-                        .collect(Collectors.toList()))
-                .defaultIfEmpty(List.of());
-    }
-    
-    /**
-     * 按时间范围查询任务历史
-     */
-    public Mono<List<TaskHistory>> getTasksByTimeRange(Instant startTime, Instant endTime) {
-        if (!config.isLongTermEnabled()) {
-            return Mono.just(List.of());
-        }
-        
-        return loadStore()
-                .map(store -> store.getByTimeRange(MemoryType.TASK_HISTORY, startTime, endTime))
-                .map(entries -> entries.stream()
-                        .map(this::convertEntryToTaskHistory)
-                        .collect(Collectors.toList()))
-                .defaultIfEmpty(List.of());
-    }
-    
-    // ==================== 会话摘要管理 ====================
-    
-    /**
-     * 添加会话摘要
-     */
-    public Mono<Void> addSessionSummary(SessionSummary session) {
-        if (!config.isLongTermEnabled()) {
-            return Mono.empty();
-        }
-        
-        MemoryEntry entry = convertSessionSummaryToEntry(session);
-        
-        return loadStore()
-                .flatMap(store -> {
-                    store.add(entry);
-                    store.prune(MemoryType.SESSION_SUMMARY, config.getMaxTaskHistory(), config.getInsightExpiryDays());
-                    return saveStore(store);
-                })
-                .doOnSuccess(v -> log.info("记录会话摘要: {}", session.getGoal()));
-    }
-    
-    /**
-     * 获取最近一次会话摘要
-     */
-    public Mono<SessionSummary> getLastSession() {
-        if (!config.isLongTermEnabled()) {
-            return Mono.empty();
-        }
-        
-        return loadStore()
-                .map(MemoryStore::getLastSession)
-                .map(this::convertEntryToSessionSummary);
-    }
-    
-    /**
-     * 获取最近的会话摘要
-     */
-    public Mono<List<SessionSummary>> getRecentSessions(int limit) {
-        if (!config.isLongTermEnabled()) {
-            return Mono.just(List.of());
-        }
-        
-        return loadStore()
-                .map(store -> store.getRecent(MemoryType.SESSION_SUMMARY, limit))
-                .map(entries -> entries.stream()
-                        .map(this::convertEntryToSessionSummary)
-                        .collect(Collectors.toList()))
-                .defaultIfEmpty(List.of());
-    }
-    
-    /**
-     * 按关键词搜索会话摘要
-     */
-    public Mono<List<SessionSummary>> searchSessions(String keyword, int limit) {
-        if (!config.isLongTermEnabled()) {
-            return Mono.just(List.of());
-        }
-        
-        return loadStore()
-                .map(store -> store.searchByKeyword(MemoryType.SESSION_SUMMARY, keyword, limit))
-                .map(entries -> entries.stream()
-                        .map(this::convertEntryToSessionSummary)
-                        .collect(Collectors.toList()))
-                .defaultIfEmpty(List.of());
-    }
-    
-    // ==================== 错误模式管理 ====================
-    
-    /**
-     * 添加或更新错误模式
-     */
-    public Mono<Void> addOrUpdateErrorPattern(ErrorPattern pattern) {
-        if (!config.isLongTermEnabled()) {
-            return Mono.empty();
-        }
-        
-        MemoryEntry entry = convertErrorPatternToEntry(pattern);
-        
-        return loadStore()
-                .flatMap(store -> {
-                    store.addOrUpdateErrorPattern(entry);
-                    store.prune(MemoryType.ERROR_PATTERN, config.getMaxInsights(), config.getInsightExpiryDays());
-                    return saveStore(store);
-                })
-                .doOnSuccess(v -> log.debug("记录错误模式: {}", pattern.getErrorType()));
-    }
-    
-    /**
-     * 记录错误解决成功
-     */
-    public Mono<Void> recordErrorResolution(String errorMessage, String context) {
-        if (!config.isLongTermEnabled()) {
-            return Mono.empty();
-        }
-        
-        return loadStore()
-                .flatMap(store -> {
-                    store.recordErrorResolution(errorMessage, context);
-                    return saveStore(store);
-                });
-    }
-    
-    /**
-     * 查找匹配的错误模式
-     */
-    public Mono<ErrorPattern> findErrorPattern(String errorMessage, String context) {
-        if (!config.isLongTermEnabled()) {
-            return Mono.empty();
-        }
-        
-        return loadStore()
-                .flatMap(store -> Mono.justOrEmpty(store.findErrorPattern(errorMessage, context)))
-                .map(this::convertEntryToErrorPattern);
-    }
-    
-    /**
-     * 获取最常见的错误模式
-     */
-    public Mono<List<ErrorPattern>> getMostFrequentErrors(int limit) {
-        if (!config.isLongTermEnabled()) {
-            return Mono.just(List.of());
-        }
-        
-        return loadStore()
-                .map(store -> store.getMostFrequentErrors(limit))
-                .map(entries -> entries.stream()
-                        .map(this::convertEntryToErrorPattern)
-                        .collect(Collectors.toList()))
-                .defaultIfEmpty(List.of());
-    }
-    
-    /**
-     * 按工具名称获取错误模式
-     */
-    public Mono<List<ErrorPattern>> getErrorsByTool(String toolName, int limit) {
-        if (!config.isLongTermEnabled()) {
-            return Mono.just(List.of());
-        }
-        
-        return loadStore()
-                .map(store -> store.searchByKeyword(MemoryType.ERROR_PATTERN, toolName, limit))
-                .map(entries -> entries.stream()
-                        .map(this::convertEntryToErrorPattern)
-                        .collect(Collectors.toList()))
-                .defaultIfEmpty(List.of());
-    }
-    
-    /**
-     * 查询任务模式
-     */
-    public Mono<TaskPattern> findPattern(String trigger) {
-        if (!config.isLongTermEnabled()) {
-            return Mono.empty();
-        }
-        
-        return loadStore()
-                .map(store -> store.searchByKeyword(MemoryType.TASK_PATTERN, trigger, 1))
-                .filter(list -> !list.isEmpty())
-                .map(list -> convertEntryToTaskPattern(list.get(0)));
-    }
-    
-    /**
-     * 添加任务模式
-     */
-    public Mono<Void> addPattern(TaskPattern pattern) {
-        if (!config.isLongTermEnabled()) {
-            return Mono.empty();
-        }
-        
-        MemoryEntry entry = convertTaskPatternToEntry(pattern);
-        
-        return loadStore()
-                .flatMap(store -> {
-                    store.add(entry);
-                    return saveStore(store);
-                })
-                .doOnSuccess(v -> log.debug("添加任务模式: {}", pattern.getTrigger()));
-    }
-    
-    // ==================== 数据转换方法 ====================
-    
-    private boolean isMemoryChunk(CodeChunk chunk) {
-        if (chunk == null || chunk.getMetadata() == null) {
-            return false;
-        }
-        return MEMORY_TYPE.equals(chunk.getMetadata().get("type"));
-    }
-    
-    private ProjectInsight convertToInsight(VectorStore.SearchResult result) {
-        CodeChunk chunk = result.getChunk();
-        Map<String, String> metadata = chunk.getMetadata();
-        
-        return ProjectInsight.builder()
-                .id(chunk.getId())
-                .category(metadata.getOrDefault("category", "general"))
-                .content(chunk.getContent())
-                .source(metadata.getOrDefault("source", "unknown"))
-                .timestamp(parseTimestamp(metadata.get("timestamp")))
-                .confidence(result.getScore())
-                .accessCount(0)
-                .lastAccessed(Instant.now())
-                .build();
-    }
-    
-    private ProjectInsight convertEntryToInsight(MemoryEntry entry) {
-        return ProjectInsight.builder()
-                .id(entry.getId())
-                .category(entry.getMetadataString("category"))
-                .content(entry.getContent())
-                .source(entry.getMetadataString("source"))
-                .timestamp(entry.getCreatedAt())
-                .confidence(entry.getConfidence())
-                .accessCount(entry.getAccessCount())
-                .lastAccessed(entry.getLastAccessed())
-                .build();
-    }
-    
-    private TaskHistory convertEntryToTaskHistory(MemoryEntry entry) {
-        return TaskHistory.builder()
-                .id(entry.getId())
-                .timestamp(entry.getCreatedAt())
-                .userQuery(entry.getMetadataString("userQuery"))
-                .summary(entry.getContent())
-                .resultStatus(entry.getMetadataString("resultStatus"))
-                .stepsCount(entry.getMetadataInt("stepsCount") != null ? entry.getMetadataInt("stepsCount") : 0)
-                .tokensUsed(entry.getMetadataInt("tokensUsed") != null ? entry.getMetadataInt("tokensUsed") : 0)
-                .durationMs(entry.getMetadataInt("durationMs") != null ? entry.getMetadataInt("durationMs").longValue() : 0L)
-                .build();
-    }
-    
-    private MemoryEntry convertTaskHistoryToEntry(TaskHistory task) {
-        MemoryEntry entry = MemoryEntry.builder()
-                .id(task.getId() != null ? task.getId() : UUID.randomUUID().toString())
-                .type(MemoryType.TASK_HISTORY)
-                .content(task.getSummary() != null ? task.getSummary() : task.getUserQuery())
-                .createdAt(task.getTimestamp() != null ? task.getTimestamp() : Instant.now())
-                .updatedAt(Instant.now())
-                .build();
-        
-        entry.setMetadata("userQuery", task.getUserQuery());
-        entry.setMetadata("resultStatus", task.getResultStatus());
-        entry.setMetadata("stepsCount", task.getStepsCount());
-        entry.setMetadata("tokensUsed", task.getTokensUsed());
-        entry.setMetadata("durationMs", task.getDurationMs());
-        
-        return entry;
-    }
-    
-    private SessionSummary convertEntryToSessionSummary(MemoryEntry entry) {
-        if (entry == null) {
-            return null;
-        }
-        
-        return SessionSummary.builder()
-                .sessionId(entry.getId())
-                .startTime(entry.getCreatedAt())
-                .endTime((Instant) entry.getMetadata("endTime"))
-                .goal(entry.getMetadataString("goal"))
-                .outcome(entry.getContent())
-                .build();
-    }
-    
-    private MemoryEntry convertSessionSummaryToEntry(SessionSummary session) {
-        MemoryEntry entry = MemoryEntry.builder()
-                .id(session.getSessionId() != null ? session.getSessionId() : UUID.randomUUID().toString())
-                .type(MemoryType.SESSION_SUMMARY)
-                .content(session.getOutcome() != null ? session.getOutcome() : session.getGoal())
-                .createdAt(session.getStartTime() != null ? session.getStartTime() : Instant.now())
-                .updatedAt(Instant.now())
-                .build();
-        
-        entry.setMetadata("goal", session.getGoal());
-        entry.setMetadata("endTime", session.getEndTime());
-        
-        return entry;
-    }
-    
-    private ErrorPattern convertEntryToErrorPattern(MemoryEntry entry) {
-        return ErrorPattern.builder()
-                .id(entry.getId())
-                .errorType(entry.getMetadataString("errorType"))
-                .errorMessage(entry.getMetadataString("errorMessage"))
-                .context(entry.getMetadataString("context"))
-                .rootCause(entry.getMetadataString("rootCause"))
-                .solution(entry.getContent())
-                .occurrenceCount(entry.getMetadataInt("occurrenceCount") != null ? entry.getMetadataInt("occurrenceCount") : 1)
-                .resolvedCount(entry.getMetadataInt("resolvedCount") != null ? entry.getMetadataInt("resolvedCount") : 0)
-                .firstSeen((Instant) entry.getMetadata("firstSeen"))
-                .lastSeen(entry.getUpdatedAt())
-                .toolName(entry.getMetadataString("toolName"))
-                .severity(entry.getMetadataString("severity"))
-                .build();
-    }
-    
-    private MemoryEntry convertErrorPatternToEntry(ErrorPattern pattern) {
-        MemoryEntry entry = MemoryEntry.builder()
-                .id(pattern.getId() != null ? pattern.getId() : UUID.randomUUID().toString())
-                .type(MemoryType.ERROR_PATTERN)
-                .content(pattern.getSolution() != null ? pattern.getSolution() : pattern.getRootCause())
-                .createdAt(pattern.getFirstSeen() != null ? pattern.getFirstSeen() : Instant.now())
-                .updatedAt(pattern.getLastSeen() != null ? pattern.getLastSeen() : Instant.now())
-                .build();
-        
-        entry.setMetadata("errorType", pattern.getErrorType());
-        entry.setMetadata("errorMessage", pattern.getErrorMessage());
-        entry.setMetadata("context", pattern.getContext());
-        entry.setMetadata("rootCause", pattern.getRootCause());
-        entry.setMetadata("occurrenceCount", pattern.getOccurrenceCount());
-        entry.setMetadata("resolvedCount", pattern.getResolvedCount());
-        entry.setMetadata("firstSeen", pattern.getFirstSeen());
-        entry.setMetadata("toolName", pattern.getToolName());
-        entry.setMetadata("severity", pattern.getSeverity());
-        
-        return entry;
-    }
-    
-    private TaskPattern convertEntryToTaskPattern(MemoryEntry entry) {
-        return TaskPattern.builder()
-                .id(entry.getId())
-                .trigger(entry.getMetadataString("trigger"))
-                .usageCount(entry.getAccessCount())
-                .lastUsed(entry.getLastAccessed())
-                .build();
-    }
-    
-    private MemoryEntry convertTaskPatternToEntry(TaskPattern pattern) {
-        MemoryEntry entry = MemoryEntry.builder()
-                .id(pattern.getId() != null ? pattern.getId() : UUID.randomUUID().toString())
-                .type(MemoryType.TASK_PATTERN)
-                .content(pattern.getSteps() != null ? String.join("\n", pattern.getSteps()) : "")
-                .createdAt(Instant.now())
-                .updatedAt(Instant.now())
-                .accessCount(pattern.getUsageCount())
-                .lastAccessed(pattern.getLastUsed())
-                .build();
-        
-        entry.setMetadata("trigger", pattern.getTrigger());
-        entry.setMetadata("successRate", pattern.getSuccessRate());
-        
-        return entry;
-    }
-    
-    private Instant parseTimestamp(String timestamp) {
-        if (timestamp == null || timestamp.isEmpty()) {
-            return Instant.now();
-        }
-        try {
-            return Instant.parse(timestamp);
-        } catch (Exception e) {
-            return Instant.now();
-        }
-    }
-    
-    // ==================== 文件操作辅助方法 ====================
-    
-    /**
-     * 加载统一存储
-     */
-    private Mono<MemoryStore> loadStore() {
-        ensureInitialized();
-        
-        if (memoryStore != null) {
-            return Mono.just(memoryStore);
-        }
-        
-        Path file = memoryDir.resolve(STORE_FILENAME);
-        if (!Files.exists(file)) {
-            return Mono.just(createNewStore());
-        }
-        
-        return Mono.fromCallable(() -> {
-            MemoryStore store = objectMapper.readValue(file.toFile(), MemoryStore.class);
-            this.memoryStore = store;
-            return store;
-        }).onErrorResume(e -> {
-            log.error("加载记忆存储失败: {}", STORE_FILENAME, e);
-            return Mono.just(createNewStore());
-        });
-    }
-    
-    /**
-     * 保存统一存储
-     */
-    private Mono<Void> saveStore(MemoryStore store) {
-        ensureInitialized();
-        
-        Path file = memoryDir.resolve(STORE_FILENAME);
-        
-        return Mono.fromRunnable(() -> {
-            try {
-                objectMapper.writerWithDefaultPrettyPrinter()
-                        .writeValue(file.toFile(), store);
-                this.memoryStore = store;
-                log.trace("保存记忆存储: {}", STORE_FILENAME);
-            } catch (IOException e) {
-                log.error("保存记忆存储失败: {}", STORE_FILENAME, e);
-            }
-        });
-    }
-    
-    /**
-     * 创建新的存储
-     */
-    private MemoryStore createNewStore() {
-        MemoryStore store = new MemoryStore();
-        store.setVersion("1.0");
-        if (memoryDir != null) {
-            store.setWorkspaceRoot(memoryDir.getParent().getParent().toString());
-        }
-        return store;
-    }
-    
-    /**
-     * 获取记忆目录路径
-     */
-    public Path getMemoryDir() {
-        return memoryDir;
-    }
-    
-    // ==================== SPI 接口方法（来自 MemoryServiceImpl） ====================
-    
-    /**
-     * 统一查询接口
-     */
-    public Mono<MemoryResult> query(MemoryQuery query) {
-        if (!isEnabled()) {
-            return Mono.just(MemoryResult.error("Memory 功能未启用"));
-        }
-        
-        return executeQuery(query)
-                .onErrorResume(e -> {
-                    log.error("查询记忆失败", e);
-                    return Mono.just(MemoryResult.error(e.getMessage()));
-                });
-    }
-    
-    /**
-     * 执行查询（按类型路由）
-     */
-    private Mono<MemoryResult> executeQuery(MemoryQuery query) {
-        switch (query.getType()) {
-            case PROJECT_INSIGHT:
-                return queryInsights(query.getQuery(), query.getLimit())
-                        .map(insights -> {
-                            List<MemoryResult.MemoryEntry> entries = insights.stream()
-                                    .map(this::convertInsightToResultEntry)
-                                    .collect(Collectors.toList());
-                            return MemoryResult.success(entries);
-                        });
-                
-            case TASK_HISTORY:
-                if (query.getTimeRange() != null) {
-                    return getTasksByTimeRange(
-                            query.getTimeRange().getFrom(),
-                            query.getTimeRange().getTo())
-                            .map(tasks -> {
-                                List<MemoryResult.MemoryEntry> entries = tasks.stream()
-                                        .map(this::convertTaskHistoryToResultEntry)
-                                        .collect(Collectors.toList());
-                                return MemoryResult.success(entries);
-                            });
-                } else if (query.getQuery() != null && !query.getQuery().isEmpty()) {
-                    return searchTaskHistory(query.getQuery(), query.getLimit())
-                            .map(tasks -> {
-                                List<MemoryResult.MemoryEntry> entries = tasks.stream()
-                                        .map(this::convertTaskHistoryToResultEntry)
-                                        .collect(Collectors.toList());
-                                return MemoryResult.success(entries);
-                            });
-                } else {
-                    return getRecentTasks(query.getLimit())
-                            .map(tasks -> {
-                                List<MemoryResult.MemoryEntry> entries = tasks.stream()
-                                        .map(this::convertTaskHistoryToResultEntry)
-                                        .collect(Collectors.toList());
-                                return MemoryResult.success(entries);
-                            });
-                }
-                
-            case ERROR_PATTERN:
-                if (query.getQuery() != null && !query.getQuery().isEmpty()) {
-                    return findErrorPattern(query.getQuery(), null)
-                            .map(pattern -> {
-                                List<MemoryResult.MemoryEntry> entries = new ArrayList<>();
-                                entries.add(convertErrorPatternToResultEntry(pattern));
-                                return MemoryResult.success(entries);
-                            })
-                            .defaultIfEmpty(MemoryResult.success(new ArrayList<>()));
-                } else {
-                    return getMostFrequentErrors(query.getLimit())
-                            .map(patterns -> {
-                                List<MemoryResult.MemoryEntry> entries = patterns.stream()
-                                        .map(this::convertErrorPatternToResultEntry)
-                                        .collect(Collectors.toList());
-                                return MemoryResult.success(entries);
-                            });
-                }
-                
-            case SESSION_SUMMARY:
-                if (query.getQuery() != null && !query.getQuery().isEmpty()) {
-                    return searchSessions(query.getQuery(), query.getLimit())
-                            .map(sessions -> {
-                                List<MemoryResult.MemoryEntry> entries = sessions.stream()
-                                        .map(this::convertSessionToResultEntry)
-                                        .collect(Collectors.toList());
-                                return MemoryResult.success(entries);
-                            });
-                } else {
-                    return getRecentSessions(query.getLimit())
-                            .map(sessions -> {
-                                List<MemoryResult.MemoryEntry> entries = sessions.stream()
-                                        .map(this::convertSessionToResultEntry)
-                                        .collect(Collectors.toList());
-                                return MemoryResult.success(entries);
-                            });
-                }
-                
-            case ALL:
-            default:
-                // 查询所有类型的记忆（使用语义检索）
-                return queryInsights(query.getQuery(), query.getLimit())
-                        .map(insights -> {
-                            List<MemoryResult.MemoryEntry> entries = insights.stream()
-                                    .map(this::convertInsightToResultEntry)
-                                    .collect(Collectors.toList());
-                            return MemoryResult.success(entries);
-                        });
-        }
-    }
-    
-    /**
-     * 添加记忆
-     */
-    public Mono<MemoryResult> add(MemoryQuery query) {
-        if (!isEnabled()) {
-            return Mono.just(MemoryResult.error("Memory 功能未启用"));
-        }
-        
-        switch (query.getType()) {
-            case PROJECT_INSIGHT:
-                ProjectInsight insight = ProjectInsight.builder()
-                        .content(query.getContent())
-                        .category("user_added")
-                        .source("api")
-                        .timestamp(Instant.now())
-                        .confidence(1.0)
-                        .build();
-                return addInsight(insight)
-                        .thenReturn(MemoryResult.operationSuccess(insight.getId()));
-                
-            case ERROR_PATTERN:
-                ErrorPattern pattern = ErrorPattern.builder()
-                        .errorMessage(query.getContent())
-                        .firstSeen(Instant.now())
-                        .lastSeen(Instant.now())
-                        .build();
-                return addOrUpdateErrorPattern(pattern)
-                        .thenReturn(MemoryResult.operationSuccess(pattern.getId()));
-                
-            case TASK_HISTORY:
-                TaskHistory task = TaskHistory.builder()
-                        .userQuery(query.getContent())
-                        .summary(query.getContent())
-                        .timestamp(Instant.now())
-                        .build();
-                return addTaskHistory(task)
-                        .thenReturn(MemoryResult.operationSuccess(task.getId()));
-                
-            default:
-                return Mono.just(MemoryResult.error("不支持添加此类型的记忆: " + query.getType()));
-        }
-    }
-    
-    /**
-     * 从会话中提取记忆
-     */
-    public Mono<MemoryResult> extractFromSession(JimiRuntime jimiRuntime) {
-        // 暂时返回空操作，可以后续扩展
-        return Mono.just(MemoryResult.builder()
-                .success(true)
-                .totalCount(0)
-                .build());
-    }
-    
-    /**
-     * 删除记忆
-     */
-    public Mono<MemoryResult> delete(String memoryId) {
-        // MemoryManager 目前没有直接的删除 API
-        // 可以后续扩展
-        return Mono.just(MemoryResult.error("删除功能暂未实现"));
-    }
-    
-    /**
-     * 检查是否启用
-     */
-    public boolean isEnabled() {
-        return config != null && config.isLongTermEnabled();
-    }
-    
-    // ==================== 转换方法（用于 MemoryResult） ====================
-    
-    /**
-     * 将 ProjectInsight 转换为 MemoryResult.MemoryEntry
-     */
-    private MemoryResult.MemoryEntry convertInsightToResultEntry(ProjectInsight insight) {
-        return MemoryResult.MemoryEntry.builder()
-                .id(insight.getId())
-                .type("PROJECT_INSIGHT")
-                .content(insight.getContent())
-                .createdAt(insight.getTimestamp())
-                .accessCount(insight.getAccessCount())
-                .relevanceScore(insight.getConfidence())
-                .build();
-    }
-    
-    /**
-     * 将 TaskHistory 转换为 MemoryResult.MemoryEntry
-     */
-    private MemoryResult.MemoryEntry convertTaskHistoryToResultEntry(TaskHistory task) {
-        return MemoryResult.MemoryEntry.builder()
-                .id(task.getId())
-                .type("TASK_HISTORY")
-                .content(task.getSummary())
-                .createdAt(task.getTimestamp())
-                .build();
-    }
-    
-    /**
-     * 将 ErrorPattern 转换为 MemoryResult.MemoryEntry
-     */
-    private MemoryResult.MemoryEntry convertErrorPatternToResultEntry(ErrorPattern pattern) {
-        return MemoryResult.MemoryEntry.builder()
-                .id(pattern.getId())
-                .type("ERROR_PATTERN")
-                .content(pattern.getSolution())
-                .createdAt(pattern.getFirstSeen())
-                .updatedAt(pattern.getLastSeen())
-                .accessCount(pattern.getOccurrenceCount())
-                .build();
-    }
-    
-    /**
-     * 将 SessionSummary 转换为 MemoryResult.MemoryEntry
-     */
-    private MemoryResult.MemoryEntry convertSessionToResultEntry(SessionSummary session) {
-        return MemoryResult.MemoryEntry.builder()
-                .id(session.getSessionId())
-                .type("SESSION_SUMMARY")
-                .content(session.getOutcome())
-                .createdAt(session.getStartTime())
-                .updatedAt(session.getEndTime())
-                .build();
     }
 }

@@ -9,7 +9,7 @@ import io.leavesfly.jimi.core.agent.SubagentSpec;
 import io.leavesfly.jimi.core.compaction.SimpleCompaction;
 import io.leavesfly.jimi.core.engine.context.ContextManager;
 import io.leavesfly.jimi.core.engine.JimiRuntime;
-import io.leavesfly.jimi.knowledge.memory.MemoryRecorder;
+
 import io.leavesfly.jimi.core.session.Session;
 import io.leavesfly.jimi.core.engine.AgentExecutor;
 import io.leavesfly.jimi.core.JimiEngine;
@@ -99,7 +99,6 @@ public class SubAgentTool extends AbstractTool<SubAgentTool.Params> {
     private final ToolRegistryFactory toolRegistryFactory;
 
     // AgentExecutor 依赖组件
-    private final MemoryRecorder memoryRecorder;
     private final ContextManager contextManager;
 
     private final Map<String, Agent> subagents;
@@ -144,14 +143,13 @@ public class SubAgentTool extends AbstractTool<SubAgentTool.Params> {
 
     @Autowired
     public SubAgentTool(ObjectMapper objectMapper, AgentRegistry agentRegistry, ToolRegistryFactory toolRegistryFactory,
-                        MemoryRecorder memoryRecorder,
                         ContextManager contextManager) {
         super("SubAgentTool", "SubAgentTool tool (description will be set when initialized)", Params.class);
 
         this.objectMapper = objectMapper;
         this.agentRegistry = agentRegistry;
         this.toolRegistryFactory = toolRegistryFactory;
-        this.memoryRecorder = memoryRecorder;
+
         this.contextManager = contextManager;
         this.subagents = new HashMap<>();
         this.subagentAgentSpecs = new HashMap<>();
@@ -357,7 +355,6 @@ public class SubAgentTool extends AbstractTool<SubAgentTool.Params> {
                 .wire(wire)
                 .toolRegistry(subToolRegistry)
                 .compaction(new SimpleCompaction())
-                .memoryRecorder(memoryRecorder)
                 .contextManager(contextManager)
                 .isSubagent(true)
                 .build();

@@ -3,50 +3,42 @@ package io.leavesfly.jimi.config.info;
 import lombok.Data;
 
 /**
- * 记忆模块配置
- * 基于 ReCAP 理念的记忆优化配置 + 长期记忆管理
- *
- * @see <a href="https://github.com/ReCAP-Stanford/ReCAP">ReCAP: Recursive Context-Aware Reasoning and Planning</a>
+ * 记忆系统配置
  */
 @Data
 public class MemoryConfig {
-
-
-    // ==================== 长期记忆相关配置 ====================
-
     /**
-     * 是否启用长期记忆
-     * 默认关闭，通过配置开关启用
+     * 是否启用记忆系统
      */
-    private boolean longTermEnabled = false;
+    private boolean enabled = true;
 
     /**
-     * 是否自动从工具结果提取知识
-     * 默认开启（启用长期记忆时生效）
+     * 记忆存储根目录（默认 ~/.jimi/memory）
+     */
+    private String storagePath = "";
+
+    /**
+     * MEMORY.md 最大 Token 数限制
+     */
+    private int maxMemoryTokens = 2000;
+
+    /**
+     * 是否自动提取记忆（Phase 2 使用）
      */
     private boolean autoExtract = true;
 
     /**
-     * 是否自动注入相关知识到上下文
-     * 默认开启（启用长期记忆时生效）
+     * 是否自动整理记忆（Phase 5 使用）
      */
-    private boolean autoInject = true;
+    private boolean autoConsolidate = true;
 
     /**
-     * 最多保留的知识条目数量
-     * 默认 100 条，超出后按访问频率清理
+     * 自动整理触发条件：最少会话数
      */
-    private int maxInsights = 100;
+    private int consolidateMinSessions = 5;
 
     /**
-     * 知识过期天数
-     * 默认 90 天，超过此期限未访问的知识将被清理
+     * 自动整理触发条件：最少间隔小时数
      */
-    private int insightExpiryDays = 90;
-
-    /**
-     * 最多保留的任务历史数量
-     * 默认 50 条，超出后按时间清理
-     */
-    private int maxTaskHistory = 50;
+    private int consolidateMinHours = 24;
 }

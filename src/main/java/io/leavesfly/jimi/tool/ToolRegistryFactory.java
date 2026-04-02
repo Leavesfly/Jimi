@@ -8,11 +8,13 @@ import io.leavesfly.jimi.core.engine.JimiRuntime;
 import io.leavesfly.jimi.core.sandbox.SandboxValidator;
 import io.leavesfly.jimi.core.session.Session;
 import io.leavesfly.jimi.tool.core.BashTool;
+import io.leavesfly.jimi.tool.core.MemoryTool;
 import io.leavesfly.jimi.tool.core.file.*;
 import io.leavesfly.jimi.tool.core.SkillsTool;
 import io.leavesfly.jimi.tool.core.SetTodoList;
 import io.leavesfly.jimi.tool.core.web.FetchURL;
 import io.leavesfly.jimi.tool.core.web.WebSearch;
+import io.leavesfly.jimi.knowledge.memory.MemoryManager;
 import io.leavesfly.jimi.tool.provider.MCPToolProvider;
 import io.leavesfly.jimi.tool.provider.MetaToolProvider;
 import lombok.extern.slf4j.Slf4j;
@@ -36,15 +38,18 @@ public class ToolRegistryFactory {
     private final ApplicationContext applicationContext;
     private final ObjectMapper objectMapper;
     private final List<ToolProvider> toolProviders;
+    private final MemoryManager memoryManager;
 
     @Autowired
     public ToolRegistryFactory(
             ApplicationContext applicationContext,
             ObjectMapper objectMapper,
-            List<ToolProvider> toolProviders) {
+            List<ToolProvider> toolProviders,
+            MemoryManager memoryManager) {
         this.applicationContext = applicationContext;
         this.objectMapper = objectMapper;
         this.toolProviders = toolProviders;
+        this.memoryManager = memoryManager;
     }
 
     /**
@@ -135,7 +140,8 @@ public class ToolRegistryFactory {
             FetchURL.class,
             WebSearch.class,
             SetTodoList.class,
-            SkillsTool.class  // 技能管理工具（渐进式披露）
+            SkillsTool.class,  // 技能管理工具（渐进式披露）
+            MemoryTool.class   // 记忆管理工具
     );
 
     /**
@@ -201,6 +207,11 @@ public class ToolRegistryFactory {
             if (sandboxValidator != null) bashTool.setSandboxValidator(sandboxValidator);
         } else if (tool instanceof SetTodoList todoList && session != null) {
             todoList.setSession(session);
+        } else if (tool instanceof MemoryTool memoryTool) {
+            memoryTool.setMemoryManager(memoryManager);
+            if (builtinArgs != null && builtinArgs.getJimiWorkDir() != null) {
+                memoryTool.setWorkDirPath(builtinArgs.getJimiWorkDir().toAbsolutePath().toString());
+            }
         }
         // FetchURL、WebSearch 无需额外初始化
 

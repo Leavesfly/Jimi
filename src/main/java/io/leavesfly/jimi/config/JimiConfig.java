@@ -89,9 +89,8 @@ public class JimiConfig {
     @Builder.Default
     private ShellUIConfig shellUI = new ShellUIConfig();
 
-
     /**
-     * 记忆模块配置
+     * 记忆系统配置
      */
     @JsonProperty("memory")
     @Valid

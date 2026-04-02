@@ -13,7 +13,6 @@ import io.leavesfly.jimi.command.custom.CustomCommandRegistry;
 import io.leavesfly.jimi.core.hook.HookContext;
 import io.leavesfly.jimi.core.hook.HookRegistry;
 import io.leavesfly.jimi.core.hook.HookType;
-import io.leavesfly.jimi.knowledge.memory.MemoryRecorder;
 import io.leavesfly.jimi.llm.LLM;
 import io.leavesfly.jimi.llm.LLMFactory;
 import io.leavesfly.jimi.core.session.Session;
@@ -23,6 +22,7 @@ import io.leavesfly.jimi.core.approval.Approval;
 import io.leavesfly.jimi.core.engine.context.Context;
 import io.leavesfly.jimi.tool.ToolRegistry;
 import io.leavesfly.jimi.tool.ToolRegistryFactory;
+import io.leavesfly.jimi.knowledge.memory.MemoryManager;
 import io.leavesfly.jimi.skill.SkillRegistry;
 import io.leavesfly.jimi.wire.Wire;
 import lombok.extern.slf4j.Slf4j;
@@ -61,8 +61,6 @@ public class JimiFactory {
 
     // ==================== AgentExecutor 依赖组件 ====================
     @Autowired
-    private MemoryRecorder memoryRecorder;
-    @Autowired
     private ContextManager contextManager;
     @Autowired(required = false)
     private HookRegistry hookRegistry;
@@ -72,6 +70,9 @@ public class JimiFactory {
     // ==================== 组件提供者（封装可选依赖） ====================
     @Autowired(required = true)
     private SkillRegistry skillRegistry;  // 用于生成技能摘要（渐进式披露）
+
+    @Autowired
+    private MemoryManager memoryManager;  // 记忆系统管理器
 
 
     // ==================== Builder 模式 API ====================
@@ -202,8 +203,9 @@ public class JimiFactory {
                     ? skillRegistry.generateSkillsSummary() 
                     : "";
 
-                // 生成长期记忆摘要
-                String memorySummary = contextManager.getMemorySummary();
+                // 生成长期记忆摘要（Layer 1: MEMORY.md 始终注入 System Prompt）
+                String memorySummary = memoryManager.getMemorySummary(
+                        session.getWorkDir().toAbsolutePath().toString());
 
                 JimiRuntime jimiRuntime = JimiRuntime.builder()
                         .config(config)
@@ -242,8 +244,8 @@ public class JimiFactory {
                         .wire(wire)
                         .toolRegistry(toolRegistry)
                         .compaction(compaction)
-                        .memoryRecorder(memoryRecorder)
                         .contextManager(contextManager)
+                        .memoryManager(memoryManager)
                         .hookRegistry(hookRegistry)
                         .build();
                 JimiEngine soul = JimiEngine.create(executor);

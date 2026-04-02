@@ -106,7 +106,7 @@ public class JimiRuntime {
         private SessionManager sessionManager;  // 用于加载 AGENTS.md
         private String skillsSummary;           // 技能摘要（渐进式披露）
         private String memorySummary;           // 长期记忆摘要
-        
+
         public Builder config(JimiConfig config) {
             this.config = config;
             return this;
@@ -150,7 +150,7 @@ public class JimiRuntime {
             this.memorySummary = memorySummary;
             return this;
         }
-        
+
         /**
          * 构建 JimiRuntime 实例
          * 自动创建 BuiltinSystemPromptArgs

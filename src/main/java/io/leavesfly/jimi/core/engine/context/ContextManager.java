@@ -2,13 +2,12 @@ package io.leavesfly.jimi.core.engine.context;
 
 import io.leavesfly.jimi.core.compaction.Compaction;
 import io.leavesfly.jimi.core.engine.EngineConstants;
-
 import io.leavesfly.jimi.knowledge.memory.MemoryManager;
+import io.leavesfly.jimi.knowledge.memory.MemoryStore;
+import io.leavesfly.jimi.knowledge.memory.TopicMatcher;
 
-import io.leavesfly.jimi.knowledge.memory.ProjectInsight;
-import io.leavesfly.jimi.knowledge.memory.SessionSummary;
-import io.leavesfly.jimi.knowledge.memory.TaskHistory;
 import io.leavesfly.jimi.llm.LLM;
+import io.leavesfly.jimi.llm.message.ContentPart;
 import io.leavesfly.jimi.llm.message.Message;
 import io.leavesfly.jimi.llm.message.MessageRole;
 import io.leavesfly.jimi.llm.message.TextPart;
@@ -21,6 +20,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -29,8 +29,8 @@ import java.util.stream.Collectors;
  * <p>
  * 职责：
  * - 上下文压缩检查和执行
- * - 通过 MemoryManager 注入长期记忆
  * - Skill 匹配和注入
+ * - Topic 文件按需加载（Layer 2 记忆）
  */
 @Slf4j
 @Component
@@ -39,7 +39,7 @@ public class ContextManager {
     private Wire wire;
     @Autowired(required = false)
     private SkillRegistry skillRegistry;
-    @Autowired(required = false)
+    @Autowired
     private MemoryManager memoryManager;
 
     /**
@@ -49,12 +49,6 @@ public class ContextManager {
         this.wire = wire;
     }
 
-    /**
-     * 设置 MemoryManager（用于 Spring Bean 注入）
-     */
-    public void setMemoryManager(MemoryManager memoryManager) {
-        this.memoryManager = memoryManager;
-    }
 
     /**
      * 检查并压缩上下文（如果需要）
@@ -153,76 +147,60 @@ public class ContextManager {
         return skillRegistry.generateSkillsSummary();
     }
 
+
     /**
-     * 获取长期记忆摘要（用于 System Prompt 注入）
-     * 从 MemoryManager 查询最近会话、任务历史、项目知识，格式化为结构化文本
+     * 匹配并注入相关 Topic 文件到上下文
+     * <p>
+     * 对标 Claude Code 的 Layer 2 读取路径：根据用户输入按需加载相关 Topic 文件。
+     * 匹配到的 Topic 内容以 system 消息的形式注入到上下文中。
      *
-     * @return 记忆摘要字符串，如果记忆未启用或无数据则返回空字符串
+     * @param context     上下文
+     * @param workDirPath 工作目录绝对路径
+     * @return 完成的 Mono
      */
-    public String getMemorySummary() {
-        if (memoryManager == null || !memoryManager.isEnabled()) {
-            return "";
-        }
-
-        StringBuilder sb = new StringBuilder();
-        sb.append("<long_term_memory>\n");
-        sb.append("以下是从长期记忆中检索到的历史信息，可帮助你更好地理解项目上下文和用户偏好：\n\n");
-
-        boolean hasContent = false;
-
-        // 最近一次会话摘要
-        try {
-            SessionSummary lastSession = memoryManager.getLastSession().block();
-            if (lastSession != null) {
-                hasContent = true;
-                sb.append("## 上次会话\n");
-                sb.append(lastSession.toShortSummary()).append("\n\n");
+    public Mono<Void> matchAndInjectTopics(Context context, String workDirPath) {
+        return Mono.defer(() -> {
+            if (memoryManager == null || !memoryManager.getConfig().isEnabled()) {
+                return Mono.empty();
             }
-        } catch (Exception e) {
-            log.debug("Failed to load last session summary: {}", e.getMessage());
-        }
 
-        // 最近的任务历史
-        try {
-            List<TaskHistory> recentTasks = memoryManager.getRecentTasks(5).block();
-            if (recentTasks != null && !recentTasks.isEmpty()) {
-                hasContent = true;
-                sb.append("## 最近任务\n");
-                for (TaskHistory task : recentTasks) {
-                    sb.append("- ").append(task.getUserQuery());
-                    if (task.getSummary() != null && !task.getSummary().isEmpty()) {
-                        sb.append(" → ").append(task.getSummary());
-                    }
-                    sb.append(" [").append(task.getResultStatus()).append("]\n");
+            try {
+                String userQuery = extractUserQuery(context);
+                if (userQuery == null || userQuery.isEmpty()) {
+                    return Mono.empty();
                 }
-                sb.append("\n");
-            }
-        } catch (Exception e) {
-            log.debug("Failed to load recent tasks: {}", e.getMessage());
-        }
 
-        // 项目知识
-        try {
-            List<ProjectInsight> insights = memoryManager.queryInsights("", 5).block();
-            if (insights != null && !insights.isEmpty()) {
-                hasContent = true;
-                sb.append("## 项目知识\n");
-                for (ProjectInsight insight : insights) {
-                    sb.append("- [").append(insight.getCategory()).append("] ")
-                            .append(insight.getContent()).append("\n");
+                MemoryStore store = memoryManager.getOrCreateStore(workDirPath);
+                TopicMatcher matcher = new TopicMatcher(store);
+                List<TopicMatcher.MatchedTopic> matchedTopics = matcher.match(userQuery, 2);
+
+                if (matchedTopics.isEmpty()) {
+                    return Mono.empty();
                 }
-                sb.append("\n");
+
+                String topicContent = matcher.loadMatchedTopics(matchedTopics);
+                if (topicContent.isEmpty()) {
+                    return Mono.empty();
+                }
+
+                // 以 assistant 消息注入 Topic 内容
+                List<ContentPart> parts = new ArrayList<>();
+                parts.add(TextPart.of("[Memory Context] " + topicContent));
+                Message topicMessage = Message.builder()
+                        .role(MessageRole.ASSISTANT)
+                        .content(parts)
+                        .build();
+
+                log.info("Injected {} topic(s) into context: {}",
+                        matchedTopics.size(),
+                        matchedTopics.stream().map(TopicMatcher.MatchedTopic::topicName).toList());
+
+                return context.appendMessage(topicMessage);
+            } catch (Exception e) {
+                log.warn("Failed to match and inject topics", e);
+                return Mono.empty();
             }
-        } catch (Exception e) {
-            log.debug("Failed to load project insights: {}", e.getMessage());
-        }
-
-        if (!hasContent) {
-            return "";
-        }
-
-        sb.append("</long_term_memory>");
-        return sb.toString();
+        });
     }
 
     /**

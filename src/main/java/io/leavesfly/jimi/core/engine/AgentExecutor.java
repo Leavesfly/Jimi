@@ -9,8 +9,10 @@ import io.leavesfly.jimi.core.engine.toolcall.ToolErrorTracker;
 import io.leavesfly.jimi.core.hook.HookContext;
 import io.leavesfly.jimi.core.hook.HookRegistry;
 import io.leavesfly.jimi.core.hook.HookType;
+import io.leavesfly.jimi.knowledge.memory.MemoryConsolidator;
+import io.leavesfly.jimi.knowledge.memory.MemoryExtractor;
+import io.leavesfly.jimi.knowledge.memory.MemoryManager;
 
-import io.leavesfly.jimi.knowledge.memory.MemoryRecorder;
 import io.leavesfly.jimi.llm.TokenCounter;
 import io.leavesfly.jimi.llm.message.ContentPart;
 import io.leavesfly.jimi.llm.message.Message;
@@ -52,7 +54,8 @@ public class AgentExecutor {
 
     // ==================== 组件依赖 ====================
     private final ExecutionState executionState;
-    private final MemoryRecorder memoryRecorder;
+    private final MemoryManager memoryManager;
+
     private final ContextManager contextManager;
     private final ToolErrorTracker toolErrorTracker;
     private final HookRegistry hookRegistry;
@@ -68,7 +71,7 @@ public class AgentExecutor {
         this.agentName = agent.getName();
 
         this.executionState = new ExecutionState();
-        this.memoryRecorder = Objects.requireNonNull(builder.memoryRecorder, "memoryRecorder is required");
+        this.memoryManager = builder.memoryManager;
         this.contextManager = Objects.requireNonNull(builder.contextManager, "contextManager is required");
         this.toolErrorTracker = builder.toolErrorTracker != null ? builder.toolErrorTracker : new ToolErrorTracker();
         this.hookRegistry = builder.hookRegistry;
@@ -93,7 +96,6 @@ public class AgentExecutor {
             int userInputTokens = TokenCounter.estimateTokens(userMessage);
 
             executionState.addTokens(userInputTokens);
-            executionState.setCurrentUserQuery(memoryRecorder.extractHighLevelIntent(userInput));
 
             // 触发 USER_PROMPT_SUBMIT hook
             HookContext userPromptHookContext = HookContext.builder()
@@ -107,7 +109,10 @@ public class AgentExecutor {
                     .then(context.appendMessage(userMessage))
                     .then(context.updateTokenCount(context.getTokenCount() + userInputTokens))
                     .doOnSuccess(v -> log.info("Added user input: {} tokens", userInputTokens))
-                    // 4. 执行 ReAct 循环
+                    // 4. 按需注入相关 Topic 文件（Layer 2 记忆）
+                    .then(contextManager.matchAndInjectTopics(
+                            context, jimiRuntime.getWorkDir().toAbsolutePath().toString()))
+                    // 5. 执行 ReAct 循环
                     .then(runReactLoop())
                     // 5. 生命周期回调
                     .doOnSuccess(v -> onExecutionSuccess(userInputText))
@@ -187,8 +192,28 @@ public class AgentExecutor {
 
     private void onExecutionSuccess(String userInputText) {
         log.info("Agent execution completed");
-        memoryRecorder.recordTaskHistory(executionState, context, "success")
-                .subscribe(unused -> {}, error -> log.warn("Failed to record task history", error));
+
+        // 异步提取记忆 + 整理检查（不阻塞主流程）
+        if (memoryManager != null && !isSubagent) {
+            try {
+                String workDirPath = jimiRuntime.getWorkDir().toAbsolutePath().toString();
+
+                // extractMemories: 从本轮执行中提取有价值的记忆
+                MemoryExtractor extractor = new MemoryExtractor(memoryManager);
+                extractor.extract(workDirPath, executionState, context, "success");
+
+                // autoDream: 检查是否需要触发后台整理
+                int sessionTaskCount = executionState.getTasksCompletedInSession();
+                MemoryConsolidator consolidator = new MemoryConsolidator(memoryManager);
+                consolidator.consolidateIfNeeded(workDirPath, sessionTaskCount, jimiRuntime.getLlm())
+                        .subscribe(
+                                unused -> {},
+                                error -> log.warn("Memory consolidation failed", error));
+            } catch (Exception e) {
+                log.warn("Memory extraction/consolidation failed, skipping", e);
+            }
+        }
+
         executionState.incrementTasksCompleted();
 
         // 触发 STOP hook（会话步骤完成）
@@ -203,8 +228,6 @@ public class AgentExecutor {
 
     private void onExecutionError(Throwable exception) {
         log.error("Agent execution failed", exception);
-        memoryRecorder.recordTaskHistory(executionState, context, "failed")
-                .subscribe(unused -> {}, error -> log.warn("Failed to record task history on error", error));
 
         // 触发 ON_ERROR hook
         HookContext errorHookContext = HookContext.builder()
@@ -259,8 +282,9 @@ public class AgentExecutor {
         private Wire wire;
         private ToolRegistry toolRegistry;
         private Compaction compaction;
-        private MemoryRecorder memoryRecorder;
+
         private ContextManager contextManager;
+        private MemoryManager memoryManager;
         private ToolErrorTracker toolErrorTracker;
         private HookRegistry hookRegistry;
         private boolean isSubagent = false;
@@ -271,8 +295,8 @@ public class AgentExecutor {
         public Builder wire(Wire wire) { this.wire = wire; return this; }
         public Builder toolRegistry(ToolRegistry toolRegistry) { this.toolRegistry = toolRegistry; return this; }
         public Builder compaction(Compaction compaction) { this.compaction = compaction; return this; }
-        public Builder memoryRecorder(MemoryRecorder memoryRecorder) { this.memoryRecorder = memoryRecorder; return this; }
         public Builder contextManager(ContextManager contextManager) { this.contextManager = contextManager; return this; }
+        public Builder memoryManager(MemoryManager memoryManager) { this.memoryManager = memoryManager; return this; }
         public Builder toolErrorTracker(ToolErrorTracker tracker) { this.toolErrorTracker = tracker; return this; }
         public Builder hookRegistry(HookRegistry hookRegistry) { this.hookRegistry = hookRegistry; return this; }
         public Builder isSubagent(boolean isSubagent) { this.isSubagent = isSubagent; return this; }

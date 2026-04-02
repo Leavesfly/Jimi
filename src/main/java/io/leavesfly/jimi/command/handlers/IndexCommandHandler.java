@@ -13,6 +13,7 @@ import org.springframework.stereotype.Component;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Date;
 
 /**
  * 索引管理命令处理器
@@ -202,7 +203,7 @@ public class IndexCommandHandler implements CommandHandler {
             context.getOutputFormatter().printInfo("  索引大小: " + formatBytes(stats.getIndexSizeBytes()));
             if (stats.getLastUpdated() > 0) {
                 context.getOutputFormatter().printInfo("  最后更新: " + 
-                    new java.util.Date(stats.getLastUpdated()));
+                    new Date(stats.getLastUpdated()));
             }
         } catch (Exception e) {
             log.error("获取索引统计失败", e);

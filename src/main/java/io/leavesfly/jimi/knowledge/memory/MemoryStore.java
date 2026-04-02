@@ -1,288 +1,221 @@
 package io.leavesfly.jimi.knowledge.memory;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.Collections;
+import java.util.List;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
- * 统一的记忆存储
- * 替代原有的4个独立Store类,使用类型区分不同的记忆
+ * 记忆存储层
+ * <p>
+ * 负责 MEMORY.md 和 Topic files 的文件读写操作。
+ * 存储路径：~/.jimi/memory/{dirHash}/
+ * <p>
+ * 文件结构：
+ * <pre>
+ * ~/.jimi/memory/{dirHash}/
+ * ├── MEMORY.md              ← Layer 1: 索引层，始终注入 System Prompt
+ * └── topics/                ← Layer 2: 主题文件层，按需加载
+ *     ├── project-structure.md
+ *     └── coding-patterns.md
+ * </pre>
  */
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
+@Slf4j
 public class MemoryStore {
-    
+
+    private static final String MEMORY_DIR = "memory";
+    private static final String MEMORY_FILE = "MEMORY.md";
+    private static final String TOPICS_DIR = "topics";
+
+    private final Path memoryRoot;
+
     /**
-     * 版本号
+     * 构造 MemoryStore
+     *
+     * @param workDirPath 工作目录的绝对路径字符串
+     * @param customStoragePath 自定义存储路径（为空则使用默认 ~/.jimi/memory/{dirHash}）
      */
-    @JsonProperty("version")
-    private String version = "1.0";
-    
-    /**
-     * 工作目录
-     */
-    @JsonProperty("workspaceRoot")
-    private String workspaceRoot;
-    
-    /**
-     * 所有记忆条目(按类型分组存储)
-     */
-    @JsonProperty("entries")
-    private Map<MemoryType, List<MemoryEntry>> entries = new ConcurrentHashMap<>();
-    
-    /**
-     * 添加记忆条目
-     */
-    public void add(MemoryEntry entry) {
-        entries.computeIfAbsent(entry.getType(), k -> new ArrayList<>()).add(entry);
-    }
-    
-    /**
-     * 添加或更新错误模式(如果已存在相似的,则更新)
-     */
-    public void addOrUpdateErrorPattern(MemoryEntry entry) {
-        if (entry.getType() != MemoryType.ERROR_PATTERN) {
-            throw new IllegalArgumentException("Entry type must be ERROR_PATTERN");
-        }
-        
-        List<MemoryEntry> patterns = entries.computeIfAbsent(MemoryType.ERROR_PATTERN, k -> new ArrayList<>());
-        
-        String errorMessage = entry.getMetadataString("errorMessage");
-        String context = entry.getMetadataString("context");
-        
-        // 查找是否存在相似模式
-        Optional<MemoryEntry> existing = patterns.stream()
-                .filter(p -> matchesError(p, errorMessage, context))
-                .findFirst();
-        
-        if (existing.isPresent()) {
-            // 更新现有模式
-            MemoryEntry existingEntry = existing.get();
-            Integer count = existingEntry.getMetadataInt("occurrenceCount");
-            existingEntry.setMetadata("occurrenceCount", count != null ? count + 1 : 2);
-            existingEntry.setMetadata("lastSeen", Instant.now());
-            existingEntry.touch();
-            
-            // 如果新模式有更好的解决方案,更新它
-            String newSolution = entry.getMetadataString("solution");
-            if (newSolution != null && !newSolution.isEmpty()) {
-                existingEntry.setMetadata("solution", newSolution);
-            }
+    public MemoryStore(String workDirPath, String customStoragePath) {
+        if (customStoragePath != null && !customStoragePath.isEmpty()) {
+            this.memoryRoot = Paths.get(customStoragePath);
         } else {
-            // 添加新模式
-            entry.setMetadata("occurrenceCount", 1);
-            entry.setMetadata("resolvedCount", 0);
-            entry.setMetadata("firstSeen", Instant.now());
-            entry.setMetadata("lastSeen", Instant.now());
-            patterns.add(entry);
+            String dirHash = Integer.toHexString(workDirPath.hashCode());
+            this.memoryRoot = Paths.get(System.getProperty("user.home"), ".jimi", MEMORY_DIR, dirHash);
+        }
+        ensureDirectories();
+    }
+
+    /**
+     * 读取 MEMORY.md 内容
+     *
+     * @return MEMORY.md 的内容，如果文件不存在则返回空字符串
+     */
+    public String readMemoryMd() {
+        Path memoryFile = memoryRoot.resolve(MEMORY_FILE);
+        if (!Files.isRegularFile(memoryFile)) {
+            return "";
+        }
+        try {
+            return Files.readString(memoryFile).trim();
+        } catch (IOException e) {
+            log.warn("Failed to read MEMORY.md: {}", memoryFile, e);
+            return "";
         }
     }
-    
+
     /**
-     * 检查错误是否匹配
+     * 写入 MEMORY.md 内容（完整覆盖）
+     *
+     * @param content 要写入的内容
      */
-    private boolean matchesError(MemoryEntry entry, String errorMsg, String ctx) {
-        if (errorMsg == null) {
-            return false;
+    public void writeMemoryMd(String content) {
+        Path memoryFile = memoryRoot.resolve(MEMORY_FILE);
+        try {
+            ensureDirectories();
+            Files.writeString(memoryFile, content);
+            log.debug("Written MEMORY.md: {} bytes", content.length());
+        } catch (IOException e) {
+            log.error("Failed to write MEMORY.md: {}", memoryFile, e);
         }
-        
-        String storedErrorMsg = entry.getMetadataString("errorMessage");
-        if (storedErrorMsg == null) {
-            return false;
-        }
-        
-        boolean msgMatch = errorMsg.toLowerCase().contains(storedErrorMsg.toLowerCase());
-        
-        if (ctx != null) {
-            String storedCtx = entry.getMetadataString("context");
-            if (storedCtx != null) {
-                boolean ctxMatch = ctx.toLowerCase().contains(storedCtx.toLowerCase());
-                return msgMatch && ctxMatch;
-            }
-        }
-        
-        return msgMatch;
     }
-    
+
     /**
-     * 获取指定类型的所有记忆
+     * 追加内容到 MEMORY.md
+     *
+     * @param section 要追加的内容段落
      */
-    public List<MemoryEntry> getByType(MemoryType type) {
-        return entries.getOrDefault(type, new ArrayList<>());
+    public void appendToMemoryMd(String section) {
+        String existing = readMemoryMd();
+        String updated = existing.isEmpty() ? section : existing + "\n\n" + section;
+        writeMemoryMd(updated);
     }
-    
+
     /**
-     * 获取最近的记忆(按时间倒序)
+     * 初始化 MEMORY.md（如果不存在则创建默认模板）
+     *
+     * @param workDirPath 工作目录路径（用于显示项目名）
      */
-    public List<MemoryEntry> getRecent(MemoryType type, int limit) {
-        return getByType(type).stream()
-                .sorted(Comparator.comparing(MemoryEntry::getCreatedAt).reversed())
-                .limit(limit)
-                .collect(Collectors.toList());
-    }
-    
-    /**
-     * 按关键词搜索记忆
-     */
-    public List<MemoryEntry> searchByKeyword(MemoryType type, String keyword, int limit) {
-        if (keyword == null || keyword.isEmpty()) {
-            return List.of();
-        }
-        
-        String lowerKeyword = keyword.toLowerCase();
-        
-        return getByType(type).stream()
-                .filter(entry -> matchesKeyword(entry, lowerKeyword))
-                .sorted(Comparator.comparing(MemoryEntry::getCreatedAt).reversed())
-                .limit(limit)
-                .collect(Collectors.toList());
-    }
-    
-    /**
-     * 检查记忆是否匹配关键词
-     */
-    private boolean matchesKeyword(MemoryEntry entry, String keyword) {
-        if (entry.getContent() != null && entry.getContent().toLowerCase().contains(keyword)) {
-            return true;
-        }
-        
-        // 搜索元数据
-        for (Object value : entry.getMetadata().values()) {
-            if (value != null && value.toString().toLowerCase().contains(keyword)) {
-                return true;
-            }
-        }
-        
-        return false;
-    }
-    
-    /**
-     * 按时间范围查询
-     */
-    public List<MemoryEntry> getByTimeRange(MemoryType type, Instant startTime, Instant endTime) {
-        return getByType(type).stream()
-                .filter(entry -> {
-                    Instant timestamp = entry.getCreatedAt();
-                    return !timestamp.isBefore(startTime) && !timestamp.isAfter(endTime);
-                })
-                .sorted(Comparator.comparing(MemoryEntry::getCreatedAt).reversed())
-                .collect(Collectors.toList());
-    }
-    
-    /**
-     * 查找匹配的错误模式
-     */
-    public Optional<MemoryEntry> findErrorPattern(String errorMessage, String context) {
-        return getByType(MemoryType.ERROR_PATTERN).stream()
-                .filter(e -> matchesError(e, errorMessage, context))
-                .findFirst();
-    }
-    
-    /**
-     * 记录错误解决成功
-     */
-    public void recordErrorResolution(String errorMessage, String context) {
-        findErrorPattern(errorMessage, context).ifPresent(entry -> {
-            Integer resolvedCount = entry.getMetadataInt("resolvedCount");
-            entry.setMetadata("resolvedCount", resolvedCount != null ? resolvedCount + 1 : 1);
-            entry.touch();
-        });
-    }
-    
-    /**
-     * 获取最常见的错误模式
-     */
-    public List<MemoryEntry> getMostFrequentErrors(int limit) {
-        return getByType(MemoryType.ERROR_PATTERN).stream()
-                .sorted((a, b) -> {
-                    Integer countA = a.getMetadataInt("occurrenceCount");
-                    Integer countB = b.getMetadataInt("occurrenceCount");
-                    return Integer.compare(countB != null ? countB : 0, countA != null ? countA : 0);
-                })
-                .limit(limit)
-                .collect(Collectors.toList());
-    }
-    
-    /**
-     * 获取最后一个会话摘要
-     */
-    public MemoryEntry getLastSession() {
-        List<MemoryEntry> sessions = getByType(MemoryType.SESSION_SUMMARY);
-        if (sessions.isEmpty()) {
-            return null;
-        }
-        return sessions.stream()
-                .max(Comparator.comparing(MemoryEntry::getCreatedAt))
-                .orElse(null);
-    }
-    
-    /**
-     * 清理过期的记忆
-     */
-    public void prune(MemoryType type, int maxSize, int expiryDays) {
-        List<MemoryEntry> memoryList = getByType(type);
-        if (memoryList.isEmpty()) {
+    public void initializeIfAbsent(String workDirPath) {
+        Path memoryFile = memoryRoot.resolve(MEMORY_FILE);
+        if (Files.isRegularFile(memoryFile)) {
             return;
         }
-        
-        // 1. 移除过期记忆
-        Instant expiry = Instant.now().minus(expiryDays, ChronoUnit.DAYS);
-        memoryList.removeIf(entry -> {
-            Instant timestamp = entry.getUpdatedAt() != null ? entry.getUpdatedAt() : entry.getCreatedAt();
-            return timestamp != null && timestamp.isBefore(expiry) && entry.getAccessCount() < 3;
-        });
-        
-        // 2. 如果仍然超限,按重要性排序后保留
-        if (memoryList.size() > maxSize) {
-            List<MemoryEntry> sorted = memoryList.stream()
-                    .sorted((a, b) -> {
-                        // 优先按访问次数,其次按创建时间
-                        int cmp = Integer.compare(b.getAccessCount(), a.getAccessCount());
-                        if (cmp == 0) {
-                            return b.getCreatedAt().compareTo(a.getCreatedAt());
-                        }
-                        return cmp;
+
+        String projectName = Paths.get(workDirPath).getFileName().toString();
+        String now = ZonedDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE);
+
+        String template = "# Project Memory\n\n"
+                + "## Project Overview\n"
+                + "- **Project**: " + projectName + "\n"
+                + "- **Initialized**: " + now + "\n\n"
+                + "## User Preferences\n\n"
+                + "## Key Decisions\n\n"
+                + "## Lessons Learned\n";
+
+        writeMemoryMd(template);
+        log.info("Initialized MEMORY.md for project: {}", projectName);
+    }
+
+    /**
+     * 读取指定 Topic 文件
+     *
+     * @param topicName 主题名称（不含 .md 后缀）
+     * @return 主题文件内容，如果不存在则返回空字符串
+     */
+    public String readTopic(String topicName) {
+        Path topicFile = memoryRoot.resolve(TOPICS_DIR).resolve(topicName + ".md");
+        if (!Files.isRegularFile(topicFile)) {
+            return "";
+        }
+        try {
+            return Files.readString(topicFile).trim();
+        } catch (IOException e) {
+            log.warn("Failed to read topic file: {}", topicFile, e);
+            return "";
+        }
+    }
+
+    /**
+     * 写入 Topic 文件
+     *
+     * @param topicName 主题名称（不含 .md 后缀）
+     * @param content   主题内容
+     */
+    public void writeTopic(String topicName, String content) {
+        Path topicFile = memoryRoot.resolve(TOPICS_DIR).resolve(topicName + ".md");
+        try {
+            Files.createDirectories(topicFile.getParent());
+            Files.writeString(topicFile, content);
+            log.debug("Written topic file: {}", topicFile);
+        } catch (IOException e) {
+            log.error("Failed to write topic file: {}", topicFile, e);
+        }
+    }
+
+    /**
+     * 列出所有 Topic 文件名
+     *
+     * @return Topic 名称列表（不含 .md 后缀）
+     */
+    public List<String> listTopics() {
+        Path topicsDir = memoryRoot.resolve(TOPICS_DIR);
+        if (!Files.isDirectory(topicsDir)) {
+            return Collections.emptyList();
+        }
+        try (Stream<Path> paths = Files.list(topicsDir)) {
+            return paths
+                    .filter(p -> p.toString().endsWith(".md"))
+                    .map(p -> {
+                        String fileName = p.getFileName().toString();
+                        return fileName.substring(0, fileName.length() - 3);
                     })
-                    .limit(maxSize)
                     .collect(Collectors.toList());
-            
-            memoryList.clear();
-            memoryList.addAll(sorted);
+        } catch (IOException e) {
+            log.warn("Failed to list topics: {}", topicsDir, e);
+            return Collections.emptyList();
         }
     }
-    
+
     /**
-     * 清理所有类型的过期记忆
+     * 删除指定 Topic 文件
+     *
+     * @param topicName 主题名称
+     * @return 是否删除成功
      */
-    public void pruneAll(int maxSizePerType, int expiryDays) {
-        for (MemoryType type : MemoryType.values()) {
-            prune(type, maxSizePerType, expiryDays);
+    public boolean deleteTopic(String topicName) {
+        Path topicFile = memoryRoot.resolve(TOPICS_DIR).resolve(topicName + ".md");
+        try {
+            return Files.deleteIfExists(topicFile);
+        } catch (IOException e) {
+            log.warn("Failed to delete topic: {}", topicFile, e);
+            return false;
         }
     }
-    
+
     /**
-     * 获取统计信息
+     * 获取记忆存储根目录
      */
-    public Map<MemoryType, Integer> getStats() {
-        Map<MemoryType, Integer> stats = new HashMap<>();
-        for (Map.Entry<MemoryType, List<MemoryEntry>> entry : entries.entrySet()) {
-            stats.put(entry.getKey(), entry.getValue().size());
-        }
-        return stats;
+    public Path getMemoryRoot() {
+        return memoryRoot;
     }
-    
+
     /**
-     * 获取总记忆数
+     * 确保目录结构存在
      */
-    public int getTotalCount() {
-        return entries.values().stream().mapToInt(List::size).sum();
+    private void ensureDirectories() {
+        try {
+            Files.createDirectories(memoryRoot);
+            Files.createDirectories(memoryRoot.resolve(TOPICS_DIR));
+        } catch (IOException e) {
+            log.error("Failed to create memory directories: {}", memoryRoot, e);
+        }
     }
 }

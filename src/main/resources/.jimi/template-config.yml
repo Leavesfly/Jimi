@@ -186,14 +186,13 @@ graph:
 # ==================== 记忆模块配置 ====================
 
 memory:
-
-  # 长期记忆配置
-  long_term_enabled: true         # 是否启用长期记忆
-  auto_extract: true              # 是否自动从工具结果提取知识
-  auto_inject: true               # 是否自动注入相关知识到上下文
-  max_insights: 100               # 最多保留的知识条目数量
-  insight_expiry_days: 90         # 知识过期天数
-  max_task_history: 50            # 最多保留的任务历史数量
+  enabled: true                       # 是否启用记忆系统
+  storage_path: ""                    # 记忆存储路径（为空则使用默认 ~/.jimi/memory/{dirHash}）
+  max_memory_tokens: 2000             # MEMORY.md 最大 Token 数限制
+  auto_extract: true                  # 是否自动从每轮对话中提取记忆
+  auto_consolidate: true              # 是否自动整理记忆（autoDream）
+  consolidate_min_sessions: 5         # 自动整理触发条件：最少会话数
+  consolidate_min_hours: 24           # 自动整理触发条件：最少间隔小时数
 
 # ==================== MetaTool 配置 ====================
 

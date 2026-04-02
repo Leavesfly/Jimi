@@ -13,6 +13,8 @@ import io.leavesfly.jimi.core.sandbox.SandboxValidator;
 import io.leavesfly.jimi.exception.ConfigException;
 import io.leavesfly.jimi.knowledge.graph.GraphManager;
 import io.leavesfly.jimi.knowledge.graph.parser.LanguageParserRegistry;
+import io.leavesfly.jimi.knowledge.memory.MemoryConsolidator;
+import io.leavesfly.jimi.knowledge.memory.MemoryManager;
 import io.leavesfly.jimi.knowledge.rag.*;
 import io.leavesfly.jimi.wire.Wire;
 import io.leavesfly.jimi.wire.WireImpl;
@@ -113,10 +115,20 @@ public class JimiConfiguration {
     public MetaToolConfig metaToolConfig(JimiConfig jimiConfig) { return jimiConfig.getMetaTool(); }
 
     @Bean
+    public VectorIndexConfig vectorIndexConfig(JimiConfig jimiConfig) { return jimiConfig.getVectorIndex(); }
+
+    @Bean
     public MemoryConfig memoryConfig(JimiConfig jimiConfig) { return jimiConfig.getMemory(); }
 
     @Bean
-    public VectorIndexConfig vectorIndexConfig(JimiConfig jimiConfig) { return jimiConfig.getVectorIndex(); }
+    public MemoryManager memoryManager(MemoryConfig memoryConfig) {
+        return new MemoryManager(memoryConfig);
+    }
+
+    @Bean
+    public MemoryConsolidator memoryConsolidator(MemoryManager memoryManager) {
+        return new MemoryConsolidator(memoryManager);
+    }
 
     @Bean
     public GraphManager graphManager(GraphConfig graphConfig, LanguageParserRegistry parserRegistry) {
