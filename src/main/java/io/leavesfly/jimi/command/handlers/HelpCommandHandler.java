@@ -53,7 +53,7 @@ public class HelpCommandHandler implements CommandHandler {
         out.println("  /tools          - 显示可用工具列表");
         out.println("  /init           - 分析代码库并生成 AGENTS.md");
         out.println("  /graph, /g      - 代码图管理 (build|stats|clear)");
-        out.println("  /async, /bg     - 异步子代理管理 (list|status|cancel|history)");
+        out.println("  /memory, /mem   - 管理项目长期记忆 (read|topics|search|write|clear)");
         out.println("  /clear, /cls    - 清屏");
         out.println("  /history        - 显示命令历史");
         out.println("  /reset          - 清除上下文历史");

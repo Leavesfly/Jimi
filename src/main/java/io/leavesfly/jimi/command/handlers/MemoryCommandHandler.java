@@ -176,7 +176,7 @@ public class MemoryCommandHandler implements CommandHandler {
         out.println();
 
         MemorySearcher searcher = new MemorySearcher();
-        List<MemorySearcher.SearchResult> results = searcher.searchAll(query, 10);
+        List<MemorySearcher.SearchResult> results = searcher.searchAll(query, 5);
 
         if (results.isEmpty()) {
             out.println("  未找到匹配结果。");
