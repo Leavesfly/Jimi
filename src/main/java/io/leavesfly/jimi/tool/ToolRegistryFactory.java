@@ -210,7 +210,12 @@ public class ToolRegistryFactory {
         } else if (tool instanceof MemoryTool memoryTool) {
             memoryTool.setMemoryManager(memoryManager);
             if (builtinArgs != null && builtinArgs.getJimiWorkDir() != null) {
-                memoryTool.setWorkDirPath(builtinArgs.getJimiWorkDir().toAbsolutePath().toString());
+                String workDir = builtinArgs.getJimiWorkDir().toAbsolutePath().toString();
+                memoryTool.setWorkDirPath(workDir);
+                // 设置 sessionsDir（Layer 3: 会话记录搜索）
+                String dirHash = Integer.toHexString(workDir.hashCode());
+                memoryTool.setSessionsDir(
+                        java.nio.file.Paths.get(System.getProperty("user.home"), ".jimi", "sessions", dirHash));
             }
         }
         // FetchURL、WebSearch 无需额外初始化

@@ -37,28 +37,28 @@ public class MemoryConsolidator {
     private static final String LAST_CONSOLIDATION_FILE = ".last_consolidation";
 
     private static final String CONSOLIDATION_PROMPT = """
-        You are a memory consolidation assistant. Your task is to organize and consolidate project memory.
+        你是一个记忆整理助手。你的任务是整理和合并项目记忆。
         
-        ## Current MEMORY.md Content
-        
-        %s
-        
-        ## Recent Session Insights
+        ## 当前 MEMORY.md 内容
         
         %s
         
-        ## Instructions
+        ## 近期会话洞察
         
-        Please consolidate the memory by:
-        1. Merging duplicate or similar entries
-        2. Removing outdated information
-        3. Keeping the most important and recent insights
-        4. Maintaining the existing section structure (Project Overview, User Preferences, Key Decisions, Lessons Learned)
-        5. Ensuring the total content stays concise (under 2000 tokens)
-        6. Preserving the Markdown format with ## section headers
+        %s
         
-        Output ONLY the consolidated MEMORY.md content, starting with "# Project Memory".
-        Do not include any explanation or commentary.
+        ## 整理要求
+        
+        请按照以下规则整理记忆：
+        1. 合并重复或相似的条目
+        2. 移除过时的信息
+        3. 保留最重要和最新的洞察
+        4. 维持现有的章节结构（项目概览、用户偏好、关键决策、经验教训）
+        5. 确保总内容保持精炼（不超过 2000 tokens）
+        6. 保持 Markdown 格式，使用 ## 作为章节标题
+        
+        仅输出整理后的 MEMORY.md 内容，以 "# Project Memory" 开头。
+        不要包含任何解释或评论。
         """;
 
     private final MemoryManager memoryManager;

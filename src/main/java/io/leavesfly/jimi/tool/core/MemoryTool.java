@@ -3,6 +3,7 @@ package io.leavesfly.jimi.tool.core;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyDescription;
 import io.leavesfly.jimi.memory.MemoryManager;
+import io.leavesfly.jimi.memory.MemorySearcher;
 import io.leavesfly.jimi.memory.MemoryStore;
 import io.leavesfly.jimi.tool.SyncTool;
 import io.leavesfly.jimi.tool.ToolResult;
@@ -15,7 +16,9 @@ import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Component;
 
+import java.nio.file.Path;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * 记忆管理工具
@@ -27,6 +30,7 @@ import java.util.List;
  *   <li>read - 读取 MEMORY.md 完整内容</li>
  *   <li>write - 覆盖写入指定 section 的内容</li>
  *   <li>append - 向指定 section 追加条目</li>
+ *   <li>search - 搜索历史会话记录（Layer 3）</li>
  *   <li>list_topics - 列出所有 Topic 文件</li>
  *   <li>read_topic - 读取指定 Topic 文件内容</li>
  *   <li>write_topic - 写入 Topic 文件</li>
@@ -43,6 +47,7 @@ public class MemoryTool extends SyncTool<MemoryTool.Params> {
             + "- read: 读取当前项目的完整记忆内容（MEMORY.md）\n"
             + "- write: 覆盖写入指定 section 的内容（如 'User Preferences'、'Key Decisions'）\n"
             + "- append: 向指定 section 追加一条记忆条目\n"
+            + "- search: 搜索历史会话记录（需要 query 参数）\n"
             + "- list_topics: 列出所有主题文件\n"
             + "- read_topic: 读取指定主题文件的内容\n"
             + "- write_topic: 写入主题文件\n\n"
@@ -50,6 +55,7 @@ public class MemoryTool extends SyncTool<MemoryTool.Params> {
 
     private MemoryManager memoryManager;
     private String workDirPath;
+    private Path sessionsDir;
 
     public MemoryTool() {
         super(NAME, DESCRIPTION, Params.class);
@@ -64,6 +70,10 @@ public class MemoryTool extends SyncTool<MemoryTool.Params> {
 
     public void setWorkDirPath(String workDirPath) {
         this.workDirPath = workDirPath;
+    }
+
+    public void setSessionsDir(Path sessionsDir) {
+        this.sessionsDir = sessionsDir;
     }
 
     @Override
@@ -85,11 +95,12 @@ public class MemoryTool extends SyncTool<MemoryTool.Params> {
             case "read" -> handleRead();
             case "write" -> handleWrite(params);
             case "append" -> handleAppend(params);
+            case "search" -> handleSearch(params);
             case "list_topics" -> handleListTopics();
             case "read_topic" -> handleReadTopic(params);
             case "write_topic" -> handleWriteTopic(params);
             default -> ToolResult.error(
-                    "Unknown action: " + action + ". Supported: read, write, append, list_topics, read_topic, write_topic",
+                    "Unknown action: " + action + ". Supported: read, write, append, search, list_topics, read_topic, write_topic",
                     "未知操作");
         };
     }
@@ -130,6 +141,29 @@ public class MemoryTool extends SyncTool<MemoryTool.Params> {
                 "Successfully appended to section '" + params.getSection() + "': " + params.getContent(),
                 "记忆已追加",
                 "追加到 " + params.getSection());
+    }
+
+    private ToolResult handleSearch(Params params) {
+        if (params.getQuery() == null || params.getQuery().isBlank()) {
+            return ToolResult.error("query is required for search action", "缺少 query");
+        }
+
+        MemorySearcher searcher = new MemorySearcher();
+        // 优先搜索当前工作目录的会话，同时也搜索所有工作目录
+        List<MemorySearcher.SearchResult> results = searcher.searchAll(params.getQuery(), 5);
+
+        if (results.isEmpty()) {
+            return ToolResult.ok("No results found for: " + params.getQuery(), "无搜索结果");
+        }
+
+        String formatted = results.stream()
+                .map(MemorySearcher.SearchResult::format)
+                .collect(Collectors.joining("\n\n"));
+
+        return ToolResult.ok(
+                "Found " + results.size() + " result(s):\n\n" + formatted,
+                "搜索完成",
+                "搜索到 " + results.size() + " 条结果");
     }
 
     private ToolResult handleListTopics() {
@@ -185,7 +219,7 @@ public class MemoryTool extends SyncTool<MemoryTool.Params> {
     public static class Params {
 
         @JsonProperty("action")
-        @JsonPropertyDescription("操作类型：read（读取记忆）、write（覆盖写入 section）、append（追加条目）、list_topics（列出主题）、read_topic（读取主题）、write_topic（写入主题）")
+        @JsonPropertyDescription("操作类型：read（读取记忆）、write（覆盖写入 section）、append（追加条目）、search（搜索历史会话）、list_topics（列出主题）、read_topic（读取主题）、write_topic（写入主题）")
         private String action;
 
         @JsonProperty("section")
@@ -195,6 +229,10 @@ public class MemoryTool extends SyncTool<MemoryTool.Params> {
         @JsonProperty("content")
         @JsonPropertyDescription("要写入或追加的内容")
         private String content;
+
+        @JsonProperty("query")
+        @JsonPropertyDescription("搜索关键词，用于 search 操作")
+        private String query;
 
         @JsonProperty("topic_name")
         @JsonPropertyDescription("主题文件名称（不含 .md 后缀），用于 read_topic/write_topic 操作")
