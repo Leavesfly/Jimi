@@ -1,4 +1,4 @@
-package io.leavesfly.jimi.knowledge.memory;
+package io.leavesfly.jimi.memory;
 
 import io.leavesfly.jimi.core.engine.ExecutionState;
 import io.leavesfly.jimi.core.engine.context.Context;

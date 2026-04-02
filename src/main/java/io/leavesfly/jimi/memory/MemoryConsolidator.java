@@ -1,10 +1,9 @@
-package io.leavesfly.jimi.knowledge.memory;
+package io.leavesfly.jimi.memory;
 
 import io.leavesfly.jimi.config.info.MemoryConfig;
 import io.leavesfly.jimi.llm.LLM;
 import io.leavesfly.jimi.llm.message.Message;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
 import java.io.IOException;

@@ -22,7 +22,7 @@ import io.leavesfly.jimi.core.approval.Approval;
 import io.leavesfly.jimi.core.engine.context.Context;
 import io.leavesfly.jimi.tool.ToolRegistry;
 import io.leavesfly.jimi.tool.ToolRegistryFactory;
-import io.leavesfly.jimi.knowledge.memory.MemoryManager;
+import io.leavesfly.jimi.memory.MemoryManager;
 import io.leavesfly.jimi.skill.SkillRegistry;
 import io.leavesfly.jimi.wire.Wire;
 import lombok.extern.slf4j.Slf4j;

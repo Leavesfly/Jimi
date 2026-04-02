@@ -1,5 +1,7 @@
 package io.leavesfly.jimi.knowledge.memory;
 
+import io.leavesfly.jimi.memory.MemoryStore;
+import io.leavesfly.jimi.memory.TopicMatcher;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;

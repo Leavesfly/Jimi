@@ -1,7 +1,7 @@
 package io.leavesfly.jimi.tool;
 
 import io.leavesfly.jimi.config.info.MemoryConfig;
-import io.leavesfly.jimi.knowledge.memory.MemoryManager;
+import io.leavesfly.jimi.memory.MemoryManager;
 import io.leavesfly.jimi.tool.core.MemoryTool;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

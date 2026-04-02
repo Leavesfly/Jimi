@@ -9,9 +9,9 @@ import io.leavesfly.jimi.core.engine.toolcall.ToolErrorTracker;
 import io.leavesfly.jimi.core.hook.HookContext;
 import io.leavesfly.jimi.core.hook.HookRegistry;
 import io.leavesfly.jimi.core.hook.HookType;
-import io.leavesfly.jimi.knowledge.memory.MemoryConsolidator;
-import io.leavesfly.jimi.knowledge.memory.MemoryExtractor;
-import io.leavesfly.jimi.knowledge.memory.MemoryManager;
+import io.leavesfly.jimi.memory.MemoryConsolidator;
+import io.leavesfly.jimi.memory.MemoryExtractor;
+import io.leavesfly.jimi.memory.MemoryManager;
 
 import io.leavesfly.jimi.llm.TokenCounter;
 import io.leavesfly.jimi.llm.message.ContentPart;

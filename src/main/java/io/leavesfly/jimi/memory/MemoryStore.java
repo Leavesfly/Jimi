@@ -1,4 +1,4 @@
-package io.leavesfly.jimi.knowledge.memory;
+package io.leavesfly.jimi.memory;
 
 import lombok.extern.slf4j.Slf4j;
 

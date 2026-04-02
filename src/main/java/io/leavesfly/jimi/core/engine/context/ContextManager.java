@@ -2,9 +2,9 @@ package io.leavesfly.jimi.core.engine.context;
 
 import io.leavesfly.jimi.core.compaction.Compaction;
 import io.leavesfly.jimi.core.engine.EngineConstants;
-import io.leavesfly.jimi.knowledge.memory.MemoryManager;
-import io.leavesfly.jimi.knowledge.memory.MemoryStore;
-import io.leavesfly.jimi.knowledge.memory.TopicMatcher;
+import io.leavesfly.jimi.memory.MemoryManager;
+import io.leavesfly.jimi.memory.MemoryStore;
+import io.leavesfly.jimi.memory.TopicMatcher;
 
 import io.leavesfly.jimi.llm.LLM;
 import io.leavesfly.jimi.llm.message.ContentPart;

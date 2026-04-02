@@ -2,8 +2,8 @@ package io.leavesfly.jimi.tool.core;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyDescription;
-import io.leavesfly.jimi.knowledge.memory.MemoryManager;
-import io.leavesfly.jimi.knowledge.memory.MemoryStore;
+import io.leavesfly.jimi.memory.MemoryManager;
+import io.leavesfly.jimi.memory.MemoryStore;
 import io.leavesfly.jimi.tool.SyncTool;
 import io.leavesfly.jimi.tool.ToolResult;
 import lombok.AllArgsConstructor;

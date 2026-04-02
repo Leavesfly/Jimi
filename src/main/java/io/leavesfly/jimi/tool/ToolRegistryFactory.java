@@ -14,7 +14,7 @@ import io.leavesfly.jimi.tool.core.SkillsTool;
 import io.leavesfly.jimi.tool.core.SetTodoList;
 import io.leavesfly.jimi.tool.core.web.FetchURL;
 import io.leavesfly.jimi.tool.core.web.WebSearch;
-import io.leavesfly.jimi.knowledge.memory.MemoryManager;
+import io.leavesfly.jimi.memory.MemoryManager;
 import io.leavesfly.jimi.tool.provider.MCPToolProvider;
 import io.leavesfly.jimi.tool.provider.MetaToolProvider;
 import lombok.extern.slf4j.Slf4j;
