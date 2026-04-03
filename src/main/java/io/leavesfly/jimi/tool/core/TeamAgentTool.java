@@ -1,9 +1,13 @@
-package io.leavesfly.jimi.team;
+package io.leavesfly.jimi.tool.core;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyDescription;
 import io.leavesfly.jimi.core.agent.AgentSpec;
 import io.leavesfly.jimi.core.engine.JimiRuntime;
+import io.leavesfly.jimi.team.TeamManager;
+import io.leavesfly.jimi.team.TeamSpec;
+import io.leavesfly.jimi.team.TeamTaskSpec;
+import io.leavesfly.jimi.team.TeammateSpec;
 import io.leavesfly.jimi.tool.AbstractTool;
 import io.leavesfly.jimi.tool.ToolResult;
 import lombok.AllArgsConstructor;
