@@ -240,12 +240,7 @@ public class MemoryCommandHandler implements CommandHandler {
      * 获取工作目录路径
      */
     private String getWorkDirPath(CommandContext context) {
-        try {
-            return context.getSoul().getRuntime().getWorkDir().toAbsolutePath().toString();
-        } catch (Exception e) {
-            log.debug("Failed to get work dir from context", e);
-            return null;
-        }
+        return context.getEngineClient().getWorkDir().toAbsolutePath().toString();
     }
 
     /**

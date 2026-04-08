@@ -29,7 +29,7 @@ public class CompactCommandHandler implements CommandHandler {
         OutputFormatter out = context.getOutputFormatter();
         
         try {
-            int checkpoints = context.getSoul().getContext().getnCheckpoints();
+            int checkpoints = context.getEngineClient().getContextInfo().getCheckpointCount();
             
             if (checkpoints == 0) {
                 out.printInfo("上下文为空，无需压缩");

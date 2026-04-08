@@ -3,6 +3,7 @@ package io.leavesfly.jimi.command.handlers;
 import io.leavesfly.jimi.command.CommandContext;
 import io.leavesfly.jimi.command.CommandHandler;
 import io.leavesfly.jimi.ui.shell.output.OutputFormatter;
+import io.leavesfly.jimi.wire.message.request.ContextQueryRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -29,7 +30,7 @@ public class ResetCommandHandler implements CommandHandler {
         OutputFormatter out = context.getOutputFormatter();
         
         try {
-            int checkpoints = context.getSoul().getContext().getnCheckpoints();
+            int checkpoints = context.getEngineClient().getContextInfo().getCheckpointCount();
             
             if (checkpoints == 0) {
                 out.printInfo("上下文已经为空");
@@ -37,7 +38,7 @@ public class ResetCommandHandler implements CommandHandler {
             }
             
             // 回退到最初状态
-            context.getSoul().getContext().revertTo(0).block();
+            context.getEngineClient().resetContext().block();
             
             out.printSuccess("✅ 上下文已清除");
             out.printInfo("已回退到初始状态，所有历史消息已清空");

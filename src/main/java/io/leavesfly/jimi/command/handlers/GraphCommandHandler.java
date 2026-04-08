@@ -94,11 +94,8 @@ public class GraphCommandHandler implements CommandHandler {
             return;
         }
         
-        // 设置工作目录（从 JimiRuntime 获取）
-        if (context.getSoul() != null && context.getSoul().getRuntime() != null) {
-            Path workDir = context.getSoul().getRuntime().getWorkDir();
-            graphManager.setWorkDir(workDir);
-        }
+        // 设置工作目录（从 EngineClient 获取）
+        graphManager.setWorkDir(context.getEngineClient().getWorkDir());
         
         // 解析子命令
         String[] args = context.getArgs();
@@ -168,12 +165,8 @@ public class GraphCommandHandler implements CommandHandler {
         if (args.length > 1) {
             projectPath = Paths.get(args[1]);
         } else {
-            // 默认使用工作目录（从 JimiRuntime 获取）
-            if (context.getSoul() != null && context.getSoul().getRuntime() != null) {
-                projectPath = context.getSoul().getRuntime().getWorkDir();
-            } else {
-                projectPath = Paths.get(System.getProperty("user.dir"));
-            }
+            // 默认使用工作目录（从 EngineClient 获取）
+            projectPath = context.getEngineClient().getWorkDir();
         }
         
         if (!projectPath.toFile().exists()) {

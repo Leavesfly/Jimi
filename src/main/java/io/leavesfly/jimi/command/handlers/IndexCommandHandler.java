@@ -92,9 +92,7 @@ public class IndexCommandHandler implements CommandHandler {
 
     private void handleBuild(CommandContext context, String[] args) {
         // 解析参数
-        String targetPath = args.length > 1 ? args[1] : 
-                (context.getSoul() != null && context.getSoul().getRuntime() != null 
-                        ? context.getSoul().getRuntime().getWorkDir().toString() : ".");
+        String targetPath = args.length > 1 ? args[1] : context.getEngineClient().getWorkDir().toString();
     
         context.getOutputFormatter().printInfo("🔨 开始构建索引...");
         context.getOutputFormatter().printInfo("   目标路径: " + targetPath);

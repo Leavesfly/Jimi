@@ -1,6 +1,6 @@
 package io.leavesfly.jimi.command.wiki;
 
-import io.leavesfly.jimi.core.engine.Engine;
+import io.leavesfly.jimi.client.EngineClient;
 import lombok.Builder;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
@@ -49,12 +49,12 @@ public class WikiGenerator {
      * 构建提示词后完全交给 Agent 引擎自主完成。Agent 会利用工具链
      * 分析项目代码、规划文档结构、生成文档内容并写入文件。
      *
-     * @param wikiPath Wiki 目录路径
-     * @param workDir  工作目录
-     * @param engine   Agent 引擎实例
+     * @param wikiPath     Wiki 目录路径
+     * @param workDir      工作目录
+     * @param engineClient EngineClient 实例（通过 Wire 消息驱动引擎执行）
      * @return 生成任务的 Future
      */
-    public CompletableFuture<GenerationResult> generateWiki(Path wikiPath, String workDir, Engine engine) {
+    public CompletableFuture<GenerationResult> generateWiki(Path wikiPath, String workDir, EngineClient engineClient) {
         return CompletableFuture.supplyAsync(() -> {
             GenerationResult result = new GenerationResult();
             result.startTime = System.currentTimeMillis();
@@ -68,8 +68,8 @@ public class WikiGenerator {
                 // 构建提示词，完全交给 Agent 引擎自主完成
                 String prompt = buildWikiGenerationPrompt(wikiPath, workDir);
                 
-                // 执行：Agent 引擎会自主分析代码、规划文档、生成并写入文件
-                engine.run(prompt).block();
+                // 执行：通过 EngineClient 驱动 Agent 引擎自主分析代码、规划文档、生成并写入文件
+                engineClient.runCommand(prompt).block();
                 
                 // 统计生成结果
                 countGeneratedDocuments(wikiPath, result);

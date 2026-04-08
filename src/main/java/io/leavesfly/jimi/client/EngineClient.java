@@ -2,10 +2,11 @@ package io.leavesfly.jimi.client;
 
 import io.leavesfly.jimi.config.info.ShellUIConfig;
 import io.leavesfly.jimi.config.info.ThemeConfig;
-import io.leavesfly.jimi.core.JimiEngine;
 import io.leavesfly.jimi.llm.message.ContentPart;
 import io.leavesfly.jimi.tool.ToolResult;
 import io.leavesfly.jimi.wire.message.WireMessage;
+import io.leavesfly.jimi.wire.message.request.ContextQueryRequest;
+import io.leavesfly.jimi.wire.message.request.RuntimeInfoQueryRequest;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -105,6 +106,42 @@ public interface EngineClient {
      */
     int getHistorySize();
 
+    /**
+     * 获取所有已注册工具的名称列表
+     *
+     * @return 工具名称列表
+     */
+    List<String> getToolNames();
+
+    /**
+     * 获取上下文信息（Token数、历史消息数、检查点数）
+     *
+     * @return 上下文信息
+     */
+    ContextQueryRequest.ContextInfo getContextInfo();
+
+    /**
+     * 重置上下文（清空历史消息，回退到初始状态）
+     *
+     * @return 完成的 Mono
+     */
+    Mono<Void> resetContext();
+
+    /**
+     * 获取运行时信息（LLM 状态、会话信息、工作目录等）
+     *
+     * @return 运行时信息
+     */
+    RuntimeInfoQueryRequest.RuntimeInfo getRuntimeInfo();
+
+    /**
+     * 更新主题配置
+     *
+     * @param themeName   主题名称
+     * @param themeConfig 主题配置
+     */
+    void updateTheme(String themeName, ThemeConfig themeConfig);
+
     // ==================== 会话管理 ====================
 
     /**
@@ -129,16 +166,4 @@ public interface EngineClient {
      */
     Flux<WireMessage> subscribe();
 
-    // ==================== 过渡期兼容方法（后续移除） ====================
-
-    /**
-     * 获取底层JimiEngine实例（仅用于过渡期，后续将移除）
-     * <p>
-     * 注意：新代码不应使用此方法，应使用EngineClient的其他方法
-     *
-     * @return JimiEngine实例
-     * @deprecated 仅用于过渡期兼容，后续版本将移除
-     */
-    @Deprecated
-    JimiEngine getUnderlyingEngine();
 }

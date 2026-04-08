@@ -31,7 +31,7 @@ public class ToolsCommandHandler implements CommandHandler {
         out.println();
         out.printSuccess("可用工具列表:");
         
-        List<String> toolNames = new ArrayList<>(context.getSoul().getToolRegistry().getToolNames());
+        List<String> toolNames = new ArrayList<>(context.getEngineClient().getToolNames());
         toolNames.sort(String::compareTo);
         
         // 按类别分组

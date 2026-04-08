@@ -94,7 +94,7 @@ public class WikiCommandHandler implements CommandHandler {
 
         try {
             // 获取工作目录
-            String workDir = context.getSoul().getRuntime().getWorkDir().toString();
+            String workDir = context.getEngineClient().getWorkDir().toString();
             Path wikiPath = Path.of(workDir, WIKI_DIR_NAME);
 
             // 检查Wiki目录是否已存在（幂等性检查）
@@ -122,9 +122,9 @@ public class WikiCommandHandler implements CommandHandler {
 
                 long startTime = System.currentTimeMillis();
 
-                // 通过 Agent 引擎驱动生成
+                // 通过 EngineClient 驱动 Agent 引擎生成
                 WikiGenerator.GenerationResult result = wikiGenerator
-                        .generateWiki(wikiPath, workDir, context.getSoul())
+                        .generateWiki(wikiPath, workDir, context.getEngineClient())
                         .join();
 
                 long duration = System.currentTimeMillis() - startTime;
@@ -171,7 +171,7 @@ public class WikiCommandHandler implements CommandHandler {
 
         try {
             // 获取工作目录
-            String workDir = context.getSoul().getRuntime().getWorkDir().toString();
+            String workDir = context.getEngineClient().getWorkDir().toString();
             Path wikiPath = Path.of(workDir, WIKI_DIR_NAME);
 
             // 检查Wiki是否存在
@@ -183,7 +183,7 @@ public class WikiCommandHandler implements CommandHandler {
             }
 
             // 请求用户确认（如果不在YOLO模式）
-            if (!context.getSoul().getRuntime().isYoloMode()) {
+            if (!context.getEngineClient().isYoloMode()) {
                 out.println();
                 out.printWarning("⚠️  即将删除Wiki文档系统");
                 out.printInfo("📁 目录：" + wikiPath.toAbsolutePath());
@@ -234,7 +234,7 @@ public class WikiCommandHandler implements CommandHandler {
 
         try {
             // 获取工作目录
-            String workDir = context.getSoul().getRuntime().getWorkDir().toString();
+            String workDir = context.getEngineClient().getWorkDir().toString();
             Path wikiPath = Path.of(workDir, WIKI_DIR_NAME);
 
             // 检查Wiki是否存在

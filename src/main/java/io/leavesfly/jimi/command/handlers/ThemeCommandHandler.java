@@ -33,7 +33,7 @@ public class ThemeCommandHandler implements CommandHandler {
         
         // 如果没有参数，显示当前主题和可用主题
         if (args.length == 0) {
-            String currentTheme = context.getSoul().getRuntime().getConfig().getShellUI().getThemeName();
+            String currentTheme = context.getEngineClient().getShellUIConfig().getThemeName();
             context.getOutputFormatter().printInfo(
                 "当前主题: " + currentTheme + "\n" +
                 "可用主题:\n" +
@@ -62,9 +62,8 @@ public class ThemeCommandHandler implements CommandHandler {
         // 获取新主题
         ThemeConfig newTheme = ThemeConfig.getPresetTheme(themeName);
         
-        // 更新配置（直接修改配置对象）
-        context.getSoul().getRuntime().getConfig().getShellUI().setThemeName(themeName);
-        context.getSoul().getRuntime().getConfig().getShellUI().setTheme(newTheme);
+        // 更新配置
+        context.getEngineClient().updateTheme(themeName, newTheme);
         
         // 更新OutputFormatter的主题（立即生效）
         context.getOutputFormatter().setTheme(newTheme);

@@ -6,9 +6,18 @@ import io.leavesfly.jimi.core.JimiEngine;
 import io.leavesfly.jimi.core.session.Session;
 import io.leavesfly.jimi.core.session.SessionManager;
 import io.leavesfly.jimi.llm.message.ContentPart;
+import io.leavesfly.jimi.llm.message.TextPart;
 import io.leavesfly.jimi.tool.ToolResult;
 import io.leavesfly.jimi.wire.Wire;
 import io.leavesfly.jimi.wire.message.WireMessage;
+import io.leavesfly.jimi.wire.message.request.ContextQueryRequest;
+import io.leavesfly.jimi.wire.message.request.RunCommandRequest;
+import io.leavesfly.jimi.wire.message.request.RuntimeInfoQueryRequest;
+import io.leavesfly.jimi.wire.message.request.SessionResetRequest;
+import io.leavesfly.jimi.wire.message.request.ToolExecuteRequest;
+import io.leavesfly.jimi.wire.message.request.ThemeUpdateRequest;
+import io.leavesfly.jimi.wire.message.request.ToolNamesQueryRequest;
+import io.leavesfly.jimi.wire.message.request.ToolQueryRequest;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
@@ -23,9 +32,9 @@ import java.util.List;
  * - 构造时完成所有配置的获取和缓存（初始化阶段）
  * - 运行时通过Wire消息与引擎交互（运行阶段）
  * <p>
- * 过渡期设计：
- * - 内部委托给JimiEngine实现功能
- * - 后续可改为纯Wire消息驱动
+ * 纯Wire消息驱动：
+ * - 所有运行时操作通过Wire请求-响应消息与Engine交互
+ * - 不直接持有或调用JimiEngine实例
  */
 @Slf4j
 public class WireEngineClient implements EngineClient {
@@ -39,25 +48,24 @@ public class WireEngineClient implements EngineClient {
     private final ThemeConfig themeConfig;
     private final boolean yoloMode;
 
-    // ==================== 内部委托（过渡期使用） ====================
-    private final JimiEngine engine;
+    // ==================== 会话管理 ====================
     private final SessionManager sessionManager;
-
-    // ==================== 会话状态 ====================
     private String sessionId;
 
     /**
      * 构造函数 - 初始化阶段完成所有装配
+     * <p>
+     * 初始化时从 engine 获取所有配置并缓存，之后运行时仅通过 Wire 消息与 Engine 交互。
+     * engine 参数仅在构造期间使用，不会被持有。
      *
-     * @param engine         JimiEngine实例
+     * @param engine         JimiEngine实例（仅用于初始化阶段获取配置，不会被持有）
      * @param sessionManager SessionManager实例
      */
     public WireEngineClient(JimiEngine engine, SessionManager sessionManager) {
-        this.engine = engine;
         this.sessionManager = sessionManager;
         this.wire = engine.getWire();
 
-        // 初始化时获取所有配置，后续不再访问engine获取这些配置
+        // 初始化时获取所有配置，后续不再访问engine
         this.agentName = engine.getAgent() != null ? engine.getAgent().getName() : "default";
         this.modelName = engine.getModel();
         this.workDir = engine.getRuntime().getWorkDir();
@@ -119,56 +127,89 @@ public class WireEngineClient implements EngineClient {
         return yoloMode;
     }
 
-    // ==================== 运行时操作（过渡期直接委托） ====================
+    // ==================== 运行时操作（通过Wire消息驱动） ====================
 
     @Override
     public Mono<Void> runCommand(String input) {
-        return engine.run(input);
+        return runCommand(List.of(TextPart.of(input)));
     }
 
     @Override
     public Mono<Void> runCommand(List<ContentPart> input) {
-        return engine.run(input);
+        return wire.request(new RunCommandRequest(input));
     }
 
     @Override
     public Mono<ToolResult> executeTool(String toolName, String arguments) {
-        return engine.getToolRegistry().execute(toolName, arguments);
+        return wire.request(new ToolExecuteRequest(toolName, arguments));
     }
 
     @Override
     public boolean hasTool(String toolName) {
-        return engine.getToolRegistry().hasTool(toolName);
+        return Boolean.TRUE.equals(wire.request(new ToolQueryRequest(toolName)).block());
     }
 
-    // ==================== 运行时查询（过渡期直接委托） ====================
+    // ==================== 运行时查询（通过Wire消息驱动） ====================
 
     @Override
     public int getTokenCount() {
-        return engine.getContext().getTokenCount();
+        ContextQueryRequest.ContextInfo info = wire.request(new ContextQueryRequest()).block();
+        return info != null ? info.getTokenCount() : 0;
     }
 
     @Override
     public int getHistorySize() {
-        return engine.getContext().getHistory().size();
+        ContextQueryRequest.ContextInfo info = wire.request(new ContextQueryRequest()).block();
+        return info != null ? info.getHistorySize() : 0;
+    }
+
+    @SuppressWarnings("unchecked")
+    @Override
+    public List<String> getToolNames() {
+        List<String> names = wire.request(new ToolNamesQueryRequest()).block();
+        return names != null ? names : List.of();
+    }
+
+    @Override
+    public ContextQueryRequest.ContextInfo getContextInfo() {
+        ContextQueryRequest.ContextInfo info = wire.request(new ContextQueryRequest()).block();
+        return info != null ? info : ContextQueryRequest.ContextInfo.builder()
+                .tokenCount(0).historySize(0).checkpointCount(0).build();
+    }
+
+    @Override
+    public RuntimeInfoQueryRequest.RuntimeInfo getRuntimeInfo() {
+        RuntimeInfoQueryRequest.RuntimeInfo info = wire.request(new RuntimeInfoQueryRequest()).block();
+        return info != null ? info : RuntimeInfoQueryRequest.RuntimeInfo.builder()
+                .llmConfigured(false).workDir("").sessionId("").historyFile("").yoloMode(false).build();
+    }
+
+    @Override
+    public Mono<Void> resetContext() {
+        return wire.request(new SessionResetRequest());
+    }
+
+    @Override
+    public void updateTheme(String themeName, ThemeConfig themeConfig) {
+        wire.request(new ThemeUpdateRequest(themeName, themeConfig)).block();
     }
 
     // ==================== 会话管理 ====================
 
     @Override
     public Mono<Void> newSession() {
-        return Mono.fromRunnable(() -> {
+        return Mono.defer(() -> {
             // 创建新会话
             Session newSession = sessionManager.createSession(workDir);
             this.sessionId = newSession.getId();
 
-            // 重置上下文（清空历史）
-            engine.getContext().revertTo(0).block();
-
-            // 重置 Wire
-            wire.reset();
-
-            log.info("New session created: {}", sessionId);
+            // 通过Wire请求重置上下文
+            return wire.request(new SessionResetRequest())
+                    .doOnSuccess(v -> {
+                        // 重置 Wire（创建新的 Sink）
+                        wire.reset();
+                        log.info("New session created: {}", sessionId);
+                    });
         });
     }
 
@@ -184,11 +225,4 @@ public class WireEngineClient implements EngineClient {
         return wire.asFlux();
     }
 
-    // ==================== 过渡期兼容方法（后续移除） ====================
-
-    @Override
-    @Deprecated
-    public JimiEngine getUnderlyingEngine() {
-        return engine;
-    }
 }

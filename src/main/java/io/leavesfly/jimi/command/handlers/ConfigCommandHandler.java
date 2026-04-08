@@ -3,6 +3,7 @@ package io.leavesfly.jimi.command.handlers;
 import io.leavesfly.jimi.command.CommandContext;
 import io.leavesfly.jimi.command.CommandHandler;
 import io.leavesfly.jimi.ui.shell.output.OutputFormatter;
+import io.leavesfly.jimi.wire.message.request.RuntimeInfoQueryRequest;
 import org.springframework.stereotype.Component;
 
 /**
@@ -25,12 +26,13 @@ public class ConfigCommandHandler implements CommandHandler {
     @Override
     public void execute(CommandContext context) {
         OutputFormatter out = context.getOutputFormatter();
+        RuntimeInfoQueryRequest.RuntimeInfo runtimeInfo = context.getEngineClient().getRuntimeInfo();
         
         out.println();
         out.printSuccess("配置信息:");
         
         // LLM 信息
-        if (context.getSoul().getRuntime().getLlm() != null) {
+        if (runtimeInfo.isLlmConfigured()) {
             out.println("  LLM: ✅ 已配置");
         } else {
             out.println("  LLM: ❌ 未配置");
@@ -38,15 +40,14 @@ public class ConfigCommandHandler implements CommandHandler {
         }
         
         // 工作目录
-        out.println("  工作目录: " + context.getSoul().getRuntime().getBuiltinArgs().getJimiWorkDir());
+        out.println("  工作目录: " + runtimeInfo.getWorkDir());
         
         // 会话信息
-        out.println("  会话 ID: " + context.getSoul().getRuntime().getSession().getId());
-        out.println("  历史文件: " + context.getSoul().getRuntime().getSession().getHistoryFile());
+        out.println("  会话 ID: " + runtimeInfo.getSessionId());
+        out.println("  历史文件: " + runtimeInfo.getHistoryFile());
         
         // YOLO 模式
-        boolean yolo = context.getSoul().getRuntime().getApproval().isYolo();
-        out.println("  YOLO 模式: " + (yolo ? "✅ 开启" : "❌ 关闭"));
+        out.println("  YOLO 模式: " + (runtimeInfo.isYoloMode() ? "✅ 开启" : "❌ 关闭"));
         
         out.println();
     }

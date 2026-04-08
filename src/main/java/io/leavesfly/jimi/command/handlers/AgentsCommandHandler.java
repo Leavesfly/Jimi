@@ -1,17 +1,13 @@
 package io.leavesfly.jimi.command.handlers;
 
-import io.leavesfly.jimi.core.agent.Agent;
 import io.leavesfly.jimi.core.agent.AgentRegistry;
 import io.leavesfly.jimi.core.agent.AgentSpec;
 import io.leavesfly.jimi.command.CommandContext;
 import io.leavesfly.jimi.command.CommandHandler;
-import io.leavesfly.jimi.core.JimiEngine;
-import io.leavesfly.jimi.core.engine.JimiRuntime;
 import io.leavesfly.jimi.ui.shell.output.OutputFormatter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
-import reactor.core.publisher.Mono;
 
 import java.nio.file.Path;
 import java.util.*;
@@ -228,24 +224,21 @@ public class AgentsCommandHandler implements CommandHandler {
 
     /**
      * 切换到指定 Agent
+     * <p>
+     * 当前版本暂不支持运行时切换代理，仅验证代理是否存在并提示用户重启。
      */
-    private void runAgent(CommandContext context, String agentName) throws Exception {
+    private void runAgent(CommandContext context, String agentName) {
         OutputFormatter out = context.getOutputFormatter();
-        JimiEngine soul = context.getSoul();
-        JimiRuntime jimiRuntime = soul.getRuntime();
 
         // 检查当前是否已经是该 Agent
-        if (soul.getAgent() != null && agentName.equals(soul.getAgent().getName())) {
+        if (agentName.equals(context.getEngineClient().getAgentName())) {
             out.println();
             out.printWarning("已经在使用代理: " + agentName);
             out.println();
             return;
         }
 
-        out.println();
-        out.printInfo("准备切换到代理: " + agentName);
-
-        // 查找 Agent 配置路径
+        // 查找 Agent 配置路径，验证代理是否存在
         Path agentPath = findAgentPath(agentName);
         if (agentPath == null) {
             out.println();
@@ -258,59 +251,7 @@ public class AgentsCommandHandler implements CommandHandler {
             return;
         }
 
-        // 加载 Agent
-        log.info("Loading agent: {} from path: {}", agentName, agentPath);
-        Mono<Agent> agentMono = agentRegistry.loadAgent(agentPath, jimiRuntime);
-
-        Agent newAgent;
-        try {
-            newAgent = agentMono.block();
-        } catch (Exception e) {
-            log.error("Failed to load agent: {}", agentName, e);
-            out.println();
-            out.printError("加载代理失败: " + e.getMessage());
-            out.println();
-            return;
-        }
-
-        if (newAgent == null) {
-            out.println();
-            out.printError("加载代理失败: " + agentName);
-            out.println();
-            return;
-        }
-
-        // 显示信息
-        out.println();
-        out.printInfo("📋 代理信息:");
-        out.println("  名称: " + newAgent.getName());
-        out.println("  工具数量: " + newAgent.getTools().size());
-        out.println();
-
-        // 确认（如果不在 YOLO 模式）
-        if (!jimiRuntime.isYoloMode()) {
-            out.printWarning("⚠️  切换代理会:");
-            out.println("  - 更换系统提示词");
-            out.println("  - 更新可用工具集");
-            out.println("  - 保留当前会话历史");
-            out.println();
-
-            String confirmation = context.getLineReader()
-                    .readLine("确认切换? (y/n): ");
-
-            if (!"y".equalsIgnoreCase(confirmation.trim())) {
-                out.println();
-                out.printInfo("取消切换");
-                out.println();
-                return;
-            }
-        }
-
-        // 执行切换
-        log.info("Switching to agent: {}", agentName);
-
-        // 注意：由于 JimiEngine 的设计，Agent 是构造函数参数，无法直接替换
-        // 这里我们需要提示用户重新启动或使用其他方式
+        // 当前版本暂不支持运行时切换代理
         out.println();
         out.printWarning("⚠️  当前版本暂不支持运行时切换代理");
         out.printInfo("请使用以下方式切换代理:");

@@ -32,13 +32,13 @@ public class InitCommandHandler implements CommandHandler {
             out.printStatus("🔍 正在分析代码库...");
             
             // 获取工作目录
-            String workDir = context.getSoul().getRuntime().getWorkDir().toString();
+            String workDir = context.getEngineClient().getWorkDir().toString();
             
             // 构建 INIT 提示词
             String initPrompt = buildInitPrompt(workDir);
             
             // 直接使用当前 Engine 运行分析任务
-            context.getSoul().run(initPrompt).block();
+            context.getEngineClient().runCommand(initPrompt).block();
             
             out.printSuccess("✅ 代码库分析完成！");
             out.printInfo("已生成 AGENTS.md 文件");

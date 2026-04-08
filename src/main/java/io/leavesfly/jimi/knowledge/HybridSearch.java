@@ -1,6 +1,5 @@
 package io.leavesfly.jimi.knowledge;
 
-import io.leavesfly.jimi.core.engine.JimiRuntime;
 import io.leavesfly.jimi.knowledge.query.GraphQuery;
 import io.leavesfly.jimi.knowledge.query.HybridQuery;
 import io.leavesfly.jimi.knowledge.query.RetrievalQuery;
@@ -41,11 +40,6 @@ public class HybridSearch {
     public HybridSearch(GraphManager graphManager, RagManager ragManager) {
         this.graphManager = graphManager;
         this.ragManager = ragManager;
-    }
-    
-    public Mono<Boolean> initialize(JimiRuntime jimiRuntime) {
-        log.info("HybridSearch 初始化完成");
-        return Mono.just(true);
     }
     
     public Mono<HybridResult> search(HybridQuery query) {

@@ -14,6 +14,7 @@ import io.leavesfly.jimi.llm.message.TextPart;
 import io.leavesfly.jimi.tool.ToolRegistry;
 
 import io.leavesfly.jimi.wire.Wire;
+import io.leavesfly.jimi.wire.WireRequestHandler;
 
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Mono;
@@ -42,6 +43,7 @@ public class JimiEngine implements Engine {
 
     // ==================== 内部组件 ====================
     private final AgentExecutor executor;
+    private final WireRequestHandler wireRequestHandler;
 
     /**
      * 私有构造函数
@@ -56,6 +58,9 @@ public class JimiEngine implements Engine {
             executor.getRuntime().getApproval().asFlux().subscribe(executor.getWire()::send);
         }
 
+        // 注册 Wire 请求处理器，监听 Client 发来的请求
+        this.wireRequestHandler = new WireRequestHandler(executor.getWire(), executor);
+        this.wireRequestHandler.start();
     }
 
     /**
