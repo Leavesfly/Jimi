@@ -1,0 +1,8 @@
+name: hello-cmd
+description: A tiny hello command for plugin integration testing
+category: test
+enabled: true
+
+execution:
+  type: script
+  script: "echo 'hello from plugin fixture command'"

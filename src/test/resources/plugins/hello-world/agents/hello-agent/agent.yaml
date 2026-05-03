@@ -1,0 +1,5 @@
+name: hello-agent
+system_prompt: prompt.md
+tools:
+  - WriteFile
+  - ReadFile

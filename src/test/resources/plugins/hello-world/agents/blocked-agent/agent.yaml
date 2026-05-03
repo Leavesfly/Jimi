@@ -1,0 +1,4 @@
+name: blocked-agent
+system_prompt: prompt.md
+tools:
+  - ReadFile

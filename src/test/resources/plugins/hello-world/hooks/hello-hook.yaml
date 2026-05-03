@@ -1,0 +1,13 @@
+name: hello-hook
+description: 示例 Hook，用于 PluginRegistry 测试
+enabled: true
+
+trigger:
+  type: POST_TOOL_USE
+  tools:
+    - WriteFile
+
+execution:
+  type: script
+  script: "echo hello from plugin"
+  async: true

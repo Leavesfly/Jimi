@@ -62,6 +62,9 @@
 - **[12 · 扩展开发指南](12-扩展开发指南.md)**
   自定义 Tool / Agent / Skill / Hook / Command 的完整流程与示例，含调试技巧。
 
+- **[13 · 插件系统与扩展分发](13-插件系统与扩展分发.md)**
+  `PluginRegistry` / `PluginLoader` / `PluginDispatcher` 三件套、5 种 `PluginModuleAdapter`、`PluginInstaller` 原子切换、`/plugin` 命令全集、`VersionRange` 与 doctor 诊断。
+
 ---
 
 ## 🗺️ 速查表
@@ -78,6 +81,7 @@
 | LLM 层 | `io.leavesfly.jimi.llm` | `LLM`、`ChatProvider`、`LLMFactory` |
 | Skills | `io.leavesfly.jimi.skill` | `SkillSpec`、`SkillRegistry`、`SkillLoader` |
 | Hooks | `io.leavesfly.jimi.core.hook` | `HookSpec`、`HookType`、`HookRegistry`、`HookExecutor` |
+| 插件系统 | `io.leavesfly.jimi.plugin` | `PluginRegistry`、`PluginLoader`、`PluginDispatcher`、`PluginInstaller`、`PluginModuleAdapter` |
 | 代码图谱 | `io.leavesfly.jimi.knowledge.graph` | `GraphManager`、`GraphSearchEngine` |
 | RAG | `io.leavesfly.jimi.knowledge.rag` | `RagManager`、`InMemoryVectorStore`、`EmbeddingProvider` |
 | 记忆系统 | `io.leavesfly.jimi.memory` | `MemoryManager`、`MemoryStore`、`MemoryExtractor` |
@@ -98,6 +102,8 @@
 | `<project>/.jimi/hooks/` | 项目级 Hooks | 高 |
 | `~/.jimi/commands/` | 用户级自定义命令 | 中 |
 | `<project>/.jimi/commands/` | 项目级自定义命令 | 高 |
+| `~/.jimi/plugins/<name>/plugin.yaml` | 用户级插件（打包 Skills/Hooks/Commands/MCP/Agents） | 中 |
+| `<project>/.jimi/plugins/<name>/plugin.yaml` | 项目级插件 | 高 |
 | `~/.jimi/config.yml` | LLM / 全局配置（YAML，后缀 `.yml`） | - |
 | `~/.jimi/metadata.json` | 工作目录 → 历史 session 映射 | - |
 | `~/.jimi/sessions/<hash>/<uuid>.jsonl` | 会话历史（按 workDir 哈希分桶，见 `WorkDirMetadata#getSessionsDir`） | - |
@@ -118,6 +124,7 @@
 | [docs/CUSTOM_COMMANDS.md](../docs/CUSTOM_COMMANDS.md) | 自定义命令使用 |
 | [docs/RAG配置指南.md](../docs/RAG配置指南.md) | RAG 配置 |
 | [docs/TECHNICAL_ARCHITECTURE.md](../docs/TECHNICAL_ARCHITECTURE.md) | 完整技术架构 |
+| [docs/PLUGIN_DEVELOPMENT.md](../docs/PLUGIN_DEVELOPMENT.md) | 插件开发用户手册（与本 Wiki 第 13 篇互补） |
 
 本 Wiki 则更聚焦"**开发者视角**"，贴近源码，用于**理解机制、定位代码、二次扩展**。
 

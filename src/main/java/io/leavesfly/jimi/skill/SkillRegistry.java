@@ -103,6 +103,32 @@ public class SkillRegistry {
     }
 
     /**
+     * 反注册一个 Skill（仅内存层面）
+     *
+     * <p>与 {@link #uninstall(String)} 的区别：
+     * <ul>
+     *   <li>{@link #uninstall}：从注册表移除 <b>+</b> 删除用户目录下的 Skill 文件</li>
+     *   <li>{@link #unregister}：仅从注册表移除，<b>不碰磁盘</b>，适用于 Plugin 禁用场景</li>
+     * </ul>
+     *
+     * <p>调用方：{@code io.leavesfly.jimi.plugin.dispatcher.SkillModuleAdapter#unload}。
+     *
+     * @param skillName Skill 名称
+     * @return 是否真的存在并被移除
+     */
+    public boolean unregister(String skillName) {
+        if (skillName == null || skillName.isBlank()) {
+            return false;
+        }
+        SkillSpec removed = index.removeByName(skillName);
+        if (removed != null) {
+            log.debug("Skill '{}' unregistered (scope={})", skillName, removed.getScope());
+            return true;
+        }
+        return false;
+    }
+
+    /**
      * 按名称查找Skill
      *
      * @param name Skill名称

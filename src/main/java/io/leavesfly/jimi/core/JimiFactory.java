@@ -23,6 +23,7 @@ import io.leavesfly.jimi.core.engine.context.Context;
 import io.leavesfly.jimi.tool.ToolRegistry;
 import io.leavesfly.jimi.tool.ToolRegistryFactory;
 import io.leavesfly.jimi.memory.MemoryManager;
+import io.leavesfly.jimi.plugin.PluginRegistry;
 import io.leavesfly.jimi.skill.SkillRegistry;
 import io.leavesfly.jimi.wire.Wire;
 import lombok.extern.slf4j.Slf4j;
@@ -73,6 +74,9 @@ public class JimiFactory {
 
     @Autowired
     private MemoryManager memoryManager;  // 记忆系统管理器
+
+    @Autowired(required = false)
+    private PluginRegistry pluginRegistry;  // 插件注册中心（项目级插件加载）
 
 
     // ==================== Builder 模式 API ====================
@@ -256,6 +260,16 @@ public class JimiFactory {
                         customCommandRegistry.setProjectDirectory(jimiRuntime.getWorkDir());
                     } catch (Exception e) {
                         log.warn("Failed to load project custom commands: {}", e.getMessage());
+                    }
+                }
+
+                // 9.1 加载项目级插件（<project>/.jimi/plugins/）
+                // 项目级插件优先级最高，同名扩展点覆盖 CLASSPATH / USER 层
+                if (pluginRegistry != null) {
+                    try {
+                        pluginRegistry.loadProjectPlugins(jimiRuntime.getWorkDir());
+                    } catch (Exception e) {
+                        log.warn("Failed to load project plugins: {}", e.getMessage());
                     }
                 }
 

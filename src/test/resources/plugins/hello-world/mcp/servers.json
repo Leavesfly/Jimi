@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "hello-mcp": {
+      "command": "echo",
+      "args": ["hello from plugin mcp"]
+    },
+    "blocked-mcp": {
+      "command": "echo",
+      "args": ["this one is not in provides whitelist"]
+    }
+  }
+}

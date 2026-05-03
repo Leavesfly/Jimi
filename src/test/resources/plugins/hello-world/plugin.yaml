@@ -1,0 +1,30 @@
+name: hello-world
+version: 1.0.0
+description: 最小示例插件，用于 PluginRegistry 测试夹具
+
+author: jimi-team
+license: Apache-2.0
+
+compatibility:
+  jimi_version: ">=0.0.1"
+
+provides:
+  skills:
+    - hello-skill
+  hooks:
+    - hello-hook
+  commands:
+    - hello-cmd
+  mcp_servers:
+    - hello-mcp
+  agents:
+    - hello-agent
+
+defaults:
+  enabled: true
+  modules:
+    skills: true
+    hooks: true
+    commands: true
+    mcp: true
+    agents: true
