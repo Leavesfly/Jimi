@@ -139,6 +139,11 @@ public class JimiConfiguration {
         return new SandboxValidator(jimiConfig.getSandbox(), null);
     }
 
+    @Bean
+    public LoopEngineeringConfig loopEngineeringConfig(JimiConfig jimiConfig) {
+        return jimiConfig.getLoopEngineering();
+    }
+
     // ==================== 向量索引相关组件 ====================
 
     /**

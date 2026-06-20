@@ -9,6 +9,7 @@
 ## 📋 目录
 
 - [核心特性](#-核心特性)
+- [Loop Engineering](#-loop-engineering)
 - [快速开始](#-快速开始)
 - [系统架构](#-系统架构)
 - [使用指南](#-使用指南)
@@ -144,6 +145,78 @@ execution:
 - 会话管理：持久化与断点恢复
 - 上下文压缩：智能Token优化
 
+## 🔄 Loop Engineering
+
+> "你不应该再手动 prompt Agent 了，你应该设计循环来自动驱动你的 Agent。"
+
+Jimi 完整支持 Loop Engineering 六大原语，从"人手动驱动 Agent"进化为"系统自动驱动 Agent"。
+
+### /loop — 按间隔重复执行
+
+```bash
+# 每 5 分钟检查编译状态并修复错误
+/loop 5m 检查项目编译状态，如果有错误就修复
+
+# 每小时扫描并处理 TODO
+/loop 1h 扫描 src/main 下的 TODO 注释，选择一个完成它
+
+# 控制循环
+/loop status    # 查看状态
+/loop pause     # 暂停
+/loop resume    # 恢复
+/loop stop      # 停止
+```
+
+### /goal — 目标驱动迭代
+
+设定可验证的目标条件，Agent 持续工作直到条件满足。**验证者和执行者分离**，避免"自己批改自己作业"。
+
+```bash
+# 直到所有测试通过
+/goal 所有 src/test 下的单元测试通过且 lint 无警告
+
+# 直到覆盖率达标
+/goal 测试覆盖率达到 80%
+
+# 复合条件
+/goal mvn test 通过且 checkstyle 无违规且覆盖率 > 80%
+```
+
+安全限制：最大 50 步迭代、60 分钟超时、50 万 token 预算（均可配置）。
+
+### Git Worktree 并行隔离
+
+多 Agent 并行工作时，通过 Git Worktree 实现文件系统级隔离，避免冲突：
+
+```yaml
+# Agent 配置中启用 worktree 隔离
+team:
+  teammates:
+    - teammate_id: dev-auth
+      agent_path: agents/developer
+      isolation: worktree     # 独立 worktree
+    - teammate_id: reviewer
+      agent_path: agents/reviewer
+      isolation: shared       # 共享主目录
+```
+
+### Loop 状态持久化
+
+Loop 的进度自动写入 `.jimi/progress.md`，Agent 上下文被压缩或重置后仍可恢复进度。
+
+### 六大原语支持矩阵
+
+| 原语 | Jimi 实现 | 说明 |
+|------|----------|------|
+| **Automations** | Hooks + `/loop` + `/goal` | 事件驱动 + 定时调度 + 目标迭代 |
+| **Worktrees** | WorktreeManager + SubAgent | 文件系统级 + 上下文级隔离 |
+| **Skills** | SkillRegistry + SKILL.md | 渐进式披露、依赖声明、自动激活 |
+| **Connectors** | MCP (STDIO/HTTP) + Plugin | 连接 GitHub/Linear/Slack/DB |
+| **Sub-agents** | SubAgentTool + TeamAgentTool | Maker/Checker 分离、团队协作 |
+| **State** | MEMORY.md + Session + progress.md | 三层记忆 + 状态文件持久化 |
+
+[详细文档](docs/LOOP_ENGINEERING.md)
+
 ## 🎯 快速开始
 
 ### 环境要求
@@ -213,6 +286,8 @@ cd Jimi
 | `/plugin list` | 插件列表 |
 | `/async list` | 异步任务 |
 | `/memory` | 记忆管理 |
+| `/loop` | Loop 循环调度 |
+| `/goal` | 目标驱动迭代 |
 | `/reset` | 清除上下文 |
 | `/config` | 查看配置 |
 | `/version` | 版本信息 |
@@ -527,6 +602,7 @@ triggers: ["最佳实践", "代码规范", "重构"]
 | [自定义命令](docs/CUSTOM_COMMANDS.md) | 命令扩展指南 |
 | [RAG配置](docs/RAG配置指南.md) | 检索增强配置 |
 | [插件开发](docs/PLUGIN_DEVELOPMENT.md) | 插件开发手册 |
+| [Loop Engineering](docs/LOOP_ENGINEERING.md) | Loop 循环工程指南 |
 | [技术架构](docs/TECHNICAL_ARCHITECTURE.md) | 系统架构详解 |
 | [架构总览](docs/ARCHITECTURE_OVERVIEW.md) | 架构概览 |
 
