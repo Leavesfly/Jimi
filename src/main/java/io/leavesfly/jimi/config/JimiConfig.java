@@ -113,6 +113,14 @@ public class JimiConfig {
     @Builder.Default
     private SandboxConfig sandbox = new SandboxConfig();
 
+    /**
+     * Loop Engineering 配置
+     */
+    @JsonProperty("loop_engineering")
+    @Valid
+    @Builder.Default
+    private LoopEngineeringConfig loopEngineering = new LoopEngineeringConfig();
+
     
     /**
      * 验证配置的一致性
