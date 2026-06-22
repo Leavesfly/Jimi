@@ -65,6 +65,11 @@
 - **[13 · 插件系统与扩展分发](13-插件系统与扩展分发.md)**
   `PluginRegistry` / `PluginLoader` / `PluginDispatcher` 三件套、5 种 `PluginModuleAdapter`、`PluginInstaller` 原子切换、`/plugin` 命令全集、`VersionRange` 与 doctor 诊断。
 
+### 自动化篇
+
+- **[14 · Loop Engineering 循环工程](14-Loop Engineering循环工程.md)**
+  `/loop` 定时调度、`/goal` 目标驱动迭代、`GoalVerifier` Maker/Checker 分离、`WorktreeManager` 并行隔离、`LoopStateManager` 状态持久化。
+
 ---
 
 ## 🗺️ 速查表
@@ -87,6 +92,7 @@
 | 记忆系统 | `io.leavesfly.jimi.memory` | `MemoryManager`、`MemoryStore`、`MemoryExtractor` |
 | MCP | `io.leavesfly.jimi.mcp` | `JsonRpcClient`、`MCPConfig`、`StdIoJsonRpcClient` |
 | 命令系统 | `io.leavesfly.jimi.command` | `CommandRegistry`、`CommandHandler`、`CustomCommandSpec` |
+| Loop Engineering | `io.leavesfly.jimi.core.loop` | `LoopManager`、`GoalVerifier`、`LoopStateManager`、`WorktreeManager` |
 | UI | `io.leavesfly.jimi.ui.shell` | `ShellUI` |
 
 ### 配置目录约定

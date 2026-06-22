@@ -1,5 +1,6 @@
 package io.leavesfly.jimi.command.handlers;
 
+import io.leavesfly.jimi.client.EngineClient;
 import io.leavesfly.jimi.command.CommandContext;
 import io.leavesfly.jimi.command.CommandHandler;
 import io.leavesfly.jimi.config.info.LoopEngineeringConfig;
@@ -7,6 +8,7 @@ import io.leavesfly.jimi.core.loop.GoalVerification;
 import io.leavesfly.jimi.core.loop.GoalVerifier;
 import io.leavesfly.jimi.core.loop.LoopStateManager;
 import io.leavesfly.jimi.ui.shell.output.OutputFormatter;
+import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
@@ -18,6 +20,8 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -47,7 +51,7 @@ public class GoalCommandHandler implements CommandHandler {
     @Autowired
     private LoopEngineeringConfig config;
 
-    private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final ExecutorService executor;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final AtomicBoolean paused = new AtomicBoolean(false);
     private final AtomicInteger iterationCount = new AtomicInteger(0);
@@ -55,6 +59,18 @@ public class GoalCommandHandler implements CommandHandler {
     private volatile String currentGoal;
     private volatile Instant startTime;
     private volatile String stateFile;
+    private volatile EngineClient currentEngineClient;
+    private volatile Path currentWorkDir;
+
+    public GoalCommandHandler() {
+        // 使用 daemon 线程，避免阻止 JVM 退出
+        ThreadFactory daemonFactory = r -> {
+            Thread t = new Thread(r, "goal-executor");
+            t.setDaemon(true);
+            return t;
+        };
+        this.executor = Executors.newSingleThreadExecutor(daemonFactory);
+    }
 
     @Override
     public String getName() {
@@ -124,6 +140,9 @@ public class GoalCommandHandler implements CommandHandler {
         this.iterationCount.set(0);
         this.running.set(true);
         this.paused.set(false);
+        // 缓存 EngineClient 和 workDir，避免将整个 CommandContext 传入后台线程
+        this.currentEngineClient = context.getEngineClient();
+        this.currentWorkDir = workDir;
 
         // 初始化状态文件
         if (config.isStateAutoUpdate()) {
@@ -138,8 +157,10 @@ public class GoalCommandHandler implements CommandHandler {
         out.printInfo("  使用 /goal status 查看进度, /goal stop 终止");
         out.println();
 
-        // 在后台线程启动 goal loop
-        currentGoalTask = executor.submit(() -> runGoalLoop(context, goalCondition));
+        // 在后台线程启动 goal loop（仅传递必要参数，不传递 context）
+        EngineClient client = this.currentEngineClient;
+        Path goalWorkDir = this.currentWorkDir;
+        currentGoalTask = executor.submit(() -> runGoalLoop(client, goalWorkDir, goalCondition));
     }
 
     private void handleStop(OutputFormatter out) {
@@ -151,6 +172,7 @@ public class GoalCommandHandler implements CommandHandler {
         running.set(false);
         if (currentGoalTask != null) {
             currentGoalTask.cancel(true);
+            currentGoalTask = null;
         }
 
         out.println();
@@ -221,14 +243,14 @@ public class GoalCommandHandler implements CommandHandler {
     /**
      * Goal Loop 主循环（在后台线程运行）
      */
-    private void runGoalLoop(CommandContext context, String goalCondition) {
-        Path workDir = context.getEngineClient().getWorkDir();
+    private void runGoalLoop(EngineClient engineClient, Path workDir, String goalCondition) {
         int maxIterations = config.getGoalMaxIterations();
         int verifyInterval = config.getGoalVerifyInterval();
         Duration timeout = Duration.ofMinutes(config.getGoalTimeoutMinutes());
+        long maxTokens = config.getGoalMaxTokens();
 
-        log.info("Goal loop started: condition='{}', maxIter={}, timeout={}m",
-                goalCondition, maxIterations, timeout.toMinutes());
+        log.info("Goal loop started: condition='{}', maxIter={}, timeout={}m, maxTokens={}",
+                goalCondition, maxIterations, timeout.toMinutes(), maxTokens);
 
         try {
             while (running.get()) {
@@ -244,6 +266,15 @@ public class GoalCommandHandler implements CommandHandler {
                     break;
                 }
 
+                // 检查 token 预算
+                if (maxTokens > 0) {
+                    int currentTokens = engineClient.getTokenCount();
+                    if (currentTokens >= maxTokens) {
+                        log.info("Goal loop reached token budget: {} >= {}", currentTokens, maxTokens);
+                        break;
+                    }
+                }
+
                 // 检查最大迭代次数
                 int currentIteration = iterationCount.incrementAndGet();
                 if (currentIteration > maxIterations) {
@@ -256,7 +287,7 @@ public class GoalCommandHandler implements CommandHandler {
                 // 1. 执行者工作一步
                 String workerPrompt = buildWorkerPrompt(goalCondition, currentIteration);
                 try {
-                    context.getEngineClient().runCommand(workerPrompt).block();
+                    engineClient.runCommand(workerPrompt).block();
                 } catch (Exception e) {
                     log.error("Goal iteration #{} execution failed: {}", currentIteration, e.getMessage());
                     continue;
@@ -292,6 +323,45 @@ public class GoalCommandHandler implements CommandHandler {
         } finally {
             running.set(false);
             log.info("Goal loop ended after {} iterations", iterationCount.get());
+        }
+    }
+
+    /**
+     * 停止当前 goal 循环（供外部调用，如 ShellUI 关闭时）
+     */
+    public void stopGoal() {
+        if (!running.get()) {
+            return;
+        }
+        running.set(false);
+        if (currentGoalTask != null) {
+            currentGoalTask.cancel(true);
+            currentGoalTask = null;
+        }
+        log.info("Goal stopped externally after {} iterations", iterationCount.get());
+    }
+
+    /**
+     * 检查是否有 goal 正在运行
+     */
+    public boolean isRunning() {
+        return running.get();
+    }
+
+    /**
+     * Spring 容器关闭时自动清理资源
+     */
+    @PreDestroy
+    public void destroy() {
+        log.info("GoalCommandHandler shutting down...");
+        stopGoal();
+        executor.shutdownNow();
+        try {
+            if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+                log.warn("Goal executor did not terminate within 5s");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
     }
 

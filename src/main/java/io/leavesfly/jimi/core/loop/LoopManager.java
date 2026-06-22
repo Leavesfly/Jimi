@@ -2,6 +2,7 @@ package io.leavesfly.jimi.core.loop;
 
 import io.leavesfly.jimi.client.EngineClient;
 import io.leavesfly.jimi.config.info.LoopEngineeringConfig;
+import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -11,6 +12,7 @@ import java.time.Instant;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -64,8 +66,13 @@ public class LoopManager {
         this.paused.set(false);
         this.running.set(true);
 
-        // 创建调度器
-        scheduler = Executors.newScheduledThreadPool(config.getScheduleThreadPoolSize());
+        // 创建调度器（使用 daemon 线程，避免阻止 JVM 退出）
+        ThreadFactory daemonFactory = r -> {
+            Thread t = new Thread(r, "loop-scheduler");
+            t.setDaemon(true);
+            return t;
+        };
+        scheduler = Executors.newScheduledThreadPool(config.getScheduleThreadPoolSize(), daemonFactory);
         currentLoop = scheduler.scheduleAtFixedRate(
                 this::executeIteration,
                 0,
@@ -84,19 +91,35 @@ public class LoopManager {
             return;
         }
 
-        if (currentLoop != null) {
-            currentLoop.cancel(false);
-            currentLoop = null;
-        }
-        if (scheduler != null) {
-            scheduler.shutdown();
-            scheduler = null;
-        }
-
         running.set(false);
         paused.set(false);
 
+        if (currentLoop != null) {
+            currentLoop.cancel(true); // true: 中断正在执行的任务
+            currentLoop = null;
+        }
+        if (scheduler != null) {
+            scheduler.shutdownNow(); // 强制关闭，不等待任务完成
+            try {
+                if (!scheduler.awaitTermination(5, TimeUnit.SECONDS)) {
+                    log.warn("Loop scheduler did not terminate within 5s");
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            scheduler = null;
+        }
+
         log.info("Loop stopped after {} iterations", iterationCount.get());
+    }
+
+    /**
+     * Spring 容器关闭时自动清理资源
+     */
+    @PreDestroy
+    public void destroy() {
+        log.info("LoopManager shutting down...");
+        stopLoop();
     }
 
     /**

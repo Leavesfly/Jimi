@@ -70,6 +70,9 @@ public class ShellUI implements AutoCloseable {
     // 通知服务
     private final NotificationService notificationService;
 
+    // Spring 应用上下文（用于关闭时清理 Loop/Goal）
+    private final ApplicationContext applicationContext;
+
     // 委托组件
     private final SpinnerManager spinnerManager;
     private final PromptBuilder promptBuilder;
@@ -87,6 +90,7 @@ public class ShellUI implements AutoCloseable {
      */
     public ShellUI(EngineClient engineClient, ApplicationContext applicationContext) throws IOException {
         this.engineClient = engineClient;
+        this.applicationContext = applicationContext;
         this.running = new AtomicBoolean(false);
         this.currentStatus = new AtomicReference<>("ready");
 
@@ -327,12 +331,42 @@ public class ShellUI implements AutoCloseable {
 
     @Override
     public void close() throws Exception {
+        // 停止所有运行中的 loop/goal 循环，避免线程泄漏阻止进程退出
+        stopActiveLoops();
+
         spinnerManager.stop();
         if (wireSubscription != null) {
             wireSubscription.dispose();
         }
         if (terminal != null) {
             terminal.close();
+        }
+    }
+
+    /**
+     * 停止所有活跃的 Loop/Goal 循环
+     */
+    private void stopActiveLoops() {
+        try {
+            var loopManager = applicationContext.getBean(
+                    io.leavesfly.jimi.core.loop.LoopManager.class);
+            if (loopManager.isRunning()) {
+                log.info("Stopping active loop on exit...");
+                loopManager.stopLoop();
+            }
+        } catch (Exception e) {
+            log.debug("Failed to stop LoopManager: {}", e.getMessage());
+        }
+
+        try {
+            var goalHandler = applicationContext.getBean(
+                    io.leavesfly.jimi.command.handlers.GoalCommandHandler.class);
+            if (goalHandler.isRunning()) {
+                log.info("Stopping active goal on exit...");
+                goalHandler.stopGoal();
+            }
+        } catch (Exception e) {
+            log.debug("Failed to stop GoalCommandHandler: {}", e.getMessage());
         }
     }
 }
