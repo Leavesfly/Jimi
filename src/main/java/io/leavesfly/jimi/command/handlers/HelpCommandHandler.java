@@ -63,6 +63,11 @@ public class HelpCommandHandler implements CommandHandler {
         out.println("  /theme          - 切换UI主题 (default|dark|light|minimal|matrix)");
         out.println();
         
+        out.printSuccess("Loop Engineering (自动化循环):");
+        out.println("  /loop <interval> <prompt>  - 按时间间隔重复执行 prompt (stop|pause|resume|status)");
+        out.println("  /goal <condition>          - 设定目标条件，Agent 自动迭代直到满足 (stop|pause|resume|status)");
+        out.println();
+        
         out.printSuccess("Shell 快捷方式:");
         out.println("  ! ls -la        - 执行 Shell 命令");
         out.println("  ! pwd           - 显示当前目录");
