@@ -1,0 +1,35 @@
+name: jimi-dev-kit
+version: 1.0.0
+description: Jimi 内置 Java 开发工具包，提供 Maven 技能、快捷命令、构建通知钩子和代码审查 Agent
+
+author: jimi-team
+homepage: https://github.com/leavesfly/jimi
+license: Apache-2.0
+keywords:
+  - java
+  - maven
+  - build
+  - code-review
+
+compatibility:
+  jimi_version: ">=0.1.0"
+  java_version: ">=17"
+
+provides:
+  skills:
+    - maven-troubleshoot
+  hooks:
+    - build-notifier
+  commands:
+    - qbuild
+    - qtest
+  agents:
+    - code-reviewer
+
+defaults:
+  enabled: true
+  modules:
+    skills: true
+    hooks: true
+    commands: true
+    agents: true

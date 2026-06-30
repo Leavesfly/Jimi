@@ -1,0 +1,10 @@
+name: qbuild
+description: 快速构建（mvn clean install -DskipTests）
+category: build
+aliases:
+  - qb
+usage: "/qbuild"
+
+execution:
+  type: script
+  script: "mvn clean install -DskipTests"

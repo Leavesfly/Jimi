@@ -309,18 +309,18 @@ public class PluginCommandHandler implements CommandHandler {
         for (Map.Entry<String, ModuleLoadResult> e : moduleResults.entrySet()) {
             ModuleLoadResult m = e.getValue();
             String moduleName = e.getKey();
-            boolean discoveryOnly = isDiscoveryOnlyModule(moduleName);
+            boolean sessionScoped = isSessionScopedModule(moduleName);
 
             String icon;
             if (!m.isSuccess()) {
                 icon = "❌";
-            } else if (discoveryOnly) {
-                icon = "🔍";
+            } else if (sessionScoped) {
+                icon = "ℹ️";
             } else {
                 icon = "✅";
             }
             String items = (m.getLoadedItems() == null ? 0 : m.getLoadedItems().size()) + " 个";
-            String suffix = discoveryOnly ? " (discovery-only)" : "";
+            String suffix = sessionScoped ? " (会话级, reload 需重启)" : "";
             String errSuffix = m.getErrorMessage() != null && !m.getErrorMessage().isEmpty()
                     ? " (" + m.getErrorMessage() + ")"
                     : "";
@@ -338,13 +338,18 @@ public class PluginCommandHandler implements CommandHandler {
     }
 
     /**
-     * 判断某个模块是否为 discovery-only 模块（仅发现、不自动注入 Registry）。
+     * 判断某个模块是否为 session-scoped 模块（会话级生效，运行时 reload 需重启会话）。
      *
-     * <p>当前 MVP 阶段：{@code mcp} 和 {@code agents} 是 discovery-only；
-     * {@code skills} / {@code hooks} / {@code commands} 会真正注入各自 Registry。
+     * <p>当前：{@code mcp} 是 session-scoped——会话创建时由 {@code JimiFactory}
+     * 自动合并插件 MCP 配置到 {@code MCPToolProvider}，但运行时 reload
+     * 无法动态增删已创建会话的 MCP 工具，需重启会话生效。
+     *
+     * <p>{@code agents} 已改为运行时动态注册（{@code AgentModuleAdapter}
+     * 真实注入 {@code AgentRegistry}），不再需要特殊标注。
+     * {@code skills} / {@code hooks} / {@code commands} 同样即时生效。
      */
-    private boolean isDiscoveryOnlyModule(String moduleName) {
-        return "mcp".equals(moduleName) || "agents".equals(moduleName);
+    private boolean isSessionScopedModule(String moduleName) {
+        return "mcp".equals(moduleName);
     }
 
     /** 启用插件 */

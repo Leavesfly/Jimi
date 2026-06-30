@@ -4,6 +4,7 @@ import jdk.jshell.*;
 import jdk.jshell.execution.LocalExecutionControlProvider;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
@@ -11,6 +12,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * JShell 代码执行引擎
@@ -28,9 +30,24 @@ public class JShellCodeExecutor {
      * @return 执行结果的 Mono
      */
     public Mono<String> execute(CodeExecutionContext context) {
-        return Mono.fromCallable(() -> executeSync(context))
+        // 用 AtomicReference 持有 JShell 实例，超时时可以调用 jshell.stop() 终止死循环
+        AtomicReference<JShell> jshellRef = new AtomicReference<>();
+
+        return Mono.fromCallable(() -> executeSync(context, jshellRef))
+                // 必须在独立线程上执行；若使用调用线程（如测试线程），
+                // 无限循环会彻底阻塞该线程，timeout 信号永远无法触达
+                .subscribeOn(Schedulers.boundedElastic())
                 .timeout(Duration.ofSeconds(context.getTimeout()))
                 .onErrorResume(TimeoutException.class, e -> {
+                    // 通知 JShell 停止当前执行（对 LocalExecutionControlProvider 有效）
+                    JShell jshell = jshellRef.get();
+                    if (jshell != null) {
+                        try {
+                            jshell.stop();
+                        } catch (Exception stopEx) {
+                            log.warn("JShellCodeExecutor: Failed to stop JShell after timeout", stopEx);
+                        }
+                    }
                     String error = String.format("Code execution timed out after %d seconds", context.getTimeout());
                     log.error(error);
                     return Mono.just(error);
@@ -44,8 +61,10 @@ public class JShellCodeExecutor {
     
     /**
      * 同步执行代码
+     *
+     * @param jshellRef 用于向调用方暴露 JShell 实例（超时时可调用 stop()）
      */
-    private String executeSync(CodeExecutionContext context) {
+    private String executeSync(CodeExecutionContext context, AtomicReference<JShell> jshellRef) {
         if (context.isLogExecutionDetails()) {
             log.info("JShellCodeExecutor: Starting code execution, code length: {} chars", 
                     context.getCode().length());
@@ -64,6 +83,8 @@ public class JShellCodeExecutor {
                     .err(new PrintStream(errorStream))
                     .executionEngine(new LocalExecutionControlProvider(), Map.of())
                     .build();
+            // 暴露给外部，以便超时时调用 jshell.stop()
+            jshellRef.set(jshell);
             
             // 创建 ToolBridge 实例（传入总超时，避免单次工具 block 超过整体限制）
             ToolBridge toolBridge = new ToolBridge(
@@ -249,29 +270,44 @@ public class JShellCodeExecutor {
     }
     
     /**
-     * 将用户代码包装在一个方法中
+     * 将用户代码包装在一个方法中。
+     *
+     * <p>处理三种情况：
+     * <ol>
+     *   <li>用户代码已含 {@code return} → 直接包装</li>
+     *   <li>代码全部是语句（以 {@code ;} 或 {@code }} 结尾）→ 追加 {@code return ""}</li>
+     *   <li>代码是语句 + 尾表达式 → 将最后一个表达式作为返回值</li>
+     * </ol>
      */
     private String wrapCodeInMethod(String code) {
-        // 检查代码是否已经包含 return 语句
         boolean hasReturn = code.contains("return ");
         
         StringBuilder wrapped = new StringBuilder();
         wrapped.append("String __executeUserCode__() {\n");
         
         if (hasReturn) {
-            // 用户代码已有 return，直接包装
             wrapped.append(code);
         } else {
-            // 没有 return，将最后一个表达式作为返回值
-            // 简单处理：在最后添加 return
             String trimmedCode = code.trim();
-            if (trimmedCode.endsWith(";")) {
-                // 如果最后是语句，尝试将其转换为返回值
+            if (trimmedCode.endsWith(";") || trimmedCode.endsWith("}")) {
+                // 全部是语句（含以 } 结尾的 for/while/if 块）
+                // 用 try-catch 包裹避免 while(true) 导致的“无法访问的语句”编译错误
+                wrapped.append("try {\n");
                 wrapped.append(code);
-                wrapped.append("\nreturn \"\";\n");
+                wrapped.append("\n} catch (Throwable __e) { /* ignore */ }\n");
+                wrapped.append("return \"\";\n");
             } else {
-                // 最后是表达式，返回它
-                wrapped.append("return String.valueOf(").append(code).append(");\n");
+                // 尾部是表达式：按最后一个换行拆分语句部分和表达式部分
+                int lastNewline = trimmedCode.lastIndexOf('\n');
+                if (lastNewline > 0) {
+                    String statements = trimmedCode.substring(0, lastNewline + 1);
+                    String expression = trimmedCode.substring(lastNewline + 1).trim();
+                    wrapped.append(statements);
+                    wrapped.append("\nreturn String.valueOf(").append(expression).append(");\n");
+                } else {
+                    // 单行表达式
+                    wrapped.append("return String.valueOf(").append(code).append(");\n");
+                }
             }
         }
         

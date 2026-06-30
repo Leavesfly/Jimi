@@ -23,11 +23,13 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 /**
  * Agent规范加载器
@@ -109,15 +111,18 @@ class AgentSpecLoader {
             return;
         }
         try {
-            // 递归查找所有 agent.yaml，支持多级目录
+            // 递归查找 agent.yaml 和 agent.md（Claude Code 格式），支持多级目录
             Files.walk(agentsRootDir)
-                    .filter(path -> path.getFileName().toString().equals("agent.yaml"))
-                    .forEach(yaml -> {
+                    .filter(path -> {
+                        String fileName = path.getFileName().toString();
+                        return fileName.equals("agent.yaml") || fileName.equals("agent.md");
+                    })
+                    .forEach(specFile -> {
                         try {
-                            loadAgentSpec(yaml).block();
-                            log.debug("Preloaded agent spec: {}", yaml);
+                            loadAgentSpec(specFile).block();
+                            log.debug("Preloaded agent spec: {}", specFile);
                         } catch (Exception e) {
-                            log.warn("Failed to preload agent spec: {}", yaml, e);
+                            log.warn("Failed to preload agent spec: {}", specFile, e);
                         }
                     });
         } catch (IOException e) {
@@ -132,23 +137,32 @@ class AgentSpecLoader {
     private void preloadFromClasspath() {
         try {
             ResourcePatternResolver resolver = new PathMatchingResourcePatternResolver();
-            Resource[] resources = resolver.getResources("classpath:agents/**/agent.yaml");
+            // 同时扫描 agent.yaml 和 agent.md（Claude Code 格式）
+            Resource[] yamlResources = resolver.getResources("classpath:agents/**/agent.yaml");
+            Resource[] mdResources = resolver.getResources("classpath:agents/**/agent.md");
 
-            for (Resource resource : resources) {
-                try {
-                    String resourcePath = extractResourcePath(resource);
-                    if (resourcePath == null) {
-                        continue;
-                    }
-                    Path classpathKey = Paths.get(CLASSPATH_PREFIX + resourcePath);
-                    loadAgentSpec(classpathKey).block();
-                    log.debug("Preloaded agent spec from classpath: {}", resourcePath);
-                } catch (Exception e) {
-                    log.warn("Failed to preload agent spec from classpath: {}", resource, e);
-                }
+            for (Resource resource : yamlResources) {
+                preloadClasspathResource(resource);
+            }
+            for (Resource resource : mdResources) {
+                preloadClasspathResource(resource);
             }
         } catch (IOException e) {
             log.warn("Failed to scan classpath for agents", e);
+        }
+    }
+
+    private void preloadClasspathResource(Resource resource) {
+        try {
+            String resourcePath = extractResourcePath(resource);
+            if (resourcePath == null) {
+                return;
+            }
+            Path classpathKey = Paths.get(CLASSPATH_PREFIX + resourcePath);
+            loadAgentSpec(classpathKey).block();
+            log.debug("Preloaded agent spec from classpath: {}", resourcePath);
+        } catch (Exception e) {
+            log.warn("Failed to preload agent spec from classpath: {}", resource, e);
         }
     }
 
@@ -158,6 +172,15 @@ class AgentSpecLoader {
         String pathStr = agentFile.toString();
         boolean isClasspath = pathStr.startsWith(CLASSPATH_PREFIX);
 
+        // 根据文件扩展名分派：.md 走 Claude Code frontmatter 解析，其余走 YAML 解析
+        String fileName = pathStr;
+        if (!isClasspath) {
+            fileName = agentFile.getFileName().toString();
+        }
+        if (fileName.endsWith(".md")) {
+            return doLoadMarkdown(agentFile, isClasspath);
+        }
+
         try (InputStream inputStream = openInputStream(agentFile, isClasspath)) {
             @SuppressWarnings("unchecked")
             Map<String, Object> data = yamlObjectMapper.readValue(inputStream, Map.class);
@@ -166,6 +189,81 @@ class AgentSpecLoader {
             return parseAgentSpec(data, agentFile, agentDirIdentifier, isClasspath);
         } catch (IOException e) {
             throw new AgentSpecException("加载Agent规范失败: " + agentFile, e);
+        }
+    }
+
+    /**
+     * 解析 Claude Code 格式的 .md 文件（YAML frontmatter + Markdown body）。
+     *
+     * <p>文件格式：
+     * <pre>
+     * ---
+     * name: code-reviewer
+     * description: Reviews code for quality
+     * tools: Read, Glob, Grep
+     * ---
+     *
+     * You are a code reviewer...
+     * </pre>
+     *
+     * <p>frontmatter 部分解析为配置，body 部分成为 inlineSystemPrompt。
+     * 如果文件不以 {@code ---} 开头，说明不是 agent 定义，抛出异常跳过。
+     *
+     * @param mdFile     .md 文件路径
+     * @param isClasspath 是否为 classpath 资源
+     * @return 解析后的 AgentSpec
+     */
+    @SuppressWarnings("unchecked")
+    private AgentSpec doLoadMarkdown(Path mdFile, boolean isClasspath) {
+        try (InputStream inputStream = openInputStream(mdFile, isClasspath)) {
+            String content = new String(inputStream.readAllBytes());
+
+            // 提取 frontmatter 和 body
+            String frontmatter;
+            String body;
+            String stripped = content.stripLeading();
+            if (!stripped.startsWith("---")) {
+                // 无 frontmatter 的 .md 文件不是 agent 定义，跳过
+                throw new AgentSpecException("Not a valid agent markdown (no frontmatter): " + mdFile);
+            }
+
+            // 找到 frontmatter 的结束分隔符（第二个 ---）
+            int firstSepEnd = stripped.indexOf('\n');
+            if (firstSepEnd < 0) {
+                throw new AgentSpecException("Malformed frontmatter in: " + mdFile);
+            }
+            int secondSep = stripped.indexOf("\n---", firstSepEnd);
+            if (secondSep < 0) {
+                throw new AgentSpecException("Missing closing frontmatter delimiter in: " + mdFile);
+            }
+
+            frontmatter = stripped.substring(firstSepEnd + 1, secondSep);
+            // body 是第二个 --- 之后的内容
+            int bodyStart = secondSep + 4; // skip "\n---"
+            if (bodyStart < stripped.length()) {
+                body = stripped.substring(bodyStart).strip();
+            } else {
+                body = "";
+            }
+
+            // 解析 frontmatter 为 Map
+            Map<String, Object> data = yamlObjectMapper.readValue(frontmatter, Map.class);
+
+            // 复用现有解析逻辑，但 system_prompt 来自 body
+            String agentDirIdentifier = extractAgentDirIdentifier(mdFile, isClasspath);
+            AgentSpec.AgentSpecBuilder builder = AgentSpec.builder();
+            populateCommonFields(builder, data);
+            resolveSubagents(builder, data, isClasspath);
+            resolveTeam(builder, data, isClasspath);
+
+            // body 内容设为内联系统提示词
+            builder.inlineSystemPrompt(body);
+            // systemPromptPath 设为 .md 文件本身，方便定位
+            builder.systemPromptPath(mdFile);
+
+            return builder.build();
+        } catch (IOException e) {
+            throw new AgentSpecException("加载Agent Markdown失败: " + mdFile, e);
         }
     }
 
@@ -206,18 +304,61 @@ class AgentSpecLoader {
         if (data.containsKey("name")) {
             builder.name((String) data.get("name"));
         }
+        // Claude Code 标准必需字段
+        if (data.containsKey("description")) {
+            builder.description((String) data.get("description"));
+        }
         if (data.containsKey("system_prompt_args")) {
             builder.systemPromptArgs((Map<String, String>) data.get("system_prompt_args"));
         }
+        // tools 支持逗号分隔字符串（Claude Code 格式）和列表（Jimi 原生格式）
         if (data.containsKey("tools")) {
-            builder.tools((List<String>) data.get("tools"));
+            builder.tools(parseToolsField(data.get("tools")));
         }
         if (data.containsKey("exclude_tools")) {
-            builder.excludeTools((List<String>) data.get("exclude_tools"));
+            builder.excludeTools(parseToolsField(data.get("exclude_tools")));
+        }
+        // Claude Code 标准：disallowedTools（与 excludeTools 等价的别名）
+        if (data.containsKey("disallowedTools")) {
+            builder.disallowedTools(parseToolsField(data.get("disallowedTools")));
+        }
+        // Claude Code 标准：maxTurns
+        if (data.containsKey("maxTurns")) {
+            Object maxTurnsVal = data.get("maxTurns");
+            if (maxTurnsVal instanceof Number) {
+                builder.maxTurns(((Number) maxTurnsVal).intValue());
+            }
         }
         if (data.containsKey("model")) {
             builder.model((String) data.get("model"));
         }
+    }
+
+    /**
+     * 解析 tools/excludeTools/disallowedTools 字段，兼容两种格式：
+     * <ul>
+     *   <li>列表格式（Jimi 原生）：{@code [Read, Glob, Grep]}</li>
+     *   <li>逗号分隔字符串（Claude Code）：{@code "Read, Glob, Grep"}</li>
+     * </ul>
+     *
+     * @param toolsValue 原始值
+     * @return 解析后的工具名列表
+     */
+    @SuppressWarnings("unchecked")
+    private List<String> parseToolsField(Object toolsValue) {
+        if (toolsValue == null) {
+            return Collections.emptyList();
+        }
+        if (toolsValue instanceof List) {
+            return (List<String>) toolsValue;
+        }
+        if (toolsValue instanceof String s) {
+            return Arrays.stream(s.split(","))
+                    .map(String::trim)
+                    .filter(t -> !t.isEmpty())
+                    .collect(Collectors.toList());
+        }
+        return Collections.emptyList();
     }
 
     private void resolveSystemPromptPath(AgentSpec.AgentSpecBuilder builder, Map<String, Object> data,
@@ -415,8 +556,11 @@ class AgentSpecLoader {
         if (agentSpec.getName() == null || agentSpec.getName().isEmpty()) {
             throw new AgentSpecException("Agent名称不能为空");
         }
-        if (agentSpec.getSystemPromptPath() == null) {
-            throw new AgentSpecException("系统提示词路径不能为空");
+        // systemPromptPath 和 inlineSystemPrompt 至少有一个（兼容 .md body 和 .yaml 外部引用）
+        boolean hasPrompt = agentSpec.getSystemPromptPath() != null
+                || (agentSpec.getInlineSystemPrompt() != null && !agentSpec.getInlineSystemPrompt().isBlank());
+        if (!hasPrompt) {
+            throw new AgentSpecException("系统提示词不能为空（需提供 system_prompt 或内联 prompt body）");
         }
         if (agentSpec.getTools() == null) {
             throw new AgentSpecException("工具列表不能为空");
@@ -425,5 +569,23 @@ class AgentSpecLoader {
 
     public Map<Path, AgentSpec> getSpecCache() {
         return Collections.unmodifiableMap(specCache);
+    }
+
+    /**
+     * 从缓存中移除一个 Agent 规范（仅内存层面，不碰磁盘）。
+     *
+     * <p>调用方：{@link AgentRegistry#unregisterAgentSpec(Path)} → 插件卸载场景。
+     * 与 {@link #loadAgentSpec(Path)} 对称，后者解析并缓存，本方法仅做缓存驱逐。
+     *
+     * @param agentFile Agent 配置文件路径（与 {@link #loadAgentSpec} 的参数一致）
+     * @return 被移除的 AgentSpec；缓存中不存在时返回 {@code null}
+     */
+    public AgentSpec evictFromCache(Path agentFile) {
+        Path cacheKey = toCacheKey(agentFile);
+        AgentSpec removed = specCache.remove(cacheKey);
+        if (removed != null) {
+            log.info("Agent spec evicted from cache: {} (name={})", agentFile, removed.getName());
+        }
+        return removed;
     }
 }

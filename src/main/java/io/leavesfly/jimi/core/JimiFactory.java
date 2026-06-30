@@ -32,7 +32,9 @@ import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Jimi 应用工厂（Spring Service）
@@ -236,9 +238,22 @@ public class JimiFactory {
                 // 注意：可以通过 new Context(file, mapper, true) 启用异步批量Repository以提升性能
                 Context context = new Context(session.getHistoryFile(), objectMapper);
 
-                // 7. 创建 ToolRegistry（委托给 ToolRegistryFactory）
+                // 7. 加载项目级插件（提前到 ToolRegistry 创建之前，
+                //     确保插件贡献的 MCP 配置文件可被合并到 ToolRegistry）
+                if (pluginRegistry != null) {
+                    try {
+                        pluginRegistry.loadProjectPlugins(jimiRuntime.getWorkDir());
+                    } catch (Exception e) {
+                        log.warn("Failed to load project plugins: {}", e.getMessage());
+                    }
+                }
+
+                // 7.1 合并插件发现的 MCP 配置文件
+                List<Path> effectiveMcpConfigs = mergePluginMcpConfigs(mcpConfigFiles);
+
+                // 8. 创建 ToolRegistry（委托给 ToolRegistryFactory）
                 ToolRegistry toolRegistry = toolRegistryFactory.create(
-                        jimiRuntime.getBuiltinArgs(), approval, agentSpec, jimiRuntime, mcpConfigFiles);
+                        jimiRuntime.getBuiltinArgs(), approval, agentSpec, jimiRuntime, effectiveMcpConfigs);
 
                 // 8. 创建 JimiEngine（注入 HookRegistry）
                 AgentExecutor executor = AgentExecutor.builder()
@@ -260,16 +275,6 @@ public class JimiFactory {
                         customCommandRegistry.setProjectDirectory(jimiRuntime.getWorkDir());
                     } catch (Exception e) {
                         log.warn("Failed to load project custom commands: {}", e.getMessage());
-                    }
-                }
-
-                // 9.1 加载项目级插件（<project>/.jimi/plugins/）
-                // 项目级插件优先级最高，同名扩展点覆盖 CLASSPATH / USER 层
-                if (pluginRegistry != null) {
-                    try {
-                        pluginRegistry.loadProjectPlugins(jimiRuntime.getWorkDir());
-                    } catch (Exception e) {
-                        log.warn("Failed to load project plugins: {}", e.getMessage());
                     }
                 }
 
@@ -298,6 +303,38 @@ public class JimiFactory {
                 return Mono.error(e);
             }
         });
+    }
+
+    // ==================== 插件 MCP 配置合并 ====================
+
+    /**
+     * 合并调用方传入的 MCP 配置文件与插件发现的 MCP 配置文件。
+     *
+     * <p>插件贡献的 MCP 配置文件由 {@link PluginRegistry#getAllDiscoveredMcpConfigFiles()}
+     * 提供（涵盖 CLASSPATH / USER / PROJECT 三层插件）。合并后一次性传给
+     * {@code MCPToolProvider}，使插件声明的 MCP Server 在会话创建时自动生效。
+     *
+     * @param callerConfigs 调用方（如 CLI {@code --mcp-config-file}）传入的配置文件
+     * @return 合并后的列表；无任何配置时返回 {@code null}
+     */
+    private List<Path> mergePluginMcpConfigs(List<Path> callerConfigs) {
+        List<Path> merged = new ArrayList<>();
+        if (callerConfigs != null) {
+            merged.addAll(callerConfigs);
+        }
+        if (pluginRegistry != null) {
+            Map<String, List<Path>> pluginConfigs = pluginRegistry.getAllDiscoveredMcpConfigFiles();
+            if (!pluginConfigs.isEmpty()) {
+                int count = 0;
+                for (List<Path> files : pluginConfigs.values()) {
+                    merged.addAll(files);
+                    count += files.size();
+                }
+                log.info("Merged {} MCP config file(s) from {} plugin(s)",
+                        count, pluginConfigs.size());
+            }
+        }
+        return merged.isEmpty() ? null : merged;
     }
 
 }

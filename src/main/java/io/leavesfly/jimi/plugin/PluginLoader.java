@@ -72,11 +72,10 @@ public class PluginLoader {
      * <p>受限于 Java 的 classpath 遍历机制，JAR 模式不能像文件系统那样枚举子目录，
      * 必须按已知名称显式查找。新增内置插件时在此添加目录名，
      * 对应 {@code src/main/resources/plugins/&lt;name&gt;/plugin.yaml}。
-     *
-     * <p>当前没有官方内置插件，保持空数组；文件系统模式（开发环境）下不受此限制——
-     * 但仍会按 {@link #TEST_FIXTURE_PLUGIN_NAMES} 规则过滤掉专用测试夹具。
      */
-    public static final String[] BUILTIN_CLASSPATH_PLUGINS = new String[]{};
+    public static final String[] BUILTIN_CLASSPATH_PLUGINS = new String[]{
+            "jimi-dev-kit"
+    };
 
     /**
      * 文件系统模式（开发环境 / IDE Run）下需要从 classpath 过滤掉的"纯测试夹具"名。

@@ -154,7 +154,8 @@ class JShellCodeExecutorTest {
         
         // 验证 - 应该超时
         assertNotNull(result);
-        assertTrue(result.contains("timeout") || result.contains("Timeout"));
+        assertTrue(result.contains("timeout") || result.contains("Timeout") || result.contains("timed out"),
+                "Expected timeout message but got: " + result);
     }
     
     @Test

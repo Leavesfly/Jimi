@@ -1,0 +1,16 @@
+name: build-notifier
+description: 构建完成后输出汇总信息
+enabled: true
+priority: 10
+
+trigger:
+  type: POST_TOOL_USE
+  tools:
+    - BashTool
+  file_patterns:
+    - "pom.xml"
+
+execution:
+  type: script
+  script: "echo '== Maven 构建已执行，请检查输出结果 ==' "
+  async: false

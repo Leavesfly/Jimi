@@ -1,11 +1,15 @@
 package io.leavesfly.jimi.plugin.dispatcher;
 
+import io.leavesfly.jimi.core.agent.AgentRegistry;
+import io.leavesfly.jimi.core.agent.AgentSpec;
 import io.leavesfly.jimi.plugin.spec.PluginProvides;
 import io.leavesfly.jimi.plugin.spec.PluginScope;
 import io.leavesfly.jimi.plugin.spec.PluginSpec;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
+import reactor.core.publisher.Mono;
 
 import java.net.URL;
 import java.nio.file.Files;
@@ -17,6 +21,8 @@ import java.util.Objects;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
  * {@link AgentModuleAdapter} 单元测试
@@ -24,11 +30,21 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class AgentModuleAdapterTest {
 
     private AgentModuleAdapter adapter;
+    private AgentRegistry agentRegistry;
     private Path helloWorldDir;
 
     @BeforeEach
     void setUp() throws Exception {
         adapter = new AgentModuleAdapter();
+        agentRegistry = mock(AgentRegistry.class);
+        ReflectionTestUtils.setField(adapter, "agentRegistry", agentRegistry);
+
+        // mock registerAgentSpec 返回成功的 Mono
+        when(agentRegistry.registerAgentSpec(org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(inv -> Mono.just(mock(AgentSpec.class)));
+        when(agentRegistry.unregisterAgentSpec(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(true);
+
         URL url = Objects.requireNonNull(
                 getClass().getClassLoader().getResource("plugins/hello-world"),
                 "hello-world fixture missing on classpath");
@@ -71,7 +87,7 @@ class AgentModuleAdapterTest {
     }
 
     @Test
-    @DisplayName("load: 白名单为空时放行所有发现项")
+    @DisplayName("load: 白名单为空时放行所有发现项（含 .md 格式）")
     void loadWithoutWhitelistAllowsAll() {
         PluginSpec spec = buildSpec(PluginProvides.builder().build());
 
@@ -81,13 +97,17 @@ class AgentModuleAdapterTest {
         List<String> items = result.getLoadedItems();
         assertTrue(items.contains("hello-agent"));
         assertTrue(items.contains("blocked-agent"));
+        // Claude Code .md 格式的 agent 也应被发现（目录名为 md-agent）
+        assertTrue(items.contains("md-agent"), "应发现 .md 格式的 md-agent");
     }
 
     @Test
-    @DisplayName("unload: MVP 阶段为 no-op，不抛异常")
-    void unloadIsNoop() {
+    @DisplayName("unload: 与 load 对称，不抛异常")
+    void unloadIsSymmetric() {
         PluginSpec spec = buildSpec(PluginProvides.builder().build());
-        ModuleLoadResult result = ModuleLoadResult.success(List.of("hello-agent"));
+        // 先 load 再 unload，验证对称性
+        ModuleLoadResult result = adapter.load(helloWorldDir, spec);
+        assertTrue(result.isSuccess());
         // 不应抛异常
         adapter.unload(spec, result);
         adapter.unload(spec, null);

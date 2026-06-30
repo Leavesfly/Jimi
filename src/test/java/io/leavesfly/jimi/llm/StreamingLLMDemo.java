@@ -1,6 +1,5 @@
 package io.leavesfly.jimi.llm;
 
-import io.leavesfly.jimi.soul.message.*;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Flux;
 

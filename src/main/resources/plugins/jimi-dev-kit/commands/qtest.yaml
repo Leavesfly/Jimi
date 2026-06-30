@@ -1,0 +1,10 @@
+name: qtest
+description: 快速测试（mvn test）
+category: test
+aliases:
+  - qt
+usage: "/qtest"
+
+execution:
+  type: script
+  script: "mvn test"
