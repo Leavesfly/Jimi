@@ -42,6 +42,10 @@ import java.util.concurrent.atomic.AtomicInteger;
 @Component
 public class GoalCommandHandler implements CommandHandler {
 
+    private static final int MAX_CONSECUTIVE_FAILURES = 3;
+    private static final long FAILURE_BACKOFF_BASE_MS = 1000L;
+    private static final long FAILURE_BACKOFF_MAX_MS = 30_000L;
+
     @Autowired
     private GoalVerifier goalVerifier;
 
@@ -121,6 +125,10 @@ public class GoalCommandHandler implements CommandHandler {
     // ==================== 子命令处理 ====================
 
     private void handleStart(CommandContext context, OutputFormatter out) {
+        if (!config.isEnabled()) {
+            out.printError("Loop Engineering 功能已禁用（可在配置 loop_engineering.enabled 中开启）");
+            return;
+        }
         if (running.get()) {
             out.printError("已有目标正在执行中。使用 /goal stop 终止当前目标。");
             return;
@@ -252,6 +260,7 @@ public class GoalCommandHandler implements CommandHandler {
         log.info("Goal loop started: condition='{}', maxIter={}, timeout={}m, maxTokens={}",
                 goalCondition, maxIterations, timeout.toMinutes(), maxTokens);
 
+        int consecutiveFailures = 0;
         try {
             while (running.get()) {
                 // 检查暂停
@@ -275,12 +284,12 @@ public class GoalCommandHandler implements CommandHandler {
                     }
                 }
 
-                // 检查最大迭代次数
-                int currentIteration = iterationCount.incrementAndGet();
-                if (currentIteration > maxIterations) {
+                // 检查最大迭代次数（自增前判断，避免计数越界）
+                if (iterationCount.get() >= maxIterations) {
                     log.info("Goal loop reached max iterations: {}", maxIterations);
                     break;
                 }
+                int currentIteration = iterationCount.incrementAndGet();
 
                 log.info("Goal iteration #{} starting...", currentIteration);
 
@@ -288,8 +297,20 @@ public class GoalCommandHandler implements CommandHandler {
                 String workerPrompt = buildWorkerPrompt(goalCondition, currentIteration);
                 try {
                     engineClient.runCommand(workerPrompt).block();
+                    consecutiveFailures = 0;
                 } catch (Exception e) {
-                    log.error("Goal iteration #{} execution failed: {}", currentIteration, e.getMessage());
+                    consecutiveFailures++;
+                    log.error("Goal iteration #{} execution failed ({}/{}): {}",
+                            currentIteration, consecutiveFailures, MAX_CONSECUTIVE_FAILURES, e.getMessage());
+                    if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+                        log.error("Goal loop aborted after {} consecutive failures", consecutiveFailures);
+                        break;
+                    }
+                    // 指数退避，避免快速失败时忙等空烧资源
+                    long backoffMs = Math.min(
+                            FAILURE_BACKOFF_BASE_MS * (1L << (consecutiveFailures - 1)),
+                            FAILURE_BACKOFF_MAX_MS);
+                    Thread.sleep(backoffMs);
                     continue;
                 }
 
@@ -375,7 +396,9 @@ public class GoalCommandHandler implements CommandHandler {
                 目标条件: %s
                 
                 请向目标方向推进一步。执行具体的操作（如修改代码、运行测试等），而不仅仅是描述要做什么。
-                完成后简要说明你做了什么以及当前状态。
-                """, iteration, goalCondition);
+                
+                重要：完成本步后，请将「本步做了什么」以及「可验证的当前结果」（例如编译/测试/lint 的实际输出或结论）
+                追加写入状态文件 %s。该文件是判断目标是否达成的唯一依据，请如实、完整地记录关键结果，不要遗漏。
+                """, iteration, goalCondition, stateFile);
     }
 }

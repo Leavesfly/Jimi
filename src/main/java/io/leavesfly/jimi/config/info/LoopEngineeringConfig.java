@@ -61,7 +61,7 @@ public class LoopEngineeringConfig {
      */
     @JsonProperty("goal_verify_interval")
     @Builder.Default
-    private int goalVerifyInterval = 1;
+    private int goalVerifyInterval = 3;
 
     /**
      * goal 超时时间（分钟）

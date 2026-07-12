@@ -2,6 +2,7 @@ package io.leavesfly.jimi.command.handlers;
 
 import io.leavesfly.jimi.command.CommandContext;
 import io.leavesfly.jimi.command.CommandHandler;
+import io.leavesfly.jimi.config.info.LoopEngineeringConfig;
 import io.leavesfly.jimi.core.loop.LoopManager;
 import io.leavesfly.jimi.core.loop.LoopStatus;
 import io.leavesfly.jimi.ui.shell.output.OutputFormatter;
@@ -38,6 +39,9 @@ public class LoopCommandHandler implements CommandHandler {
 
     @Autowired
     private LoopManager loopManager;
+
+    @Autowired
+    private LoopEngineeringConfig config;
 
     @Override
     public String getName() {
@@ -88,6 +92,10 @@ public class LoopCommandHandler implements CommandHandler {
     // ==================== 子命令处理 ====================
 
     private void handleStart(CommandContext context, OutputFormatter out) {
+        if (!config.isEnabled()) {
+            out.printError("Loop Engineering 功能已禁用（可在配置 loop_engineering.enabled 中开启）");
+            return;
+        }
         if (context.getArgCount() < 2) {
             out.printError("用法: /loop <interval> <prompt>");
             out.printInfo("  interval 格式: 30s, 5m, 1h, 2h30m");

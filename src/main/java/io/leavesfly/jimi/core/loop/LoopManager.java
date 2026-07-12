@@ -30,9 +30,6 @@ public class LoopManager {
     @Autowired
     private LoopEngineeringConfig config;
 
-    @Autowired
-    private LoopStateManager stateManager;
-
     private ScheduledExecutorService scheduler;
     private ScheduledFuture<?> currentLoop;
 

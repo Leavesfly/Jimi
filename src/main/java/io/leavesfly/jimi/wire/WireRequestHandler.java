@@ -15,8 +15,11 @@ import io.leavesfly.jimi.wire.message.request.ToolNamesQueryRequest;
 import io.leavesfly.jimi.wire.message.request.ToolQueryRequest;
 import lombok.extern.slf4j.Slf4j;
 import reactor.core.Disposable;
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 import java.util.ArrayList;
+import java.util.concurrent.Semaphore;
 
 /**
  * Wire 请求处理器
@@ -32,6 +35,14 @@ public class WireRequestHandler {
     private final Wire wire;
     private final AgentExecutor executor;
     private Disposable subscription;
+
+    /**
+     * 命令执行许可（公平信号量，容量 1）。
+     * <p>
+     * 串行化所有 run_command 执行：主 REPL 输入与后台 /loop、/goal 迭代共享同一许可，
+     * 避免并发调用 executor.execute 导致共享 Context/history 状态被破坏。
+     */
+    private final Semaphore executionPermit = new Semaphore(1, true);
 
     public WireRequestHandler(Wire wire, AgentExecutor executor) {
         this.wire = wire;
@@ -100,7 +111,15 @@ public class WireRequestHandler {
     }
 
     private void handleRunCommand(RunCommandRequest request) {
-        executor.execute(request.getInput(), false)
+        // 先获取执行许可（可能因已有命令在执行而排队等待），再执行；
+        // 许可的获取放在 boundedElastic 线程，避免阻塞 Wire 请求分发线程。
+        Mono.fromCallable(() -> {
+                    executionPermit.acquire();
+                    return Boolean.TRUE;
+                })
+                .subscribeOn(Schedulers.boundedElastic())
+                .flatMap(acquired -> executor.execute(request.getInput(), false)
+                        .doFinally(signalType -> executionPermit.release()))
                 .doOnSuccess(v -> request.completeEmpty())
                 .doOnError(request::fail)
                 .subscribe();

@@ -105,15 +105,15 @@ public class LoopStateManager {
      */
     public void updateTask(Path workDir, String stateFile, int taskId, boolean completed) {
         String content = readState(workDir, stateFile);
-        String oldMark = completed ? "[ ]" : "[x]";
-        String newMark = completed ? "[x]" : "[ ]";
-        String taskPrefix = "#" + taskId + ":";
+        String newCheckbox = completed ? "x" : " ";
 
         String[] lines = content.split("\n");
         StringBuilder result = new StringBuilder();
         for (String line : lines) {
-            if (line.contains(taskPrefix) && line.contains(oldMark)) {
-                line = line.replace(oldMark, newMark);
+            Matcher matcher = TASK_PATTERN.matcher(line);
+            if (matcher.matches() && Integer.parseInt(matcher.group(2)) == taskId) {
+                // 仅重写行首复选框，避免误改任务描述中的 [ ]/[x]
+                line = String.format("- [%s] #%s: %s", newCheckbox, matcher.group(2), matcher.group(3));
             }
             result.append(line).append("\n");
         }
@@ -180,7 +180,14 @@ public class LoopStateManager {
         if (stateFile == null || stateFile.isEmpty()) {
             stateFile = config.getDefaultStateFile();
         }
-        return workDir.resolve(stateFile);
+        Path base = workDir.normalize();
+        Path resolved = base.resolve(stateFile).normalize();
+        // 防止状态文件路径逃逸工作目录
+        if (!resolved.startsWith(base)) {
+            log.warn("State file path escapes work dir, falling back to default: {}", stateFile);
+            resolved = base.resolve(config.getDefaultStateFile()).normalize();
+        }
+        return resolved;
     }
 
     private int countTasks(String content) {
