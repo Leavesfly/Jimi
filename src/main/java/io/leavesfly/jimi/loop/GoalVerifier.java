@@ -1,4 +1,4 @@
-package io.leavesfly.jimi.core.loop;
+package io.leavesfly.jimi.loop;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;

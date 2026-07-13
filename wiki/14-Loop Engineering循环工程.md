@@ -81,7 +81,7 @@ Loop Engineering 的核心思想：不再逐轮手动对话，而是构建一个
 
 ### 3.1 核心类：LoopManager
 
-`LoopManager`（`io.leavesfly.jimi.core.loop.LoopManager`）是定时循环的核心管理器，使用 `ScheduledExecutorService` 按指定间隔重复提交 prompt 到引擎。
+`LoopManager`（`io.leavesfly.jimi.loop.LoopManager`）是定时循环的核心管理器，使用 `ScheduledExecutorService` 按指定间隔重复提交 prompt 到引擎。
 
 **关键字段：**
 
@@ -216,7 +216,7 @@ public class LoopStatus {
 
 ### 4.3 GoalVerifier — 独立验证器
 
-`GoalVerifier`（`io.leavesfly.jimi.core.loop.GoalVerifier`）是验证者的核心实现：
+`GoalVerifier`（`io.leavesfly.jimi.loop.GoalVerifier`）是验证者的核心实现：
 
 ```java
 @Service
@@ -269,7 +269,7 @@ public class GoalVerification {
 
 ### 5.2 WorktreeManager 核心实现
 
-`WorktreeManager`（`io.leavesfly.jimi.core.loop.WorktreeManager`）管理 Git Worktree 的完整生命周期：
+`WorktreeManager`（`io.leavesfly.jimi.loop.WorktreeManager`）管理 Git Worktree 的完整生命周期：
 
 ```java
 @Service
@@ -351,7 +351,7 @@ Loop Engineering 的"脊柱"是状态文件。即使 Agent 的上下文被压缩
 
 ### 6.2 LoopStateManager 实现
 
-`LoopStateManager`（`io.leavesfly.jimi.core.loop.LoopStateManager`）管理状态文件的 CRUD：
+`LoopStateManager`（`io.leavesfly.jimi.loop.LoopStateManager`）管理状态文件的 CRUD：
 
 | 方法 | 职责 |
 |------|------|

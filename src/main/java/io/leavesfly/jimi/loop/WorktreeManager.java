@@ -1,4 +1,4 @@
-package io.leavesfly.jimi.core.loop;
+package io.leavesfly.jimi.loop;
 
 import io.leavesfly.jimi.config.info.LoopEngineeringConfig;
 import lombok.AllArgsConstructor;

@@ -3,6 +3,7 @@ package io.leavesfly.jimi.ui.shell;
 import io.leavesfly.jimi.command.CommandRegistry;
 import io.leavesfly.jimi.config.info.ShellUIConfig;
 import io.leavesfly.jimi.config.info.ThemeConfig;
+import io.leavesfly.jimi.loop.LoopManager;
 import io.leavesfly.jimi.ui.notification.NotificationService;
 import io.leavesfly.jimi.ui.shell.handler.InteractionHandler;
 import io.leavesfly.jimi.ui.shell.handler.WireMessageHandler;
@@ -349,7 +350,7 @@ public class ShellUI implements AutoCloseable {
     private void stopActiveLoops() {
         try {
             var loopManager = applicationContext.getBean(
-                    io.leavesfly.jimi.core.loop.LoopManager.class);
+                    LoopManager.class);
             if (loopManager.isRunning()) {
                 log.info("Stopping active loop on exit...");
                 loopManager.stopLoop();
