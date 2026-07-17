@@ -20,6 +20,11 @@ import java.time.Instant;
 public class LoopStatus {
 
     /**
+     * 循环 ID（多循环并发时标识每个循环）
+     */
+    private String loopId;
+
+    /**
      * 是否正在运行
      */
     private boolean running;
@@ -33,6 +38,11 @@ public class LoopStatus {
      * 已完成的迭代次数
      */
     private int iterationCount;
+
+    /**
+     * 连续失败次数（用于熔断判断与状态展示）
+     */
+    private int consecutiveFailures;
 
     /**
      * 当前执行的 prompt

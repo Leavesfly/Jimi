@@ -27,6 +27,10 @@ public class LoopStateManager {
 
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
     private static final Pattern TASK_PATTERN = Pattern.compile("^- \\[([ xX])\\] #(\\d+): (.+)$");
+    private static final Pattern GOAL_PATTERN = Pattern.compile("^- \\*\\*目标\\*\\*: (.+)$", Pattern.MULTILINE);
+    private static final Pattern ITERATION_PATTERN = Pattern.compile("^- 总迭代: (\\d+)$", Pattern.MULTILINE);
+    private static final Pattern VERIFY_CMD_PATTERN = Pattern.compile("^- \\*\\*验证命令\\*\\*: (.+)$", Pattern.MULTILINE);
+    private static final String NO_VERIFY_COMMAND = "无";
 
     @Autowired
     private LoopEngineeringConfig config;
@@ -124,12 +128,13 @@ public class LoopStateManager {
     /**
      * 生成新的状态报告
      *
-     * @param workDir     工作目录
-     * @param stateFile   状态文件路径
+     * @param workDir       工作目录
+     * @param stateFile     状态文件路径
      * @param goalCondition 目标条件描述
+     * @param verifyCommand 确定性验证命令（可为 null，表示使用 LLM 验证）
      * @return 初始化后的状态文件内容
      */
-    public String initializeState(Path workDir, String stateFile, String goalCondition) {
+    public String initializeState(Path workDir, String stateFile, String goalCondition, String verifyCommand) {
         String now = LocalDateTime.now().format(DATE_FORMAT);
         String template = String.format("""
                 # Loop Progress
@@ -137,6 +142,7 @@ public class LoopStateManager {
                 ## 当前目标
                 - **开始时间**: %s
                 - **目标**: %s
+                - **验证命令**: %s
                 
                 ## 已完成
                 
@@ -147,7 +153,8 @@ public class LoopStateManager {
                 ## 统计
                 - 总迭代: 0
                 - Token 消耗: 0
-                """, now, goalCondition);
+                """, now, goalCondition,
+                (verifyCommand == null || verifyCommand.isBlank()) ? NO_VERIFY_COMMAND : verifyCommand);
 
         writeState(workDir, stateFile, template);
         return template;
@@ -165,6 +172,71 @@ public class LoopStateManager {
         // 替换迭代次数
         content = content.replaceAll("- 总迭代: \\d+", "- 总迭代: " + iterationCount);
         writeState(workDir, stateFile, content);
+    }
+
+    /**
+     * 更新 Token 消耗统计
+     *
+     * @param workDir   工作目录
+     * @param stateFile 状态文件路径
+     * @param tokens    本次 goal 消耗的 token 数
+     */
+    public void updateTokenStats(Path workDir, String stateFile, long tokens) {
+        String content = readState(workDir, stateFile);
+        content = content.replaceAll("- Token 消耗: \\d+", "- Token 消耗: " + tokens);
+        writeState(workDir, stateFile, content);
+    }
+
+    /**
+     * 从状态文件中解析目标条件（用于跨会话续跑）
+     *
+     * @param workDir   工作目录
+     * @param stateFile 状态文件路径
+     * @return 目标条件，不存在时返回 null
+     */
+    public String parseGoalCondition(Path workDir, String stateFile) {
+        String content = readState(workDir, stateFile);
+        if (content.isEmpty()) {
+            return null;
+        }
+        Matcher matcher = GOAL_PATTERN.matcher(content);
+        return matcher.find() ? matcher.group(1).trim() : null;
+    }
+
+    /**
+     * 从状态文件中解析已执行的迭代次数（用于跨会话续跑）
+     *
+     * @param workDir   工作目录
+     * @param stateFile 状态文件路径
+     * @return 已执行迭代次数，不存在时返回 0
+     */
+    public int parseIterationCount(Path workDir, String stateFile) {
+        String content = readState(workDir, stateFile);
+        if (content.isEmpty()) {
+            return 0;
+        }
+        Matcher matcher = ITERATION_PATTERN.matcher(content);
+        return matcher.find() ? Integer.parseInt(matcher.group(1)) : 0;
+    }
+
+    /**
+     * 从状态文件中解析确定性验证命令（用于跨会话续跑）
+     *
+     * @param workDir   工作目录
+     * @param stateFile 状态文件路径
+     * @return 验证命令，未配置或不存在时返回 null
+     */
+    public String parseVerifyCommand(Path workDir, String stateFile) {
+        String content = readState(workDir, stateFile);
+        if (content.isEmpty()) {
+            return null;
+        }
+        Matcher matcher = VERIFY_CMD_PATTERN.matcher(content);
+        if (!matcher.find()) {
+            return null;
+        }
+        String cmd = matcher.group(1).trim();
+        return NO_VERIFY_COMMAND.equals(cmd) ? null : cmd;
     }
 
     /**

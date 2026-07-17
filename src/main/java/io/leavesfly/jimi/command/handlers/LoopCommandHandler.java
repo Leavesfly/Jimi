@@ -21,14 +21,16 @@ import java.util.regex.Pattern;
 /**
  * /loop 命令处理器
  * <p>
- * 按指定时间间隔重复执行一个 prompt，直到用户手动停止。
+ * 按指定时间间隔重复执行一个 prompt，支持多循环并发（受
+ * loop_engineering.max_concurrent_loops 限制），并带有防失控保护：
+ * 最大迭代次数、超时、连续失败熔断（达到后自动停止）。
  * <p>
  * 用法：
- * - /loop <interval> <prompt> — 启动循环
- * - /loop stop — 停止循环
- * - /loop pause — 暂停循环
- * - /loop resume — 恢复循环
- * - /loop status — 查看循环状态
+ * - /loop <interval> <prompt> — 启动循环，返回循环 ID
+ * - /loop stop [id|all] — 停止指定/全部循环（默认最近启动的）
+ * - /loop pause [id] — 暂停循环
+ * - /loop resume [id] — 恢复循环
+ * - /loop status — 查看所有循环状态
  */
 @Slf4j
 @Component
@@ -55,7 +57,7 @@ public class LoopCommandHandler implements CommandHandler {
 
     @Override
     public String getUsage() {
-        return "/loop <interval> <prompt>  |  /loop stop|pause|resume|status";
+        return "/loop <interval> <prompt>  |  /loop stop [id|all]  |  /loop pause|resume [id]  |  /loop status";
     }
 
     @Override
@@ -80,9 +82,9 @@ public class LoopCommandHandler implements CommandHandler {
         String subCommand = context.getArg(0).toLowerCase();
 
         switch (subCommand) {
-            case "stop" -> handleStop(out);
-            case "pause" -> handlePause(out);
-            case "resume" -> handleResume(out);
+            case "stop" -> handleStop(context, out);
+            case "pause" -> handlePause(context, out);
+            case "resume" -> handleResume(context, out);
             case "status" -> handleStatus(out);
             case "help" -> showHelp(out);
             default -> handleStart(context, out);
@@ -128,73 +130,104 @@ public class LoopCommandHandler implements CommandHandler {
 
         // 启动循环
         try {
-            loopManager.startLoop(interval, prompt, context.getEngineClient());
+            String loopId = loopManager.startLoop(interval, prompt, context.getEngineClient());
             out.println();
-            out.printSuccess("Loop 已启动");
+            out.printSuccess("Loop #" + loopId + " 已启动");
             out.printInfo("  间隔: " + formatDuration(interval));
             out.printInfo("  Prompt: " + prompt);
-            out.printInfo("  使用 /loop stop 停止, /loop status 查看状态");
+            out.printInfo("  防护: 最大 " + limitText(config.getLoopMaxIterations(), "步")
+                    + ", " + limitText(config.getLoopTimeoutMinutes(), "分钟")
+                    + ", 连续失败 " + config.getLoopMaxConsecutiveFailures() + " 次熔断");
+            out.printInfo("  使用 /loop stop " + loopId + " 停止, /loop status 查看状态");
             out.println();
         } catch (IllegalStateException e) {
             out.printError(e.getMessage());
         }
     }
 
-    private void handleStop(OutputFormatter out) {
+    private void handleStop(CommandContext context, OutputFormatter out) {
         if (!loopManager.isRunning()) {
             out.printWarning("当前没有运行中的循环");
             return;
         }
-        LoopStatus status = loopManager.getStatus();
-        loopManager.stopLoop();
+
+        String target = context.getArgCount() > 1 ? context.getArg(1) : null;
+
+        // /loop stop all — 停止全部
+        if ("all".equalsIgnoreCase(target)) {
+            int count = loopManager.stopAll();
+            out.println();
+            out.printSuccess("已停止全部 " + count + " 个循环");
+            out.println();
+            return;
+        }
+
+        // /loop stop [id] — 停止指定或默认循环
+        LoopStatus status = loopManager.getStatus(target);
+        if (status == null) {
+            out.printError(target != null ? "循环 #" + target + " 不存在" : "当前没有运行中的循环");
+            return;
+        }
+        loopManager.stopLoop(status.getLoopId());
         out.println();
-        out.printSuccess("Loop 已停止");
+        out.printSuccess("Loop #" + status.getLoopId() + " 已停止");
         out.printInfo("  共执行: " + status.getIterationCount() + " 次迭代");
         out.println();
     }
 
-    private void handlePause(OutputFormatter out) {
+    private void handlePause(CommandContext context, OutputFormatter out) {
         if (!loopManager.isRunning()) {
             out.printWarning("当前没有运行中的循环");
             return;
         }
-        if (loopManager.isPaused()) {
+        String target = context.getArgCount() > 1 ? context.getArg(1) : null;
+        if (loopManager.isPaused(target)) {
             out.printWarning("循环已处于暂停状态");
             return;
         }
-        loopManager.pauseLoop();
-        out.printSuccess("Loop 已暂停，使用 /loop resume 恢复");
+        if (loopManager.pauseLoop(target)) {
+            out.printSuccess("Loop 已暂停，使用 /loop resume 恢复");
+        } else {
+            out.printError(target != null ? "循环 #" + target + " 不存在" : "暂停失败");
+        }
     }
 
-    private void handleResume(OutputFormatter out) {
+    private void handleResume(CommandContext context, OutputFormatter out) {
         if (!loopManager.isRunning()) {
             out.printWarning("当前没有运行中的循环");
             return;
         }
-        if (!loopManager.isPaused()) {
-            out.printWarning("循环未暂停");
-            return;
+        String target = context.getArgCount() > 1 ? context.getArg(1) : null;
+        if (loopManager.resumeLoop(target)) {
+            out.printSuccess("Loop 已恢复运行");
+        } else {
+            out.printWarning(target != null ? "循环 #" + target + " 不存在或未暂停" : "循环未暂停");
         }
-        loopManager.resumeLoop();
-        out.printSuccess("Loop 已恢复运行");
     }
 
     private void handleStatus(OutputFormatter out) {
-        LoopStatus status = loopManager.getStatus();
+        List<LoopStatus> statuses = loopManager.listStatus();
         out.println();
-        if (!status.isRunning()) {
+        if (statuses.isEmpty()) {
             out.printInfo("当前没有运行中的循环");
         } else {
-            out.printSuccess("Loop 运行状态");
-            out.printInfo("  状态: " + (status.isPaused() ? "已暂停" : "运行中"));
-            out.printInfo("  已执行: " + status.getIterationCount() + " 次迭代");
-            out.printInfo("  间隔: " + formatDuration(status.getInterval()));
-            out.printInfo("  Prompt: " + status.getPrompt());
-            if (status.getStartTime() != null) {
-                out.printInfo("  启动时间: " + formatInstant(status.getStartTime()));
-            }
-            if (status.getNextExecutionTime() != null && !status.isPaused()) {
-                out.printInfo("  下次执行: " + formatInstant(status.getNextExecutionTime()));
+            out.printSuccess("Loop 运行状态（共 " + statuses.size() + " 个，上限 "
+                    + config.getMaxConcurrentLoops() + "）");
+            for (LoopStatus status : statuses) {
+                out.println();
+                out.printInfo("  [#" + status.getLoopId() + "] "
+                        + (status.isPaused() ? "已暂停" : "运行中")
+                        + " | 已执行 " + status.getIterationCount() + " 次"
+                        + (status.getConsecutiveFailures() > 0
+                                ? " | 连续失败 " + status.getConsecutiveFailures() + " 次" : ""));
+                out.printInfo("      间隔: " + formatDuration(status.getInterval())
+                        + " | Prompt: " + status.getPrompt());
+                if (status.getStartTime() != null) {
+                    out.printInfo("      启动时间: " + formatInstant(status.getStartTime())
+                            + (status.getNextExecutionTime() != null && !status.isPaused()
+                                    ? " | 下次执行: " + formatInstant(status.getNextExecutionTime())
+                                    : ""));
+                }
             }
         }
         out.println();
@@ -204,18 +237,24 @@ public class LoopCommandHandler implements CommandHandler {
         out.println();
         out.printSuccess("/loop 命令 — Loop Engineering 循环调度");
         out.println();
-        out.println("  /loop <interval> <prompt>   启动循环");
-        out.println("  /loop stop                  停止循环");
-        out.println("  /loop pause                 暂停循环");
-        out.println("  /loop resume                恢复循环");
-        out.println("  /loop status                查看状态");
+        out.println("  /loop <interval> <prompt>   启动循环（返回循环 ID）");
+        out.println("  /loop stop [id|all]         停止指定/全部循环（默认最近启动的）");
+        out.println("  /loop pause [id]            暂停循环");
+        out.println("  /loop resume [id]           恢复循环");
+        out.println("  /loop status                查看所有循环状态");
         out.println("  /loop help                  显示帮助");
         out.println();
         out.println("  interval 格式: 30s, 5m, 1h, 2h30m");
         out.println();
+        out.println("  防失控保护（达到后自动停止，可在 loop_engineering 配置）:");
+        out.println("    最大迭代: " + limitText(config.getLoopMaxIterations(), "步")
+                + " | 超时: " + limitText(config.getLoopTimeoutMinutes(), "分钟")
+                + " | 连续失败熔断: " + config.getLoopMaxConsecutiveFailures() + " 次");
+        out.println();
         out.println("  示例:");
         out.println("    /loop 5m 检查编译状态并修复错误");
         out.println("    /loop 1h 扫描 TODO 注释并完成一个");
+        out.println("    /loop stop 2");
         out.println();
     }
 
@@ -264,5 +303,12 @@ public class LoopCommandHandler implements CommandHandler {
         return DateTimeFormatter.ofPattern("HH:mm:ss")
                 .withZone(ZoneId.systemDefault())
                 .format(instant);
+    }
+
+    /**
+     * 限制值的展示文本（0 表示不限制）
+     */
+    private String limitText(int value, String unit) {
+        return value > 0 ? value + " " + unit : "不限";
     }
 }

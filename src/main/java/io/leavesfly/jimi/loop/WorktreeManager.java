@@ -77,7 +77,7 @@ public class WorktreeManager {
     public void cleanupWorktree(Path worktreeDir, Path baseDir) {
         try {
             // 获取分支名（在删除 worktree 之前）
-            String branch = getWorktreeBranch(worktreeDir);
+            String branch = getBranchName(worktreeDir);
 
             // 移除 worktree
             executeGitCommand(baseDir,
@@ -104,7 +104,7 @@ public class WorktreeManager {
      */
     public MergeResult mergeWorktree(Path worktreeDir, Path baseDir, String targetBranch) {
         try {
-            String branch = getWorktreeBranch(worktreeDir);
+            String branch = getBranchName(worktreeDir);
             if (branch == null) {
                 return MergeResult.failure("Cannot determine worktree branch");
             }
@@ -139,6 +139,59 @@ public class WorktreeManager {
 
         } catch (Exception e) {
             return MergeResult.failure("Merge error: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 提交 worktree 中的所有变更（git add -A + commit）
+     * <p>
+     * Agent 在 worktree 中的修改未必已提交，合并或清理前必须先提交，
+     * 否则未提交的变更会随 worktree 删除而丢失。
+     *
+     * @param worktreeDir worktree 工作目录
+     * @param message     提交信息
+     * @return 是否有变更被提交（无变更时返回 false，不视为错误）
+     */
+    public boolean commitAll(Path worktreeDir, String message) {
+        int addExit = executeGitCommand(worktreeDir, "git", "add", "-A");
+        if (addExit != 0) {
+            log.warn("git add -A failed in worktree: {}", worktreeDir);
+            return false;
+        }
+
+        // 检查是否有暂存的变更
+        int diffExit = executeGitCommand(worktreeDir, "git", "diff", "--cached", "--quiet");
+        if (diffExit == 0) {
+            log.info("No changes to commit in worktree: {}", worktreeDir);
+            return false;
+        }
+
+        int commitExit = executeGitCommand(worktreeDir, "git", "commit", "-m", message);
+        if (commitExit != 0) {
+            log.warn("git commit failed in worktree: {}", worktreeDir);
+            return false;
+        }
+        log.info("Committed all changes in worktree: {}", worktreeDir);
+        return true;
+    }
+
+    /**
+     * 获取主仓库当前分支名（作为 worktree 合并的目标分支）
+     *
+     * @param baseDir 主仓库目录
+     * @return 当前分支名，失败时返回 null
+     */
+    public String getCurrentBranch(Path baseDir) {
+        try {
+            ProcessBuilder pb = new ProcessBuilder("git", "rev-parse", "--abbrev-ref", "HEAD");
+            pb.directory(baseDir.toFile());
+            Process process = pb.start();
+            String output = readProcessOutput(process).trim();
+            process.waitFor(5, TimeUnit.SECONDS);
+            return output.isEmpty() ? null : output;
+        } catch (Exception e) {
+            log.debug("Failed to get current branch: {}", e.getMessage());
+            return null;
         }
     }
 
@@ -195,7 +248,13 @@ public class WorktreeManager {
 
     // ==================== 内部方法 ====================
 
-    private String getWorktreeBranch(Path worktreeDir) {
+    /**
+     * 获取 worktree 当前所在分支名
+     *
+     * @param worktreeDir worktree 工作目录
+     * @return 分支名，失败时返回 null
+     */
+    public String getBranchName(Path worktreeDir) {
         try {
             ProcessBuilder pb = new ProcessBuilder("git", "rev-parse", "--abbrev-ref", "HEAD");
             pb.directory(worktreeDir.toFile());

@@ -40,6 +40,28 @@ public class LoopEngineeringConfig {
     @Builder.Default
     private int scheduleThreadPoolSize = 2;
 
+    /**
+     * /loop 最大迭代次数（0 表示不限制）
+     * 防止无人值守时无限循环烧 token
+     */
+    @JsonProperty("loop_max_iterations")
+    @Builder.Default
+    private int loopMaxIterations = 100;
+
+    /**
+     * /loop 超时时间（分钟，0 表示不限制）
+     */
+    @JsonProperty("loop_timeout_minutes")
+    @Builder.Default
+    private int loopTimeoutMinutes = 240;
+
+    /**
+     * /loop 连续失败熔断次数（达到后自动停止循环）
+     */
+    @JsonProperty("loop_max_consecutive_failures")
+    @Builder.Default
+    private int loopMaxConsecutiveFailures = 3;
+
     // ==================== /goal 控制配置 ====================
 
     /**
@@ -78,6 +100,14 @@ public class LoopEngineeringConfig {
     @Builder.Default
     private String goalVerifierModel = "";
 
+    /**
+     * 确定性验证命令的超时时间（秒）
+     * 用于 /goal --verify "cmd" 的命令退出码验证通道
+     */
+    @JsonProperty("goal_verify_command_timeout_seconds")
+    @Builder.Default
+    private int goalVerifyCommandTimeoutSeconds = 300;
+
     // ==================== Worktree 配置 ====================
 
     /**
@@ -107,6 +137,14 @@ public class LoopEngineeringConfig {
     @JsonProperty("worktree_branch_prefix")
     @Builder.Default
     private String worktreeBranchPrefix = "jimi/";
+
+    /**
+     * /goal 达成并验证通过后，是否自动将 worktree 分支合并回目标分支
+     * false 时保留 worktree 与分支，等待人工审查合并
+     */
+    @JsonProperty("worktree_auto_merge")
+    @Builder.Default
+    private boolean worktreeAutoMerge = true;
 
     // ==================== State 状态持久化配置 ====================
 

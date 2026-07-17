@@ -352,8 +352,8 @@ public class ShellUI implements AutoCloseable {
             var loopManager = applicationContext.getBean(
                     LoopManager.class);
             if (loopManager.isRunning()) {
-                log.info("Stopping active loop on exit...");
-                loopManager.stopLoop();
+                log.info("Stopping active loops on exit...");
+                loopManager.stopAll();
             }
         } catch (Exception e) {
             log.debug("Failed to stop LoopManager: {}", e.getMessage());
