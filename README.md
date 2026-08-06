@@ -1,5 +1,11 @@
 # Jimi - 打造Java程序员专属的ClaudeCode
 
+<!-- hy-mt2-i18n:start -->
+
+**中文** · [English](./README_en.md) · [日本語](./README_ja.md) · [Español](./README_es.md)
+
+<!-- hy-mt2-i18n:end -->
+
 > 纯Java实现的AI驱动智能代理系统，为Java开发者提供类ClaudeCode体验的开源CLI工具
 
 [![Java](https://img.shields.io/badge/Java-17+-orange.svg)](https://www.oracle.com/java/)
