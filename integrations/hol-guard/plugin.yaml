@@ -1,0 +1,27 @@
+name: hol-guard
+version: 0.1.0
+description: HOL_GUARD_PRE_TOOL_USE
+author: Hashgraph Online
+homepage: https://hol.org/guard
+repository: https://github.com/hashgraph-online/hol-guard
+keywords:
+  - security
+  - guard
+  - hooks
+
+provides:
+  hooks:
+    - hol-guard-pre-tool
+
+defaults:
+  enabled: true
+  modules:
+    hooks: true
+
+requirements:
+  binaries:
+    - name: hol-guard
+      check: "hol-guard --version"
+      install_hint: "pipx install hol-guard"
+    - name: python3
+      check: "python3 --version"

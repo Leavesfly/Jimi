@@ -1,6 +1,7 @@
 package io.leavesfly.jimi.core.engine.toolcall;
 
-
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.leavesfly.jimi.core.engine.context.Context;
 import io.leavesfly.jimi.config.info.ToolOutputConfig;
 import io.leavesfly.jimi.core.hook.HookContext;
@@ -28,6 +29,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -50,6 +52,9 @@ import java.util.Optional;
  */
 @Slf4j
 public class ToolDispatcher {
+
+    private static final ObjectMapper HOOK_INPUT_MAPPER = new ObjectMapper();
+    private static final TypeReference<Map<String, Object>> HOOK_INPUT_TYPE = new TypeReference<>() {};
 
     private final ToolRegistry toolRegistry;
     private final Wire wire;
@@ -259,12 +264,16 @@ public class ToolDispatcher {
      * 3. 触发 POST_TOOL_USE hook（成功时）或 POST_TOOL_USE_FAILURE hook（失败时）
      */
     private Mono<Message> executeValidToolCall(String toolName, String arguments, String toolCallId, String toolSignature, Context context) {
+        Map<String, Object> toolInput = parseHookToolInput(arguments);
+
         // 构建 PRE_TOOL_USE hook 上下文
         HookContext preHookContext = HookContext.builder()
                 .hookType(HookType.PRE_TOOL_USE)
+                .sessionId(sessionId)
                 .workDir(workDir)
                 .toolName(toolName)
                 .toolCallId(toolCallId)
+                .toolInput(toolInput)
                 .build();
 
         return triggerPreHookSafely(preHookContext)
@@ -284,9 +293,11 @@ public class ToolDispatcher {
                                 // 触发 POST_TOOL_USE hook（异步，不阻塞主流程）
                                 HookContext postHookContext = HookContext.builder()
                                         .hookType(HookType.POST_TOOL_USE)
+                                        .sessionId(sessionId)
                                         .workDir(workDir)
                                         .toolName(toolName)
                                         .toolCallId(toolCallId)
+                                        .toolInput(toolInput)
                                         .toolResult(formatToolResult(result))
                                         .build();
                                 triggerHookSafely(HookType.POST_TOOL_USE, postHookContext).subscribe();
@@ -298,15 +309,29 @@ public class ToolDispatcher {
                     // 触发 POST_TOOL_USE_FAILURE hook（异步）
                     HookContext failureHookContext = HookContext.builder()
                             .hookType(HookType.POST_TOOL_USE_FAILURE)
+                            .sessionId(sessionId)
                             .workDir(workDir)
                             .toolName(toolName)
                             .toolCallId(toolCallId)
+                            .toolInput(toolInput)
                             .errorMessage(e.getMessage())
                             .build();
                     triggerHookSafely(HookType.POST_TOOL_USE_FAILURE, failureHookContext).subscribe();
 
                     return handleToolError(e, toolName, toolCallId);
                 });
+    }
+
+    private Map<String, Object> parseHookToolInput(String arguments) {
+        if (arguments == null || arguments.isBlank()) {
+            return Map.of();
+        }
+        try {
+            return HOOK_INPUT_MAPPER.readValue(arguments, HOOK_INPUT_TYPE);
+        } catch (Exception e) {
+            log.debug("Unable to parse tool arguments for hook context: {}", e.getMessage());
+            return Map.of();
+        }
     }
 
     /**

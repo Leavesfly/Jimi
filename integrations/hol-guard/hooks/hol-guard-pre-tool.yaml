@@ -1,0 +1,80 @@
+name: hol-guard-pre-tool
+description: HOL_GUARD_PRE_TOOL_USE
+enabled: true
+priority: 100
+
+trigger:
+  type: PRE_TOOL_USE
+  tools:
+    - BashTool
+
+execution:
+  type: script
+  async: false
+  timeout: 10
+  script: |
+    set -u
+    INPUT=$(cat)
+    COMMAND_FILE=$(mktemp)
+    STDOUT_FILE=$(mktemp)
+    STDERR_FILE=$(mktemp)
+    trap 'rm -f "$COMMAND_FILE" "$STDOUT_FILE" "$STDERR_FILE"' EXIT
+
+    if ! printf '%s' "$INPUT" | python3 -c '
+    import json
+    import sys
+
+    payload = json.load(sys.stdin)
+    tool_input = payload.get("tool_input")
+    if not isinstance(tool_input, dict):
+        raise SystemExit(2)
+    command = tool_input.get("command")
+    if not isinstance(command, str) or not command.strip():
+        raise SystemExit(2)
+    sys.stdout.write(command)
+    ' >"$COMMAND_FILE"; then
+      exit 2
+    fi
+
+    COMMAND=$(cat "$COMMAND_FILE")
+    if ! hol-guard command test "$COMMAND" --json >"$STDOUT_FILE" 2>"$STDERR_FILE"; then
+      cat "$STDERR_FILE" >&2
+      exit 2
+    fi
+
+    MINIMUM_ACTION=$(python3 - "$STDOUT_FILE" <<'PY'
+    import json
+    import sys
+
+    lines = [line.strip() for line in open(sys.argv[1], encoding="utf-8") if line.strip()]
+    payload = None
+    for line in reversed(lines):
+        try:
+            value = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, dict):
+            payload = value
+            break
+
+    if payload is None:
+        print("deny")
+        raise SystemExit
+
+    classification = payload.get("classification")
+    explicitly_benign = (
+        isinstance(classification, dict)
+        and classification.get("explicitly_benign") is True
+    )
+    action = str(payload.get("minimum_action") or "unknown").strip().lower()
+    print("allow" if explicitly_benign and action == "allow" else "deny")
+    PY
+    )
+
+    case "$MINIMUM_ACTION" in
+      allow) exit 0 ;;
+      *)
+        cat "$STDOUT_FILE" >&2
+        exit 2
+        ;;
+    esac
